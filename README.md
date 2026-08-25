@@ -13,13 +13,15 @@ It hooks into Claude Code and does four things:
   the ones working.
 - **Listens** — push-to-talk dictation, or continuous conversation mode with
   end-of-turn detection, delivered straight into your running Claude session.
+- **Remembers what was said out loud**, both sides, so you can read back the
+  line you missed without leaving the HUD.
 
 And a HUD, in a spare terminal, so you can see all of it at a glance:
 
 ```
                         B O R R A   B O T
                           VOICE ON
-   m: turn OFF and silence · d: dictate · c: conversation · t: session · q: quit
+   m: turn OFF and silence · d: dictate · c: conversation · h: history · q: quit
 
                               ·  ·  ·
                         ○              ○
@@ -142,6 +144,7 @@ claude-voice silence                       # panic button: cut all sound now
 claude-voice status                        # is it on? is this session muted?
 
 claude-voice hud                           # the status window, in a spare terminal
+claude-voice history 20                    # the last 20 lines spoken, both sides
 claude-voice say "test one two"            # synthesize and play, ignoring the switch
 claude-voice config                        # what is actually in effect, and from where
 claude-voice doctor                        # check the install and say what is wrong
@@ -211,8 +214,43 @@ echo /path/to/your/venv/bin/python > ~/.config/claude-voice/python
 | `d` | dictate: record, transcribe, send |
 | `c` | conversation mode: continuous listening |
 | `t` | switch which Claude session receives dictation |
+| `h` | history: what was said out loud, both sides |
 | `x` | close an orphaned microphone capture (emergency) |
 | `q` | quit the HUD (the voice keeps working) |
+
+### History: what was actually said
+
+The bottom line of the HUD shows the last spoken line and nothing else — which
+tells you it just said *something*, and is useless the moment the next line
+replaces it. Press `h` for the pane instead:
+
+```
+                              H I S T O R Y
+      h/q: back   ·   ↑↓ scroll   ·   PgUp/PgDn: page   ·   g/G: oldest/newest
+
+   14:02   you › run the tests again and tell me what breaks
+   14:02  said ‹ Checking the test suite.
+   14:04  said ‹ Two failures in the parser, both on empty input.
+   14:05   you › fix them and commit
+```
+
+Newest at the bottom, arrows or `j`/`k` to scroll, `q` back to the reactor. It
+matters most in conversation mode, where you are not looking at the Claude
+window at all: transcription is imperfect, and a misheard sentence is invisible
+until the answer comes back about the wrong thing.
+
+**Spoken lines only** — not the conversation. And they are logged as they are
+played, not read back out of the transcript, because the transcript does not
+have them: only the final `<!-- TTS: -->` line reaches it. Narration is derived
+on the fly, the acknowledgement is a separate model call, and a dictated
+sentence arrives indistinguishable from a typed one. So `audioq.enqueue()` —
+the one choke point every sound passes through — and `dictate.deliver()` each
+append a line to `~/.config/claude-voice/spoken.jsonl`, in the order things
+were actually heard. `claude-voice history` prints the same log in the
+terminal.
+
+The log is capped and trimmed; turn it off with `enabled = false` under
+`[history]` and only that pane goes away.
 
 ### Dictation and conversation mode
 
@@ -256,6 +294,10 @@ max_per_turn = 12
 [stt]
 device = "plughw:CARD=Headset,DEV=0"   # arecord -L; prefer a NAME over an index
 node = "alsa_input.usb-..."            # pw-record --list-targets
+
+[history]
+enabled = true                    # the spoken log behind the HUD's h pane
+cap = 400                         # lines kept; older ones are trimmed away
 ```
 
 ALSA card *numbers* reorder on reconnect. A setup pinned to `plughw:4,0`
@@ -365,6 +407,7 @@ claude_voice/
   audioq.py             one sound at a time, in order
   thinking.py           the heartbeat, and subagent detection
   hud.py                the status window
+  spokenlog.py          the log of what was said out loud, both sides
   dictate.py            push-to-talk, and delivery into tmux
   listen.py             conversation mode: VAD + turn detection
   pron.py               pronunciation workbench

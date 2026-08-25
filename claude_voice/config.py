@@ -107,6 +107,14 @@ DEFAULTS = {
         "foreign_terms": [],       # words to phonemize with foreign_voice
         "overrides": {},           # word -> raw espeak IPA, verbatim
     },
+    "history": {
+        # The spoken log behind the HUD's history pane: what was said out
+        # loud, both sides. Nothing else reads it, so turning it off costs
+        # only that pane.
+        "enabled": True,
+        "cap": 400,                # entries kept on disk; older ones are trimmed
+        "show": 200,               # entries the pane reads back
+    },
     "hud": {
         # Spaced out on purpose: the HUD letterspaces them as a title.
         "title": "",               # blank -> general.name
@@ -117,6 +125,10 @@ DEFAULTS = {
         "idle": "S T A N D I N G   B Y",
         "agents": "A G E N T S",
         "voice_off": "V O I C E   O F F",
+        "history": "H I S T O R Y",
+        "history_empty": "nothing spoken yet",
+        "history_you": "you",
+        "history_said": "said",
     },
 }
 
@@ -239,6 +251,8 @@ def show() -> None:
           f"max {cfg.get('narrate.max_per_turn')} per turn")
     print(f"  dictation   : {cfg.get('stt.model')} / {cfg.get('stt.language')} "
           f"on {cfg.get('stt.device')}")
+    print(f"  history     : {'on' if cfg.get('history.enabled', True) else 'off'}, "
+          f"last {cfg.get('history.cap')} spoken lines")
 
 
 if __name__ == "__main__":

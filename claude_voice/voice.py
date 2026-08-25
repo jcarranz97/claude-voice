@@ -44,6 +44,21 @@ def _mod(name: str):
     return m
 
 
+def ack_phrase(name: str) -> str:
+    """The phrase a cached acknowledgement says, from its filename.
+
+    build_acks() names them by their index in ack.phrases, so the index is the
+    only link back to the words -- and without it the spoken log would record
+    an empty line every time the cached fallback plays.
+    """
+    phrases = CFG.get("ack.phrases", []) or []
+    try:
+        i = int(Path(name).stem.removeprefix("ack"))
+        return phrases[i]
+    except (ValueError, IndexError):
+        return ""
+
+
 def play_ack() -> None:
     """Play a random cached acknowledgement, never the same one twice running."""
     files = sorted(ACK_DIR.glob("*.wav"))
@@ -61,7 +76,7 @@ def play_ack() -> None:
     # Copy: the cache original must survive, the queue consumes the file.
     tmp = Path(tempfile.gettempdir()) / f"cv-ack-{os.getpid()}.wav"
     shutil.copy(pick, tmp)
-    audioq.enqueue(tmp, "")
+    audioq.enqueue(tmp, ack_phrase(pick.name))
 
 
 def start_thinking(session: str = "") -> None:

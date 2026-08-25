@@ -67,6 +67,10 @@ def enqueue(wav: Path, text: str = "", flush_pending: bool = False) -> None:
             except Exception:
                 pass
 
+    # The one place every spoken thing passes through, so the one place worth
+    # writing the spoken log from: order here is playback order.
+    _record(text)
+
     n = _next_seq()
     dest = QUEUE / f"{n:08d}.wav"
     try:
@@ -76,6 +80,21 @@ def enqueue(wav: Path, text: str = "", flush_pending: bool = False) -> None:
         shutil.copy(wav, dest)
     (QUEUE / f"{n:08d}.json").write_text(json.dumps({"wav": str(dest), "text": text}))
     ensure_player()
+
+
+def _record(text: str) -> None:
+    """Log the line for the HUD's history pane. Never let it cost a hook."""
+    if not text:
+        return
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "spokenlog", Path(__file__).resolve().parent / "spokenlog.py")
+        m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        m.record("out", text)
+    except Exception:
+        pass
 
 
 def is_busy() -> bool:

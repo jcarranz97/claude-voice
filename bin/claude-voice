@@ -18,6 +18,7 @@ Switch
 
 Watch
   claude-voice hud                the status window
+  claude-voice history [n]        the last n spoken lines, both sides
 
 Speech
   claude-voice say "text"         synthesize and play, ignoring the switch
@@ -66,6 +67,7 @@ case "$cmd" in
     [ "$cmd" = status ] && exec "$PY" "$PKG/voice.py"
     exec "$PY" "$PKG/voice.py" "$cmd" ;;
   hud)         exec "$PY" "$PKG/hud.py" "$@" ;;
+  history)     exec "$PY" "$PKG/spokenlog.py" "$@" ;;
   say)         exec "$PY" "$PKG/speak.py" "$@" ;;
   dictate)     exec "$PY" "$PKG/dictate.py" "$@" ;;
   listen)      exec "$PY" "$PKG/listen.py" "$@" ;;

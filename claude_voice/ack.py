@@ -82,11 +82,11 @@ def contextual(prompt: str) -> str:
         return ""
 
 
-def generic() -> Path | None:
-    """The cached phrase, as a safety net."""
+def generic() -> tuple:
+    """The cached phrase, as a safety net: (wav, what it says) or (None, "")."""
     files = sorted((BASE / "acks").glob("*.wav"))
     if not files:
-        return None
+        return None, ""
     last = BASE / "last-ack"
     prev = last.read_text().strip() if last.exists() else ""
     pick = random.choice([f for f in files if f.name != prev] or files)
@@ -96,7 +96,9 @@ def generic() -> Path | None:
         pass
     tmp = Path(tempfile.gettempdir()) / f"cv-ack-{id(pick)}.wav"
     shutil.copy(pick, tmp)
-    return tmp
+    # The words matter as much as the sound: the spoken log records what was
+    # heard, and a cached phrase is heard like any other.
+    return tmp, _mod("voice").ack_phrase(pick.name)
 
 
 def main() -> int:
@@ -112,7 +114,7 @@ def main() -> int:
             wav = cand
 
     if wav is None:
-        wav, text = generic(), ""
+        wav, text = generic()
     if wav is None:
         return 0
 

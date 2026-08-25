@@ -34,6 +34,16 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import config as _config                              # noqa: E402
 
+
+def _mod(name: str):
+    """Load a sibling module by path: these files are scripts, not a package."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(name, HERE / f"{name}.py")
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
 CFG = _config.load()
 BASE = _config.BASE
 PANE_CFG = BASE / "pane.json"
@@ -143,6 +153,10 @@ def deliver(text: str) -> bool:
         subprocess.run(["tmux", "send-keys", "-t", target, "Enter"],
                        check=True, timeout=5)
         log(f"delivered to {target}: {text[:60]}")
+        # This is the only place that knows a sentence was SPOKEN and not
+        # typed -- conversation mode lands here too -- so it is where your
+        # side of the spoken log gets written.
+        _mod("spokenlog").record("in", text)
         return True
     except Exception as e:
         log(f"delivery failed: {e}")
