@@ -15,10 +15,16 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 PKG="$HERE/claude_voice"
 
-# The venv install.sh builds, unless told otherwise. Falling back to system
-# python is deliberate: `claude-voice config` and `hooks` must work before
-# anything is installed.
-PY="${CLAUDE_VOICE_PYTHON:-$HOME/.local/share/claude-voice/venv/bin/python}"
+# Which interpreter has piper and faster-whisper in it. In order: an explicit
+# override, whatever install.sh recorded (so an existing venv can be reused),
+# the venv install.sh builds, and finally system python -- deliberate, because
+# `claude-voice config` and `hooks` must work before anything is installed.
+CONFIG_DIR="${CLAUDE_VOICE_HOME:-$HOME/.config/claude-voice}"
+PY="${CLAUDE_VOICE_PYTHON:-}"
+if [ -z "$PY" ] && [ -r "$CONFIG_DIR/python" ]; then
+  PY="$(cat "$CONFIG_DIR/python")"
+fi
+[ -n "$PY" ] || PY="$HOME/.local/share/claude-voice/venv/bin/python"
 [ -x "$PY" ] || PY="$(command -v python3)"
 
 cmd="${1:-status}"

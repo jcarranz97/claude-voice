@@ -111,6 +111,9 @@ voice_model = "$VOICES/$MODEL.onnx"
 EOF
   echo "  wrote $CONFIG_DIR/config.toml"
 fi
+# Record the interpreter so the CLI finds it without an env var. An existing
+# venv can be reused by editing this one line.
+echo "$VENV/bin/python" > "$CONFIG_DIR/python"
 
 # --- CLI on PATH -------------------------------------------------------------
 say "Linking the CLI"

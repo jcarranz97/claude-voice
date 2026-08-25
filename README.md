@@ -127,6 +127,13 @@ claude-voice say "test one two"            # synthesize and play, bypassing the 
 claude-voice config                        # what is actually in effect
 ```
 
+Already have a virtualenv with `piper-tts` in it? Point the CLI at it instead
+of installing a second one:
+
+```bash
+echo /path/to/your/venv/bin/python > ~/.config/claude-voice/python
+```
+
 In the HUD:
 
 | key | |
