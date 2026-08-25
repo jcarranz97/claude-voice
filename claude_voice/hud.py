@@ -10,6 +10,7 @@ it only watches. Closing it breaks nothing.
 
   m (or space)  turn the voice off / ON
                 turning it off silences whatever is playing, instantly
+  h             history: what was said out loud, both sides
   d             dictate: record, transcribe, send to Claude
   t             switch which Claude session receives dictation
   c             conversation mode: continuous listening, sends when you stop
@@ -18,6 +19,11 @@ it only watches. Closing it breaks nothing.
 
 It works out on its own when you are recording with /voice, by reading the
 capture state: there is no dictation hook to attach to.
+
+The history pane reads the spoken log (spokenlog.py), which is written where
+sound is produced rather than parsed out of the transcript: narration and
+acknowledgements never reach the transcript, and a dictated line is
+indistinguishable there from a typed one.
 """
 
 import curses
@@ -25,12 +31,18 @@ import json
 import subprocess
 import sys
 import math
+import textwrap
 import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import config as _config                              # noqa: E402
+
+try:
+    import spokenlog as _spokenlog                     # noqa: E402
+except Exception:                                      # an empty pane, not a crash
+    _spokenlog = None
 
 CFG = _config.load()
 BASE = _config.BASE
@@ -215,6 +227,80 @@ def agents_live() -> list:
     return _agents_cache["list"]
 
 
+_hist_cache = {"mtime": -1.0, "w": -1, "rows": []}
+
+
+def history_rows(width: int) -> list:
+    """The spoken log wrapped to the pane: a list of (text, side) rows.
+
+    Cached on the log's mtime and the width. The HUD redraws 20 times a second
+    and the file only changes when something is actually said, so re-reading
+    per frame would be pure waste.
+    """
+    if _spokenlog is None or width < 20:
+        return []
+    try:
+        mt = _spokenlog.mtime()
+    except Exception:
+        return []
+    if mt == _hist_cache["mtime"] and width == _hist_cache["w"]:
+        return _hist_cache["rows"]
+
+    try:
+        entries = _spokenlog.tail(int(CFG.get("history.show", 200) or 200))
+    except Exception:
+        entries = []
+
+    you, said = L("history_you", "you"), L("history_said", "said")
+    pad = max(len(you), len(said))
+    rows = []
+    for e in entries:
+        mine = e["side"] == "in"
+        when = time.strftime("%H:%M", time.localtime(e["t"])) if e["t"] else "     "
+        # Who said it is carried by the label, the arrow and the colour: one
+        # of the three surviving a narrow terminal or a mono theme is enough.
+        head = f'{when}  {(you if mine else said):>{pad}} {"›" if mine else "‹"} '
+        body = textwrap.wrap(e["text"], max(8, width - len(head))) or [""]
+        rows.append((head + body[0], e["side"]))
+        for cont in body[1:]:
+            rows.append((" " * len(head) + cont, e["side"]))
+    _hist_cache.update(mtime=mt, w=width, rows=rows)
+    return rows
+
+
+def draw_history(win, h, w, scroll, said_color, mine_color) -> int:
+    """The history pane, newest at the bottom. Returns the clamped scroll."""
+    top, bottom = 5, h - 3
+    rows = history_rows(w - 6)
+    if not rows:
+        centered(win, h // 2, L("history_empty", "nothing spoken yet"), w,
+                 curses.A_DIM)
+        return 0
+
+    page = max(1, bottom - top + 1)
+    scroll = max(0, min(scroll, max(0, len(rows) - page)))
+    end = len(rows) - scroll
+    start = max(0, end - page)
+    shown = rows[start:end]
+
+    y = bottom - len(shown) + 1        # bottom-aligned: the newest line anchors
+    for text, side in shown:
+        mine = side == "in"
+        try:
+            win.addstr(y, 3, text[:w - 4],
+                       curses.color_pair(mine_color if mine else said_color) |
+                       (curses.A_BOLD if mine else curses.A_NORMAL))
+        except curses.error:
+            pass
+        y += 1
+
+    if start > 0:
+        centered(win, top - 1, f"↑ {start} older", w, curses.A_DIM)
+    if scroll > 0:
+        centered(win, h - 2, f"↓ {scroll} newer", w, curses.A_DIM)
+    return scroll
+
+
 def read_state() -> dict:
     try:
         d = json.loads(STATE.read_text())
@@ -339,10 +425,33 @@ def main(stdscr):
 
     t0 = time.time()
     silenced_at = 0.0
+    history, hist_scroll = False, 0
     while True:
         ch = stdscr.getch()
+        if ch == ord("h"):
+            history = not history
+            hist_scroll = 0
         if ch in (ord("q"), 27):
-            break
+            # In the pane, q goes back. Quitting the HUD from there would be a
+            # trap: you opened a view, you expect to close a view.
+            if history:
+                history, hist_scroll = False, 0
+            else:
+                break
+        if history:
+            if ch in (curses.KEY_UP, ord("k")):
+                hist_scroll += 1
+            elif ch in (curses.KEY_DOWN, ord("j")):
+                hist_scroll -= 1
+            elif ch == curses.KEY_PPAGE:
+                hist_scroll += 10
+            elif ch == curses.KEY_NPAGE:
+                hist_scroll -= 10
+            elif ch == ord("g"):
+                hist_scroll = 10 ** 6      # clamped to the oldest line on draw
+            elif ch == ord("G"):
+                hist_scroll = 0
+            hist_scroll = max(0, hist_scroll)
         if ch == ord("x"):
             sweep_orphans()
         if ch == ord("c"):
@@ -433,6 +542,17 @@ def main(stdscr):
             time.sleep(1 / FPS)
             continue
 
+        if history:
+            centered(stdscr, 1, L("history", "H I S T O R Y"), w,
+                     curses.color_pair(WHITE) | curses.A_BOLD)
+            centered(stdscr, 3,
+                     "h/q: back   ·   ↑↓ scroll   ·   PgUp/PgDn: page"
+                     "   ·   g/G: oldest/newest", w, curses.A_DIM)
+            hist_scroll = draw_history(stdscr, h, w, hist_scroll, AMBER, MAGENTA)
+            stdscr.refresh()
+            time.sleep(1 / FPS)
+            continue
+
         on = ENABLED.exists()
         if not on and st != "listening" and not agents:
             # With the voice off, saying so is more useful than animating a
@@ -447,8 +567,13 @@ def main(stdscr):
         centered(stdscr, 2, badge, w,
                  curses.color_pair(GREEN if on else WHITE) |
                  (curses.A_BOLD | curses.A_REVERSE if on else curses.A_DIM))
-        keys = (f"m: {'turn OFF and silence' if on else 'turn the voice ON'}"
-                f"   ·   d: dictate   ·   c: conversation   ·   t: session   ·   q: quit")
+        keys = [f"m: {'turn OFF and silence' if on else 'turn the voice ON'}",
+                "d: dictate", "c: conversation", "t: session",
+                "h: history", "q: quit"]
+        # Wide separators while they fit; tighter before letting the last key
+        # fall off the edge, which is what an untruncated line is worth here.
+        keys = ("   ·   ".join(keys) if len("   ·   ".join(keys)) <= w - 4
+                else "  ·  ".join(keys))
         centered(stdscr, 3, keys, w,
                  curses.color_pair(GREEN) | curses.A_BOLD if not on else curses.A_DIM)
         if time.time() - silenced_at < 2.0:
