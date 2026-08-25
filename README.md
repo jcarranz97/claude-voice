@@ -214,7 +214,7 @@ echo /path/to/your/venv/bin/python > ~/.config/claude-voice/python
 | `d` | dictate: record, transcribe, send |
 | `c` | conversation mode: continuous listening |
 | `t` | switch which Claude session receives dictation |
-| `h` | history: what was said out loud, both sides |
+| `h` | history: show/hide the spoken log beside the reactor |
 | `x` | close an orphaned microphone capture (emergency) |
 | `q` | quit the HUD (the voice keeps working) |
 
@@ -222,22 +222,53 @@ echo /path/to/your/venv/bin/python > ~/.config/claude-voice/python
 
 The bottom line of the HUD shows the last spoken line and nothing else — which
 tells you it just said *something*, and is useless the moment the next line
-replaces it. Press `h` for the pane instead:
+replaces it. Press `h` to open the log as a panel down the left:
 
 ```
-                              H I S T O R Y
-      h/q: back   ·   ↑↓ scroll   ·   PgUp/PgDn: page   ·   g/G: oldest/newest
-
-   14:02   you › run the tests again and tell me what breaks
-   14:02  said ‹ Checking the test suite.
-   14:04  said ‹ Two failures in the parser, both on empty input.
-   14:05   you › fix them and commit
+                        B O R R A   B O T
+                             VOICE ON
+  m: turn OFF and silence · d: dictate · c: conversation · h: hide history · q: quit
+                          │
+       H I S T O R Y      │
+  ↑↓ scroll  ·  g/G: ends │              ·  ·  ·
+                          │         ○              ○
+ 14:02  you › run the     │      ○     T H I N K I N G    ○
+             tests again  │         ○              ○
+ 14:02 said ‹ Checking    │              ·  ·  ·
+             the suite.   │
+ 14:04 said ‹ Two         │        ▁▂▃▅▆▇█▇▆▅▃▂▁▂▃▅▆▇█
+             failures.    │
+ 14:05  you › fix them    │
 ```
 
-Newest at the bottom, arrows or `j`/`k` to scroll, `q` back to the reactor. It
-matters most in conversation mode, where you are not looking at the Claude
+`h` again puts it away. It is a panel, not a mode: the reactor keeps spinning
+beside it, so you never trade the state you are watching for the log you are
+reading. Newest at the bottom, arrows or `j`/`k` to scroll, `g`/`G` for the
+ends, `q` still quits the HUD.
+
+The panel reopens the way you left it — whether it was showing is remembered
+in `~/.config/claude-voice/hud-history`, so `h` is a preference you set once
+rather than a key you press every time you open a HUD.
+
+It sits on the left by default. `position` moves it:
+
+```toml
+[history]
+position = "bottom"      # left (default), right, or bottom
+```
+
+At the bottom it is a full-width strip under the reactor, and two things
+change to buy back the rows: the microphone notice moves onto the divider,
+which reads better as a labelled rule anyway, and the single last-spoken line
+goes — the strip directly below it already ends with that line.
+
+It matters most in conversation mode, where you are not looking at the Claude
 window at all: transcription is imperfect, and a misheard sentence is invisible
 until the answer comes back about the wrong thing.
+
+When the window cannot hold both — under about 74 columns beside the reactor,
+or too few rows under it — the panel takes the whole window instead. There, and
+only there, `q` closes it rather than quitting.
 
 **Spoken lines only** — not the conversation. And they are logged as they are
 played, not read back out of the transcript, because the transcript does not
@@ -250,7 +281,7 @@ were actually heard. `claude-voice history` prints the same log in the
 terminal.
 
 The log is capped and trimmed; turn it off with `enabled = false` under
-`[history]` and only that pane goes away.
+`[history]` and only that panel goes away.
 
 ### Dictation and conversation mode
 
@@ -296,7 +327,8 @@ device = "plughw:CARD=Headset,DEV=0"   # arecord -L; prefer a NAME over an index
 node = "alsa_input.usb-..."            # pw-record --list-targets
 
 [history]
-enabled = true                    # the spoken log behind the HUD's h pane
+enabled = true                    # the spoken log behind the HUD's h panel
+position = "left"                 # left, right or bottom of the HUD window
 cap = 400                         # lines kept; older ones are trimmed away
 ```
 

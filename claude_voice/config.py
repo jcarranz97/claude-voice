@@ -113,7 +113,8 @@ DEFAULTS = {
         # only that pane.
         "enabled": True,
         "cap": 400,                # entries kept on disk; older ones are trimmed
-        "show": 200,               # entries the pane reads back
+        "show": 200,               # entries the panel reads back
+        "position": "left",        # left, right or bottom of the HUD window
     },
     "hud": {
         # Spaced out on purpose: the HUD letterspaces them as a title.
@@ -251,7 +252,8 @@ def show() -> None:
           f"max {cfg.get('narrate.max_per_turn')} per turn")
     print(f"  dictation   : {cfg.get('stt.model')} / {cfg.get('stt.language')} "
           f"on {cfg.get('stt.device')}")
-    print(f"  history     : {'on' if cfg.get('history.enabled', True) else 'off'}, "
+    print(f"  history     : {'on' if cfg.get('history.enabled', True) else 'off'} "
+          f"({cfg.get('history.position')}), "
           f"last {cfg.get('history.cap')} spoken lines")
 
 
