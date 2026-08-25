@@ -118,14 +118,83 @@ Drop the `MessageDisplay` entry if you only want the final line spoken.
 
 ---
 
-## Use
+## Running it
+
+There are **two separate things**, and confusing them is the usual first
+stumble:
+
+| | who starts it | where it lives |
+|---|---|---|
+| **The voice** (speaking, narration, tick) | Claude Code, via the hooks | nothing to launch — it runs inside your Claude session |
+| **The HUD** | **you** | a long-lived process in its own terminal |
+
+So there is no daemon to start for the voice. Install the hooks, run
+`claude-voice on`, and the next thing you say to Claude gets spoken back. The
+HUD is optional and purely a viewer — closing it breaks nothing.
+
+### Day to day
 
 ```bash
-claude-voice on | off | solo | silence     # solo mutes just this session
-claude-voice hud                           # the status window
-claude-voice say "test one two"            # synthesize and play, bypassing the switch
-claude-voice config                        # what is actually in effect
+claude-voice on                            # start speaking (off is the default)
+claude-voice off                           # stop, and silence anything playing now
+claude-voice solo                          # mute just this one session
+claude-voice silence                       # panic button: cut all sound now
+claude-voice status                        # is it on? is this session muted?
+
+claude-voice hud                           # the status window, in a spare terminal
+claude-voice say "test one two"            # synthesize and play, ignoring the switch
+claude-voice config                        # what is actually in effect, and from where
+claude-voice doctor                        # check the install and say what is wrong
+claude-voice --help                        # everything, grouped
 ```
+
+`doctor` is the one to reach for when something is off. It checks the
+interpreter, the voice model, the audio session, whether the hooks are
+installed and still point at files that exist, and reports the optional
+speech-to-text pieces as notes rather than failures:
+
+```
+[  ok  ] piper-tts — importable
+[  ok  ] voice model — en_US-amy-medium.onnx (63 MB)
+[ FAIL ] hook Stop — points at a missing file: /old/path/speak.py
+         fix: claude-voice hooks   (the checkout moved)
+[ note ] switch — off
+         fix: claude-voice on
+```
+
+### The HUD
+
+Open it in a terminal you can leave alone — it repaints 20 times a second and
+takes over the window:
+
+```bash
+claude-voice hud
+```
+
+Worth an alias, since you will open it constantly:
+
+```bash
+echo "alias hud='claude-voice hud'" >> ~/.bashrc
+```
+
+If you had an alias pointing straight at a checkout — `python /some/path/hud.py`
+— repoint it at `claude-voice hud` instead. Going through the CLI means the
+path stops mattering: it resolves the interpreter and the module locations for
+you, so moving or updating the checkout cannot leave you running a stale copy.
+
+### Without the CLI
+
+The CLI is a thin dispatcher; nothing requires it. Any module runs directly, as
+long as you use an interpreter that has `piper-tts` installed:
+
+```bash
+/path/to/venv/bin/python /path/to/claude-voice/claude_voice/hud.py
+/path/to/venv/bin/python /path/to/claude-voice/claude_voice/voice.py on
+```
+
+This is also exactly what the hooks do — they call `voice.py`, `narrate.py` and
+`speak.py` by absolute path, which is why `claude-voice hooks` prints the paths
+already filled in for your machine.
 
 Already have a virtualenv with `piper-tts` in it? Point the CLI at it instead
 of installing a second one:
@@ -134,7 +203,7 @@ of installing a second one:
 echo /path/to/your/venv/bin/python > ~/.config/claude-voice/python
 ```
 
-In the HUD:
+### Keys in the HUD
 
 | key | |
 |---|---|
@@ -219,6 +288,48 @@ claude-voice pron list                        # what is currently overridden
 `diag` prints the exact TOML to paste. Two tiers: `foreign_terms` for words the
 second language says correctly, `overrides` for words *neither* gets right —
 product names, acronyms — where you write the IPA by hand.
+
+---
+
+## Troubleshooting
+
+Start with `claude-voice doctor` — it covers most of what follows. The rest is
+for when it says everything is fine and you still hear nothing.
+
+**Nothing is spoken.** Every turn appends one line to
+`~/.config/claude-voice/speak.log` saying exactly why:
+
+```
+2026-08-25 11:19:16 fields=[...] len=73 marker=yes on=True audio=True
+```
+
+- `marker=NO` — the model did not write the `<!-- TTS: -->` line. Either the
+  voice was off when you sent the prompt (the instruction is only injected
+  while it is on), or the model judged the turn not worth speaking.
+- `on=False` — run `claude-voice on`.
+- `audio=False` — no PipeWire/PulseAudio session. Expected over plain SSH and
+  in systemd services; there is nothing to play through.
+- No line at all — the `Stop` hook is not installed or points at a bad path.
+  Re-run `claude-voice hooks` and compare.
+
+**The HUD dies with `NameError` or `AttributeError`.** You are running a stale
+copy from an old path. This is what an alias frozen on `python .../hud.py`
+gets you after the checkout moves. Run `claude-voice hud` instead, or repoint
+the alias.
+
+**The HUD says `MICROPHONE OPEN, NO OWNER`.** A capture process outlived its
+parent — usually an unclean exit from conversation mode. Press `x`. That
+warning reads the kernel's capture state, not our own bookkeeping, precisely so
+it still fires when our bookkeeping is what broke.
+
+**Dictation records but nothing arrives.** Delivery is refused unless the
+target tmux pane is running `claude`; check `claude-voice dictate --panes` and
+`~/.config/claude-voice/dictate.log`. If it records silence, the device is
+wrong — `arecord -L`, and set `stt.device` by name.
+
+**The tick keeps going after the answer.** The `Stop` hook is what kills it, so
+a session that died mid-turn (out of tokens, a hang, Ctrl-C) leaves it running.
+It caps itself, or `claude-voice silence` ends it now.
 
 ---
 

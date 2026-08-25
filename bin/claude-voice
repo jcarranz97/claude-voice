@@ -1,16 +1,47 @@
 #!/usr/bin/env bash
 # Single entry point. Everything else is an implementation detail.
-#
-#   claude-voice on | off | solo | silence | status
-#   claude-voice hud
-#   claude-voice say "text"
-#   claude-voice dictate --panes | --pane <id> | --toggle
-#   claude-voice listen [--check]
-#   claude-voice pron diag <word>... | say "<phrase>" | list
-#   claude-voice config
-#   claude-voice build-acks | build-ticks
-#   claude-voice hooks            print the settings.json snippet to install
 set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+claude-voice — local voice, ear and HUD for Claude Code
+
+  The voice itself needs nothing started: Claude Code runs it through hooks.
+  The HUD is the one thing you launch yourself, in a spare terminal.
+
+Switch
+  claude-voice on                 start speaking (off is the default)
+  claude-voice off                stop, and silence anything playing now
+  claude-voice solo               mute just this session
+  claude-voice silence            panic button: cut all sound now
+  claude-voice status             is it on? is this session muted?
+
+Watch
+  claude-voice hud                the status window
+
+Speech
+  claude-voice say "text"         synthesize and play, ignoring the switch
+  claude-voice pron diag <word>…  why a word sounds wrong, and how to fix it
+  claude-voice pron say "…"       hear a phrase, with a level sanity check
+  claude-voice pron list          the active pronunciation rules
+
+Input (needs tmux)
+  claude-voice dictate --panes    list panes running claude
+  claude-voice dictate --pane ID  pick the one dictation goes to
+  claude-voice dictate --toggle   start recording / stop and send
+  claude-voice listen             conversation mode: continuous listening
+  claude-voice listen --check     verify the models and measure latencies
+
+Setup
+  claude-voice hooks              print the settings.json snippet to install
+  claude-voice doctor             check the install and say what is wrong
+  claude-voice config             what is in effect, and where it came from
+  claude-voice build-acks         re-synthesize the cached acknowledgements
+  claude-voice build-ticks        regenerate the heartbeat sounds
+
+Config lives in ~/.config/claude-voice/config.toml
+USAGE
+}
 
 HERE="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 PKG="$HERE/claude_voice"
@@ -69,8 +100,9 @@ MessageDisplay drives live narration mid-turn; drop it if you only want the
 final line spoken. The voice stays off until you run: claude-voice on
 EOF
     ;;
+  doctor)      exec "$PY" "$PKG/doctor.py" "$@" ;;
   -h|--help|help)
-    sed -n '2,16p' "$(readlink -f "${BASH_SOURCE[0]}")" | sed 's/^# \{0,1\}//' ;;
+    usage ;;
   *)
     echo "unknown command: $cmd" >&2
     echo "try: claude-voice --help" >&2
