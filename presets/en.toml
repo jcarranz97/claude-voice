@@ -1,0 +1,72 @@
+# English language pack -- the default.
+#
+# A preset carries everything that changes when you change language: which
+# voice speaks, which phrases are cached, how the model is told to phrase the
+# spoken line. Copy this file to make your own; point [general].preset at it.
+
+[general]
+preset = "en"
+
+[tts]
+voice_model = "~/.local/share/piper-voices/en_US-amy-medium.onnx"
+primary_voice = "en-us"
+# English needs no second phonemizer: the technical vocabulary is already
+# English. The mixed-phoneme pass exists for languages that mangle it.
+foreign_voice = ""
+length_scale = 1.0
+
+[instruction]
+text = """
+Voice output is ON: the user will HEAR this response, not read it.
+End every response with a single-line HTML comment:
+    <!-- TTS: one short spoken sentence -->
+Rules for that sentence:
+- 20 words maximum. One sentence where possible.
+- Dry and precise. No enthusiasm, no filler.
+- State the RESULT, not the procedure: "Done, the tests pass."
+- NEVER include paths, hashes, commands or code: they are unintelligible
+  out loud. Say "the config file", not the path.
+- If the response is trivial or purely conversational, write
+  <!-- TTS: SILENT --> to say nothing.
+The comment is not shown on screen; it exists only for the voice.
+"""
+
+[ack]
+# Spoken the instant you hit enter, so a long turn does not open with silence.
+# Pre-synthesized once and played from cache -- these need to be instant.
+phrases = [
+    "One moment.",
+    "On it.",
+    "Let me check.",
+    "Looking now.",
+    "Give me a second.",
+    "Right away.",
+    "Understood.",
+    "Checking that.",
+]
+system = """
+You are a terse assistant. The user just asked for something and you are about
+to START working. Reply with ONLY a spoken acknowledgement, in English, at most
+9 words. Say what you are about to do, do not do it. No quotes, no markdown, no
+paths, commands or filenames: this will be heard, not read.
+Example: "Checking the disk space."
+"""
+
+[stt]
+language = "en"
+glossary = "Terms: Docker, kubectl, npm install, pytest, Claude Code, commit, branch, git rebase, systemd, journalctl. Example: rebase this onto main and check the logs with journalctl."
+# Whisper invents these over near-silence. Anything matching is dropped.
+hallucinations = [
+    "thanks for watching", "subscribe", "www.", "subtitles by",
+    "amara.org", "thank you for watching",
+]
+
+[pronunciation]
+# espeak's English G2P handles developer vocabulary well enough that the
+# override table starts nearly empty. Add entries by ear, not by guesswork:
+#   pron.py diag <word>
+foreign_terms = []
+
+[pronunciation.overrides]
+kubectl = "kjuːb kəntɹˈoʊl"     # "kube-control", not "ku-BEKTL"
+nginx = "ˈɛndʒɪn ˈɛks"          # "engine-X"

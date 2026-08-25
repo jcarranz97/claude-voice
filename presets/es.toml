@@ -1,0 +1,96 @@
+# Spanish (Latin American) language pack.
+#
+# This is the preset the project was actually built and tuned on, so it is the
+# most opinionated one: the term lists below were curated by listening, not by
+# diffing phonemes. Treat them as a worked example of what a preset can carry.
+
+[general]
+preset = "es"
+
+[tts]
+voice_model = "~/.local/share/piper-voices/es_MX-ald-medium.onnx"
+primary_voice = "es-419"      # Latin American: seseo, no Castilian theta
+foreign_voice = "en-us"       # spliced in for the terms listed below
+length_scale = 1.06           # slightly unhurried
+
+[instruction]
+text = """
+La voz está activada: vas a ser ESCUCHADO, no leído.
+Termina cada respuesta con un comentario HTML en una sola línea:
+    <!-- TTS: una frase corta en español, hablada -->
+Reglas para esa frase:
+- Máximo 20 palabras. Una sola oración cuando se pueda.
+- Seco y preciso, sin entusiasmo.
+- Di el RESULTADO, no el procedimiento: 'Listo, los tests pasan.'
+- NUNCA metas rutas, hashes, comandos ni fragmentos de código: no se
+  entienden al oído. Di 'el archivo de configuración', no la ruta.
+- Si la respuesta es trivial o puramente conversacional, escribe
+  <!-- TTS: SILENT --> para no decir nada.
+El comentario no se ve en pantalla; es solo para la voz.
+"""
+
+[ack]
+phrases = [
+    "Permítame.",
+    "Enseguida.",
+    "Déjeme revisarlo.",
+    "En ello.",
+    "Un momento.",
+    "Ahora lo veo.",
+    "Entendido.",
+    "Voy a checarlo.",
+]
+system = """
+Eres un asistente seco y preciso. Te acaban de pedir algo y vas a EMPEZAR a
+trabajar. Responde SOLO con un acuse hablado, en español, máximo 9 palabras,
+tratando de usted. Di qué vas a hacer, no lo hagas. Sin comillas, sin markdown,
+sin rutas, comandos ni nombres de archivo: se va a escuchar, no leer.
+Ejemplo: 'Reviso el espacio en disco.'
+"""
+
+[stt]
+language = "es"
+glossary = "Terminos: Docker, kubectl, npm install, pytest, Claude Code, commit, branch, git rebase, systemd, journalctl. Ejemplo: hazme un git rebase sobre main y checa los logs con journalctl."
+hallucinations = [
+    "subtítulos realizados por", "amara.org", "gracias por ver",
+    "subtitulado por", "¡suscríbete", "www.", "más videos",
+]
+
+[pronunciation]
+# Only the terms espeak's Spanish G2P genuinely mangles, curated by ear.
+#
+# Deliberately NOT here: commit, deploy, refactor, endpoint, server, debug,
+# package, install, token, script, test, lint, fix, bug, tag, fork, push,
+# stash, checkout, log(s). Spanish already renders these the way a developer
+# actually says them; forcing English sounds affected.
+#
+# Note "main" -> Spanish gives mˈaɪn ("MA-in", two syllables) instead of
+# mˈeɪn ("MEIN"). An automated diff misses it because both are 5 phonemes;
+# it only shows up by ear.
+foreign_terms = [
+    # git refs and workflow
+    "main", "master", "head", "origin", "remote", "branch", "merge", "rebase",
+    "clone", "reset", "release", "hotfix", "feature", "develop", "rollback",
+    "pull", "request", "issue", "stage", "staging", "workflow", "runner",
+    # things Spanish mangles badly
+    "queue", "cache", "null", "pipeline", "build", "wheel", "hook",
+    "chunk", "thread", "upgrade", "hash", "linter", "venv",
+]
+
+[pronunciation.overrides]
+kubectl = "kjuːb kontɾˈol"      # "kube-control", not "ku-BEKTL"
+nginx = "ˈendʒin ˈeks"          # "engine-X"
+sudo = "sˈuðo"
+# espeak inserts a glide in the hiatus (tˌoðaβˈiʲa, "todavi-ya") and stresses
+# the first syllable too. Clean hiatus, one stress.
+"todavía" = "toðaβˈia"
+todavia = "toðaβˈia"            # in case the text arrives without the accent
+
+[hud]
+thinking  = "P E N S A N D O"
+speaking  = "H A B L A N D O"
+listening = "E S C U C H A N D O"
+ready     = "L I S T O"
+idle      = "E N   E S P E R A"
+agents    = "A G E N T E S"
+voice_off = "V O Z   A P A G A D A"

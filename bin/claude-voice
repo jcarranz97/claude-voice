@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# Single entry point. Everything else is an implementation detail.
+#
+#   claude-voice on | off | solo | silence | status
+#   claude-voice hud
+#   claude-voice say "text"
+#   claude-voice dictate --panes | --pane <id> | --toggle
+#   claude-voice listen [--check]
+#   claude-voice pron diag <word>... | say "<phrase>" | list
+#   claude-voice config
+#   claude-voice build-acks | build-ticks
+#   claude-voice hooks            print the settings.json snippet to install
+set -euo pipefail
+
+HERE="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+PKG="$HERE/claude_voice"
+
+# The venv install.sh builds, unless told otherwise. Falling back to system
+# python is deliberate: `claude-voice config` and `hooks` must work before
+# anything is installed.
+PY="${CLAUDE_VOICE_PYTHON:-$HOME/.local/share/claude-voice/venv/bin/python}"
+[ -x "$PY" ] || PY="$(command -v python3)"
+
+cmd="${1:-status}"
+shift || true
+
+case "$cmd" in
+  on|off|solo|silence|status)
+    [ "$cmd" = status ] && exec "$PY" "$PKG/voice.py"
+    exec "$PY" "$PKG/voice.py" "$cmd" ;;
+  hud)         exec "$PY" "$PKG/hud.py" "$@" ;;
+  say)         exec "$PY" "$PKG/speak.py" "$@" ;;
+  dictate)     exec "$PY" "$PKG/dictate.py" "$@" ;;
+  listen)      exec "$PY" "$PKG/listen.py" "$@" ;;
+  pron)        exec "$PY" "$PKG/pron.py" "$@" ;;
+  narrate)     exec "$PY" "$PKG/narrate.py" "$@" ;;
+  queue)       exec "$PY" "$PKG/audioq.py" "$@" ;;
+  config)      exec "$PY" "$PKG/config.py" "$@" ;;
+  build-acks)  exec "$PY" "$PKG/voice.py" --build-acks ;;
+  build-ticks) exec "$PY" "$PKG/thinking.py" --build "$@" ;;
+  agents)      exec "$PY" "$PKG/thinking.py" --agents "$@" ;;
+  hooks)
+    cat <<EOF
+Add this to the "hooks" block of ~/.claude/settings.json
+(or a project's .claude/settings.json):
+
+  "hooks": {
+    "UserPromptSubmit": [
+      { "matcher": "", "hooks": [
+        { "type": "command", "command": "$PY $PKG/voice.py --hook-context" } ] }
+    ],
+    "MessageDisplay": [
+      { "hooks": [
+        { "type": "command", "command": "$PY $PKG/narrate.py" } ] }
+    ],
+    "Stop": [
+      { "hooks": [
+        { "type": "command", "command": "$PY $PKG/speak.py" } ] }
+    ]
+  }
+
+MessageDisplay drives live narration mid-turn; drop it if you only want the
+final line spoken. The voice stays off until you run: claude-voice on
+EOF
+    ;;
+  -h|--help|help)
+    sed -n '2,16p' "$(readlink -f "${BASH_SOURCE[0]}")" | sed 's/^# \{0,1\}//' ;;
+  *)
+    echo "unknown command: $cmd" >&2
+    echo "try: claude-voice --help" >&2
+    exit 2 ;;
+esac
