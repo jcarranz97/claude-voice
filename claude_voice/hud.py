@@ -52,12 +52,16 @@ ENABLED = BASE / "enabled"
 FPS = 20.0
 IDLE_AFTER = 900          # after 15 min of nothing, treat it as asleep
 
-# The history panel shares the window with the reactor. Below SPLIT_MIN_W there
-# is no honest way to show both, and it takes the window instead.
-SPLIT_MIN_W = 74
+# The history panel shares the window with the reactor. When there is no
+# honest way to show both, it takes the window instead.
+SPLIT_MIN_W = 74          # narrower than this, no room beside the reactor
 PANEL_MIN_W = 34
 PANEL_MAX_W = 60
-PANEL_TOP = 5             # the title and key legend span the window above it
+PANEL_MIN_H = 6           # shorter than this, a bottom strip is not worth it
+BODY_TOP = 4              # the title and key legend span the window above it
+REACTOR_ROWS = 19         # rings (15), the bars under them, the target line
+
+CYAN, AMBER, GREEN, WHITE, MAGENTA, BLUE = 1, 2, 3, 4, 5, 6
 
 # Concentric rings of the reactor. Radii in character cells; terminals have
 # cells about 2x taller than wide, so X is stretched when drawing.
@@ -275,19 +279,71 @@ def history_rows(width: int) -> list:
     return rows
 
 
-def panel_split(w: int, history: bool) -> tuple:
-    """Columns for the history panel and the reactor: (panel_w, x0, cw).
+def position() -> str:
+    """Where the panel sits: left, right or bottom. Anything else reads left."""
+    pos = str(CFG.get("history.position", "left") or "left").strip().lower()
+    return pos if pos in ("left", "right", "bottom") else "left"
 
-    The panel is a side panel, not a mode: the reactor keeps animating beside
-    it. Only when the window is too narrow to hold both does the panel take
-    over, and then cw is 0 and the caller falls back to the full-window view.
+
+def layout(h: int, w: int, history: bool) -> tuple:
+    """Where the panel and the reactor go, as (top, bottom, x0, width) bands.
+
+    Returns (panel, reactor, divider). The panel is a panel, not a mode: the
+    reactor keeps animating beside or above it. Only when the window cannot
+    hold both is `reactor` None, and the caller falls back to the panel alone.
+    The divider is ("v", column) or ("h", row), or None.
     """
+    body = (BODY_TOP, h - 1, 0, w)
     if not history:
-        return 0, 0, w
-    if w < SPLIT_MIN_W:
-        return w, 0, 0
-    pw = max(PANEL_MIN_W, min(PANEL_MAX_W, w * 2 // 5))
-    return pw, pw + 1, w - pw - 1
+        return None, body, None
+
+    pos = position()
+    if pos == "bottom":
+        # The strip takes what is left once the reactor has its rows and the
+        # divider has its one.
+        ph = min(max(PANEL_MIN_H, h // 3), h - BODY_TOP - REACTOR_ROWS - 1)
+        if ph >= PANEL_MIN_H:
+            top = h - ph
+            return (top, h - 1, 0, w), (BODY_TOP, top - 2, 0, w), ("h", top - 1)
+    elif w >= SPLIT_MIN_W:
+        pw = max(PANEL_MIN_W, min(PANEL_MAX_W, w * 2 // 5))
+        if pos == "right":
+            return ((BODY_TOP, h - 1, w - pw, pw),
+                    (BODY_TOP, h - 1, 0, w - pw - 1), ("v", w - pw - 1))
+        return ((BODY_TOP, h - 1, 0, pw),
+                (BODY_TOP, h - 1, pw + 1, w - pw - 1), ("v", pw))
+
+    return (0, h - 1, 0, w), None, None      # no room to share: take the window
+
+
+def draw_divider(win, divider, h: int, w: int) -> None:
+    kind, at = divider
+    if kind == "v":
+        for y in range(BODY_TOP, h - 1):
+            try:
+                win.addstr(y, at, "│", curses.A_DIM)
+            except curses.error:
+                pass
+    else:
+        try:
+            win.addstr(at, 1, "─" * max(0, w - 2), curses.A_DIM)
+        except curses.error:
+            pass
+
+
+def draw_panel(win, band, strip: bool, scroll: int) -> int:
+    """Title, hint and log inside the panel band. Returns the clamped scroll.
+
+    A bottom strip is short, so it spends no row on the hint: the key legend
+    above it already says what h does, and the arrows are the obvious guess.
+    """
+    top, bottom, x0, w = band
+    centered(win, top if strip else top + 1, L("history", "H I S T O R Y"), w,
+             curses.color_pair(WHITE) | curses.A_BOLD, x0)
+    if not strip:
+        centered(win, top + 2, "↑↓ scroll  ·  g/G: ends", w, curses.A_DIM, x0)
+    first = top + 2 if strip else top + 4
+    return draw_history(win, first, bottom - 1, x0, w, scroll, AMBER, MAGENTA)
 
 
 def draw_history(win, top, bottom, x0, w, scroll, said_color, mine_color) -> int:
@@ -344,13 +400,15 @@ def read_state() -> dict:
     return d
 
 
-def draw_reactor(win, cy, cx, t, state, color, x0=0, x1=None):
+def draw_reactor(win, cy, cx, t, state, color, band=None):
     """Rings that breathe, spin or pulse depending on state.
 
-    Clipped to [x0, x1) so a ring never bleeds into the history panel.
+    Clipped to the band (top, bottom, x0, width) so a ring never bleeds into
+    the history panel, whichever edge it is on.
     """
     h, w = win.getmaxyx()
-    x1 = w if x1 is None else min(x1, w)
+    y0, y1, x0, x1 = (0, h - 1, 0, w) if band is None else (
+        band[0], band[1] + 1, band[2], min(band[2] + band[3], w))
     for radius, glyph in RINGS:
         if state == "thinking":
             # arcs spinning at a different speed per ring
@@ -365,7 +423,7 @@ def draw_reactor(win, cy, cx, t, state, color, x0=0, x1=None):
                     continue
                 bright = 1.0 - delta / arc
                 _plot(win, cy, cx, radius, a, glyph, color,
-                      curses.A_BOLD if bright > 0.55 else curses.A_DIM, h, x1, x0)
+                      curses.A_BOLD if bright > 0.55 else curses.A_DIM, y0, y1, x0, x1)
         elif state == "listening":
             # Wave travelling INWARD: speaking sends energy out, listening
             # draws it in. Same shape inverted, and legible at a glance.
@@ -375,7 +433,7 @@ def draw_reactor(win, cy, cx, t, state, color, x0=0, x1=None):
             for i in range(steps):
                 a = 2 * math.pi * i / steps
                 _plot(win, cy, cx, radius, a, glyph, color,
-                      curses.A_BOLD if near else curses.A_DIM, h, x1, x0)
+                      curses.A_BOLD if near else curses.A_DIM, y0, y1, x0, x1)
         elif state == "speaking":
             # radial pulse outward, like a voice wave
             phase = (t * 3.4) % 1.0
@@ -384,7 +442,7 @@ def draw_reactor(win, cy, cx, t, state, color, x0=0, x1=None):
             for i in range(steps):
                 a = 2 * math.pi * i / steps
                 _plot(win, cy, cx, radius, a, glyph, color,
-                      curses.A_BOLD if near else curses.A_DIM, h, x1, x0)
+                      curses.A_BOLD if near else curses.A_DIM, y0, y1, x0, x1)
         else:
             # slow breathing
             breath = (math.sin(t * 0.9) + 1) / 2
@@ -392,13 +450,13 @@ def draw_reactor(win, cy, cx, t, state, color, x0=0, x1=None):
             for i in range(steps):
                 a = 2 * math.pi * i / steps
                 _plot(win, cy, cx, radius, a, glyph, color,
-                      curses.A_BOLD if breath > 0.75 else curses.A_DIM, h, x1, x0)
+                      curses.A_BOLD if breath > 0.75 else curses.A_DIM, y0, y1, x0, x1)
 
 
-def _plot(win, cy, cx, r, angle, glyph, color, attr, h, w, x0=0):
+def _plot(win, cy, cx, r, angle, glyph, color, attr, y0, y1, x0, x1):
     y = int(round(cy + math.sin(angle) * r))
     x = int(round(cx + math.cos(angle) * r * 2))   # x2: cells are not square
-    if 0 <= y < h - 1 and x0 <= x < w - 1:
+    if y0 <= y < y1 and x0 <= x < x1 - 1:
         try:
             win.addstr(y, x, glyph, curses.color_pair(color) | attr)
         except curses.error:
@@ -457,7 +515,6 @@ def main(stdscr):
                             curses.COLOR_GREEN, curses.COLOR_WHITE,
                             curses.COLOR_MAGENTA, curses.COLOR_BLUE), start=1):
         curses.init_pair(i, fg, -1)
-    CYAN, AMBER, GREEN, WHITE, MAGENTA, BLUE = 1, 2, 3, 4, 5, 6
 
     t0 = time.time()
     silenced_at = 0.0
@@ -579,9 +636,9 @@ def main(stdscr):
             time.sleep(1 / FPS)
             continue
 
-        panel_w, x0, cw = panel_split(w, history)
-        if history and cw == 0:
-            # Too narrow to share: the panel takes the window, as it used to.
+        panel, reactor, divider = layout(h, w, history)
+        if reactor is None:
+            # No room to share: the panel takes the window, as a view.
             centered(stdscr, 1, L("history", "H I S T O R Y"), w,
                      curses.color_pair(WHITE) | curses.A_BOLD)
             centered(stdscr, 3, "h/q: back  ·  ↑↓ scroll  ·  g/G: ends", w,
@@ -619,33 +676,39 @@ def main(stdscr):
             centered(stdscr, 4, "· voice off, silence ·", w,
                      curses.color_pair(AMBER) | curses.A_BOLD)
 
-        if history:
-            # Below the legend, which spans the window: the panel is beside the
-            # reactor, not instead of it.
-            centered(stdscr, PANEL_TOP, L("history", "H I S T O R Y"), panel_w,
-                     curses.color_pair(WHITE) | curses.A_BOLD)
-            centered(stdscr, PANEL_TOP + 1, "↑↓ scroll  ·  g/G: ends", panel_w,
-                     curses.A_DIM)
-            hist_scroll = draw_history(stdscr, PANEL_TOP + 3, h - 3, 0, panel_w,
-                                       hist_scroll, AMBER, MAGENTA)
-            for _y in range(PANEL_TOP - 1, h - 1):
-                try:
-                    stdscr.addstr(_y, panel_w, "│", curses.A_DIM)
-                except curses.error:
-                    pass
+        if panel:
+            # Below the legend, which spans the window: the panel is beside or
+            # under the reactor, never instead of it.
+            hist_scroll = draw_panel(stdscr, panel, divider[0] == "h",
+                                     hist_scroll)
+            draw_divider(stdscr, divider, h, w)
 
-        cy = h // 2 - 1
-        draw_reactor(stdscr, cy, x0 + cw // 2, t, st, color, x0, x0 + cw)
-        centered(stdscr, cy, label, cw,
-                 curses.color_pair(color) | curses.A_BOLD, x0)
-        draw_bars(stdscr, min(h - 4, cy + 9), x0 + cw // 2, t, st, color,
+        rtop, rbot, x0, cw = reactor
+        strip = bool(panel) and divider[0] == "h"
+        # Under a bottom strip the rows are tight, so the notice moves onto the
+        # divider -- a labelled rule reads better than a plain one -- and the
+        # last spoken line goes, because the strip below ends with that line.
+        notice_y = divider[1] if strip else rtop + 1
+        foot_y = rbot if strip else rbot - 3
+        cy = (rtop + rbot) // 2 - 1
+        cx = x0 + cw // 2
+        draw_reactor(stdscr, cy, cx, t, st, color, reactor)
+        # Centred on the reactor's own axis, not on the band: rounding the two
+        # separately leaves the label half a cell off and a ring glyph peeking
+        # out of its last letter.
+        try:
+            stdscr.addstr(cy, max(x0, cx - len(label) // 2), label[:cw - 1],
+                          curses.color_pair(color) | curses.A_BOLD)
+        except curses.error:
+            pass
+        draw_bars(stdscr, min(foot_y - 1, cy + 9), cx, t, st, color,
                   x0 + cw, x0)
 
         if agents:
             # What they are doing, not just how many.
-            top = max(cy + 11, h - 5 - min(3, len(agents)))
+            top = max(cy + 11, foot_y - 1 - min(3, len(agents)))
             for i, desc in enumerate(agents[:3]):
-                if top + i >= h - 4:
+                if top + i >= foot_y:
                     break
                 centered(stdscr, top + i, f"· {desc}"[:cw - 4], cw,
                          curses.color_pair(BLUE) | curses.A_DIM, x0)
@@ -655,22 +718,22 @@ def main(stdscr):
         # is precisely the case worth shouting about.
         if mic_open():
             if daemon_alive():
-                centered(stdscr, 5, "  ● CONVERSATION — microphone open  ", cw,
+                centered(stdscr, notice_y, "  ● CONVERSATION — microphone open  ", cw,
                          curses.color_pair(MAGENTA) | curses.A_BOLD | curses.A_REVERSE,
                          x0)
             else:
-                centered(stdscr, 5, "  ⚠ MICROPHONE OPEN, NO OWNER — press x  ", cw,
+                centered(stdscr, notice_y, "  ⚠ MICROPHONE OPEN, NO OWNER — press x  ", cw,
                          curses.color_pair(AMBER) | curses.A_BOLD | curses.A_REVERSE,
                          x0)
 
         tgt = dictate_target()
         if tgt:
-            centered(stdscr, h - 4, f"dictation → {tgt}"[:cw - 4], cw,
+            centered(stdscr, foot_y, f"dictation → {tgt}"[:cw - 4], cw,
                      curses.color_pair(MAGENTA) | curses.A_DIM, x0)
 
         said = d.get("text", "")
-        if said:
-            centered(stdscr, h - 2, f'«{said}»'[:cw - 4], cw,
+        if said and not strip:
+            centered(stdscr, rbot - 1, f'«{said}»'[:cw - 4], cw,
                      curses.color_pair(GREEN if st != "speaking" else AMBER), x0)
 
         stdscr.refresh()

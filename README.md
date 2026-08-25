@@ -246,13 +246,25 @@ beside it, so you never trade the state you are watching for the log you are
 reading. Newest at the bottom, arrows or `j`/`k` to scroll, `g`/`G` for the
 ends, `q` still quits the HUD.
 
+It sits on the left by default. `position` moves it:
+
+```toml
+[history]
+position = "bottom"      # left (default), right, or bottom
+```
+
+At the bottom it is a full-width strip under the reactor, and two things
+change to buy back the rows: the microphone notice moves onto the divider,
+which reads better as a labelled rule anyway, and the single last-spoken line
+goes — the strip directly below it already ends with that line.
+
 It matters most in conversation mode, where you are not looking at the Claude
 window at all: transcription is imperfect, and a misheard sentence is invisible
 until the answer comes back about the wrong thing.
 
-Below about 74 columns there is no honest way to show both, and the panel takes
-the whole window instead — there, and only there, `q` closes it rather than
-quitting.
+When the window cannot hold both — under about 74 columns beside the reactor,
+or too few rows under it — the panel takes the whole window instead. There, and
+only there, `q` closes it rather than quitting.
 
 **Spoken lines only** — not the conversation. And they are logged as they are
 played, not read back out of the transcript, because the transcript does not
@@ -312,6 +324,7 @@ node = "alsa_input.usb-..."            # pw-record --list-targets
 
 [history]
 enabled = true                    # the spoken log behind the HUD's h panel
+position = "left"                 # left, right or bottom of the HUD window
 cap = 400                         # lines kept; older ones are trimmed away
 ```
 
