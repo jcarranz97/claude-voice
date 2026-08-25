@@ -246,6 +246,10 @@ beside it, so you never trade the state you are watching for the log you are
 reading. Newest at the bottom, arrows or `j`/`k` to scroll, `g`/`G` for the
 ends, `q` still quits the HUD.
 
+The panel reopens the way you left it — whether it was showing is remembered
+in `~/.config/claude-voice/hud-history`, so `h` is a preference you set once
+rather than a key you press every time you open a HUD.
+
 It sits on the left by default. `position` moves it:
 
 ```toml

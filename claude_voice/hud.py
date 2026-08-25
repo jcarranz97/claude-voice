@@ -48,6 +48,9 @@ CFG = _config.load()
 BASE = _config.BASE
 STATE = BASE / "state.json"
 ENABLED = BASE / "enabled"
+# Whether the history panel was open when you last had a HUD up. A marker
+# file, the same way the voice switch is one: the HUD keeps no other state.
+PANEL_OPEN = BASE / "hud-history"
 
 FPS = 20.0
 IDLE_AFTER = 900          # after 15 min of nothing, treat it as asleep
@@ -277,6 +280,25 @@ def history_rows(width: int) -> list:
             rows.append((" " * len(head) + cont, e["side"], True))
     _hist_cache.update(mtime=mt, w=width, rows=rows)
     return rows
+
+
+def panel_open() -> bool:
+    try:
+        return PANEL_OPEN.exists()
+    except Exception:
+        return False
+
+
+def set_panel_open(on: bool) -> None:
+    """Remember the panel across restarts. Never worth an exception."""
+    try:
+        if on:
+            PANEL_OPEN.parent.mkdir(parents=True, exist_ok=True)
+            PANEL_OPEN.touch()
+        else:
+            PANEL_OPEN.unlink(missing_ok=True)
+    except Exception:
+        pass
 
 
 def position() -> str:
@@ -518,18 +540,21 @@ def main(stdscr):
 
     t0 = time.time()
     silenced_at = 0.0
-    history, hist_scroll = False, 0
+    # Reopen the way you left it: h is a preference, not a per-run decision.
+    history, hist_scroll = panel_open(), 0
     while True:
         ch = stdscr.getch()
         if ch == ord("h"):
             history = not history
             hist_scroll = 0
+            set_panel_open(history)
         if ch in (ord("q"), 27):
             # h opens the panel and h closes it, so q keeps meaning quit. The
             # exception is a window too narrow to split, where the panel really
             # is a view you are inside: there, q goes back.
             if history and stdscr.getmaxyx()[1] < SPLIT_MIN_W:
                 history, hist_scroll = False, 0
+                set_panel_open(False)
             else:
                 break
         if history:
