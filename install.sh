@@ -138,7 +138,11 @@ cat <<EOF
      (paste the snippet into ~/.claude/settings.json)
 
   2. Turn the voice on:   claude-voice on
-  3. Watch it work:       claude-voice hud
+  3. Watch it work:       claude-voice hud   (in a spare terminal)
+
+  Check it over any time with:   claude-voice doctor
+  Worth an alias, you will open it a lot:
+      echo "alias hud='claude-voice hud'" >> ~/.bashrc
 
   The voice stays off until step 2, and off is the default forever after
   \`claude-voice off\`. While it is off the hook injects nothing, so you spend
