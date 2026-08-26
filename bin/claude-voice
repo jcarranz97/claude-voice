@@ -34,6 +34,7 @@ Input (needs tmux)
   claude-voice dictate --panes    list panes running claude
   claude-voice dictate --pane ID  pick the one dictation goes to
   claude-voice dictate --toggle   start recording / stop and send
+  claude-voice dictate --can-send is there a session to send to?
   claude-voice listen             conversation mode: continuous listening
   claude-voice listen --check     verify the models and measure latencies
 
