@@ -116,6 +116,8 @@ claude-voice on              # off is the default, always
 claude-voice hud             # in a spare terminal
 ```
 
+Updating an existing install? Print the snippet again and compare — it gains hooks over time, and a missing one costs you a feature rather than breaking the voice. `claude-voice doctor` names the one you are missing and what it does.
+
 <details>
 <summary>What the hooks do</summary>
 
