@@ -165,6 +165,26 @@ def session_for(cwd: str, title: str) -> str:
     return ""
 
 
+def sessions_in(cwd: str) -> list:
+    """Every session id that has a transcript in that project, liveliest first.
+
+    The narrowing for when `session_for` cannot name a pane: a window still
+    carrying the default title has no ai-title to match, but it is certainly
+    one of the sessions of the directory it runs in. Guessing inside the
+    project is a guess about which conversation; guessing outside it is how a
+    pane ends up showing another project's.
+    """
+    d = AGENT_ROOT / _slug(cwd)
+    if not cwd or not d.is_dir():
+        return []
+    try:
+        return [q.stem for q in sorted(d.glob("*.jsonl"),
+                                       key=lambda q: q.stat().st_mtime,
+                                       reverse=True)]
+    except OSError:
+        return []
+
+
 def agents_live(session: str = "", cwd: str = "") -> list:
     """Subagents writing right now, with their description.
 

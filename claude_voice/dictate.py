@@ -6,6 +6,7 @@
   dictate.py --toggle         start recording / stop and send
   dictate.py --status         current state
   dictate.py --target         the target pane as JSON (used by the HUD)
+  dictate.py --target-session the target pane's session uuid, if it resolves
   dictate.py --can-send       exit 0 if a Claude session can receive text
 
 Why tmux
@@ -160,6 +161,24 @@ def cycle() -> str:
     return describe(nxt)
 
 
+def target_session() -> str:
+    """The session uuid behind the target pane, "" if it cannot be resolved.
+
+    The pane is the only handle dictation has; the title is what joins it to a
+    conversation, and thinking.py already does that lookup for the HUD. Same
+    answer here, so a dictated line is filed under the session that received
+    it rather than under the machine.
+    """
+    cur = cfg().get("pane")
+    pane = next((p for p in claude_panes() if p["id"] == cur), None)
+    if not pane:
+        return ""
+    try:
+        return _mod("thinking").session_for(pane["path"], pane["title"])
+    except Exception:
+        return ""
+
+
 def deliver(text: str) -> bool:
     """Type the text into the pane and send it. Refused if it is not claude."""
     ok, why = target_status()
@@ -179,8 +198,8 @@ def deliver(text: str) -> bool:
         log(f"delivered to {target}: {text[:60]}")
         # This is the only place that knows a sentence was SPOKEN and not
         # typed -- conversation mode lands here too -- so it is where your
-        # side of the spoken log gets written.
-        _mod("spokenlog").record("in", text)
+        # side of the spoken log gets written, under the session it went to.
+        _mod("spokenlog").record("in", text, session=target_session())
         return True
     except Exception as e:
         log(f"delivery failed: {e}")
@@ -268,6 +287,10 @@ def main() -> int:
         ok, why = target_status()
         info = next((p for p in claude_panes() if p["id"] == cur), {})
         print(json.dumps({**info, "ok": ok, "why": why}))
+    elif arg == "--target-session":
+        # For anything that needs the session rather than the pane: the CLI
+        # history reader, which shows the same conversation the HUD does.
+        print(target_session())
     elif arg == "--can-send":
         # For anything that wants the answer without parsing JSON: exit 0 when
         # a session is there, 1 when not, with the reason on stdout.

@@ -44,13 +44,17 @@ STALE = 6 * 3600
 IDLE = {"state": "idle", "text": "", "until": 0, "ts": 0, "session": ""}
 
 
-def _safe(session: str) -> str:
-    """Session ids are uuids, but never trust one straight into a filename."""
+def safe_session(session: str) -> str:
+    """Session ids are uuids, but never trust one straight into a filename.
+
+    Public because the spoken log keys its files the same way: two names for
+    one session would mean two files for it.
+    """
     return re.sub(r"[^A-Za-z0-9._-]", "", str(session or ""))[:64] or "default"
 
 
 def path(session: str) -> Path:
-    return BASE / f"{PREFIX}{_safe(session)}.json"
+    return BASE / f"{PREFIX}{safe_session(session)}.json"
 
 
 def write(session: str, state: str, text: str = "", secs: float = 0.0) -> None:
@@ -124,7 +128,7 @@ def pidfile(kind: str, session: str) -> Path:
     get when there is no session to key on -- a session id is not guaranteed
     (the CLI has none), and orphan sweeping has to be able to find those too.
     """
-    return BASE / f"{kind}-{_safe(session)}.pid" if session else BASE / f"{kind}.pid"
+    return BASE / f"{kind}-{safe_session(session)}.pid" if session else BASE / f"{kind}.pid"
 
 
 def pidfiles(kind: str) -> list:
