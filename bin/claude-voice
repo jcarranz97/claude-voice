@@ -20,6 +20,9 @@ Watch
   claude-voice hud                the status window
   claude-voice history [n]        the last n spoken lines, both sides
   claude-voice sessions           what each open session is doing right now
+  claude-voice mic                who is holding the microphone, and since when
+  claude-voice mic --sweep        close a capture of ours that was left behind
+  claude-voice mic --install      notify when anyone holds it open too long
 
 Speech
   claude-voice say "text"         synthesize and play, ignoring the switch
@@ -80,6 +83,7 @@ case "$cmd" in
   build-ticks) exec "$PY" "$PKG/thinking.py" --build "$@" ;;
   agents)      exec "$PY" "$PKG/thinking.py" --agents "$@" ;;
   sessions)    exec "$PY" "$PKG/turn.py" "$@" ;;
+  mic)         exec "$PY" "$PKG/mic.py" "$@" ;;
   hooks)
     cat <<EOF
 Add this to the "hooks" block of ~/.claude/settings.json

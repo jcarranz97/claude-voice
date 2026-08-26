@@ -38,6 +38,12 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import config as _config                              # noqa: E402
+# Every microphone question -- who has it, whether anyone is actually
+# being recorded, and how to close a capture of ours that was left
+# behind -- is answered in one place, because the watchdog on the
+# systemd timer has to give the same answers this window does.
+from mic import (our_captures, mic_open, mic_speaking,      # noqa: E402,F401
+                 mic_held, daemon_alive, sweep_orphans)
 
 try:
     import spokenlog as _spokenlog                     # noqa: E402
@@ -79,165 +85,6 @@ TITLE = " ".join(TITLE.upper())
 
 def L(key: str, fallback: str) -> str:
     return CFG.get(f"hud.{key}", fallback) or fallback
-
-
-_open_cache = {"t": 0.0, "v": False}
-
-
-def our_captures() -> list:
-    """PIDs of pw-record processes that are ours, by command-line signature.
-
-    Deliberately by signature and not by pidfile: the case worth catching is
-    exactly the one where the pidfile is gone -- an orphan left by an unclean
-    shutdown, with no parent and nobody able to name it.
-    """
-    node = CFG.get("stt.node", "") or ""
-    pids = []
-    for proc in Path("/proc").iterdir():
-        if not proc.name.isdigit():
-            continue
-        try:
-            if (proc / "comm").read_text().strip() != "pw-record":
-                continue
-            cmd = (proc / "cmdline").read_bytes().decode("utf-8", "ignore")
-        except Exception:
-            continue
-        if (node and node in cmd) or ("--raw" in cmd and "--latency" in cmd):
-            pids.append(int(proc.name))
-    return pids
-
-
-def mic_open() -> bool:
-    """Is the microphone actually in use? The truth, not what we think.
-
-    Two things count, and neither is "a capture stream exists":
-
-    A stream that is RUNNING -- somebody is pulling audio right now, whoever
-    they are. Existence is not enough: a capture node lingers as `idle` or
-    `suspended` long after recording stops, and an app that holds its input
-    open for its whole run (Claude Code's own dictation does) parks one there
-    until it quits. The desktop's own indicator counts those, which is why the
-    system tray can show a microphone while nothing is being recorded.
-
-    Or a pw-record of OURS being alive, whatever state its stream is in. That
-    is the orphan this warning exists for, and `x` can actually clear it. It
-    also keeps the post-stop verification honest: a process on its way out
-    stops pulling audio before it exits, and treating that instant as "closed"
-    would skip the sweep in precisely the case that needs it.
-
-    What we deliberately do NOT warn about is another app's parked stream. It
-    has an owner, nobody is being recorded, and `x` cannot clear it -- so the
-    warning would stand there permanently with no action behind it, and a
-    privacy notice that is always on is one you stop reading.
-    """
-    if time.time() - _open_cache["t"] < 1.0:
-        return _open_cache["v"]
-    val = False
-    try:
-        val = bool(our_captures())
-    except Exception:
-        val = False
-    if not val:
-        try:
-            out = subprocess.run(["pw-dump"], capture_output=True, text=True, timeout=3).stdout
-            objs = json.loads(out)
-            val = any(
-                o.get("type") == "PipeWire:Interface:Node"
-                and o.get("info", {}).get("props", {}).get("media.class") == "Stream/Input/Audio"
-                and o.get("info", {}).get("state") == "running"
-                for o in objs)
-        except Exception:
-            # Without pw-dump, ALSA is the fallback. It reads RUNNING too, so
-            # it agrees with the rule above rather than second-guessing it.
-            try:
-                val = any(f.read_text().startswith("state: RUNNING")
-                          for f in Path("/proc/asound").glob("card*/pcm*c/sub*/status"))
-            except Exception:
-                val = False
-    _open_cache.update(t=time.time(), v=val)
-    return val
-
-
-def mic_speaking() -> bool:
-    """Are you talking RIGHT NOW? Only meaningful in conversation mode."""
-    return (BASE / "mic-active").exists()
-
-
-_held_cache = {"t": 0.0, "v": []}
-
-
-def mic_held() -> list:
-    """Who is holding the microphone open without recording through it.
-
-    Not an alarm, and not ours. An app can open a capture stream and never
-    close it -- some hold one for their whole run -- and the stream sits there
-    parked: nothing is being captured, but the object exists. That is what
-    lights the desktop's own microphone indicator, which counts streams rather
-    than recordings, and it is why the tray icon can stay lit for hours with
-    nobody listening.
-
-    We cannot close someone else's stream, and `x` deliberately only sweeps our
-    own captures. But naming who holds it turns an icon that cannot be
-    explained into one sentence that can be acted on: quit that app.
-    """
-    if time.time() - _held_cache["t"] < 5.0:
-        return _held_cache["v"]
-    held = []
-    try:
-        out = subprocess.run(["pw-dump"], capture_output=True, text=True,
-                             timeout=3).stdout
-        objs = json.loads(out)
-        byid = {o.get("id"): o for o in objs}
-        for o in objs:
-            info = o.get("info") or {}
-            props = info.get("props") or {}
-            if props.get("media.class") != "Stream/Input/Audio":
-                continue
-            if info.get("state") == "running":
-                continue           # that is recording, and mic_open() has it
-            client = (byid.get(props.get("client.id"), {}).get("info") or {})
-            cprops = client.get("props") or {}
-            pid = cprops.get("pipewire.sec.pid") or props.get("application.process.id")
-            name = ""
-            if pid:
-                try:
-                    name = (Path("/proc") / str(pid) / "comm").read_text().strip()
-                except OSError:
-                    continue       # the process is gone; the node is just residue
-            name = name or props.get("application.name") or "?"
-            held.append(f"{name} ({pid})" if pid else name)
-    except Exception:
-        held = []
-    _held_cache.update(t=time.time(), v=held)
-    return held
-
-
-def daemon_alive() -> bool:
-    try:
-        import os as _os
-        _os.kill(int((BASE / "listen.pid").read_text().strip()), 0)
-        return True
-    except Exception:
-        return False
-
-
-def sweep_orphans() -> int:
-    """Kill captures of ours that were left without an owner."""
-    import os as _os, signal
-    killed = 0
-    me = _os.getpid()
-    # Ours by signature -- the configured node, or the exact raw capture flags
-    # listen.py uses. Never a blanket pw-record kill: comm is matched against
-    # the EXECUTABLE, so a shell that merely mentions pw-record is not a target.
-    for pid in our_captures():
-        if pid == me:
-            continue
-        try:
-            _os.kill(pid, signal.SIGTERM)
-            killed += 1
-        except Exception:
-            pass
-    return killed
 
 
 _target_cache = {"t": 0.0, "pane": {}}

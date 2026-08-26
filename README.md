@@ -311,6 +311,53 @@ transcribe its own output.
 
 ---
 
+### The microphone watchdog
+
+The HUD warns about a microphone left open, but only while the HUD is up, and
+the failure worth catching is exactly the one where nothing is up. A session
+that dies without unwinding leaves its capture stream behind; the tray icon
+stays lit; nothing that could explain it is still running. That can go unnoticed
+for hours.
+
+So the same checks run on a timer, outside the HUD and outside any session:
+
+```bash
+claude-voice mic              # who holds it, and since when
+claude-voice mic --install    # notify when anyone holds it too long
+claude-voice mic --sweep      # close a capture of ours that was left behind
+claude-voice mic --uninstall  # stop watching
+```
+
+`--install` writes a user unit and enables a timer that checks every minute. It
+is a timer firing a oneshot rather than a daemon, because a daemon would need
+something watching *it*, and this exists because the thing that was supposed to
+be watching had died. What it says depends on what it finds:
+
+| | |
+|---|---|
+| a capture of ours, no session behind it | urgent — and `--sweep` can clear it |
+| another app recording | said plainly; not ours to close |
+| another app holding a stream open, idle | quiet — but this is what lights the tray icon |
+
+Conversation mode working normally is never reported.
+
+Nothing is killed automatically. The watchdog names the holder and stops there,
+the same way `x` in the HUD only ever sweeps captures of ours.
+
+Holders are identified by pid *and* process start time. A pid alone is reused,
+and a recycled one would inherit the age of whoever held that number before —
+reporting two hours against a process born a minute ago, which is a false alarm
+shaped exactly like the real thing.
+
+Thresholds live under `[mic.watch]`: `after` (300s before the first word),
+`repeat` (1800s between reminders), `interval`, and `ignore`, a list of process
+names never worth announcing. `ignore` ships empty on purpose. An allow-list
+written in advance hides the one leak you did not predict, and a notice that
+fires constantly is one you stop reading — which is the same failure as not
+having it at all.
+
+---
+
 ## Configuration
 
 Everything lives in `~/.config/claude-voice/config.toml`. Values fall back, key
@@ -468,6 +515,7 @@ claude_voice/
   audioq.py             one sound at a time, in order
   thinking.py           the heartbeat, and subagent detection
   hud.py                the status window
+  mic.py                who holds the microphone; the watchdog timer
   spokenlog.py          the log of what was said out loud, both sides
   dictate.py            push-to-talk, and delivery into tmux
   listen.py             conversation mode: VAD + turn detection

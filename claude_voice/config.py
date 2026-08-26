@@ -103,6 +103,21 @@ DEFAULTS = {
         "min_speech_ms": 300,
         "max_utterance_s": 30,
     },
+    "mic": {
+        # The watchdog: a systemd timer that notices a microphone nobody is
+        # watching. The HUD can only warn while it is open, and the failure
+        # worth catching is precisely the one where nothing is open.
+        "watch": {
+            "enabled": True,
+            "interval": 60,        # seconds between ticks, for --watch
+            "after": 300,          # held this long before the first word
+            "repeat": 1800,        # and at most this often after that
+            # Process names never worth announcing. Left empty on purpose: an
+            # allow-list written in advance hides the one leak you did not
+            # predict, and the threshold already absorbs ordinary use.
+            "ignore": [],
+        },
+    },
     "pronunciation": {
         "foreign_terms": [],       # words to phonemize with foreign_voice
         "overrides": {},           # word -> raw espeak IPA, verbatim
