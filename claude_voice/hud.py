@@ -163,6 +163,55 @@ def mic_speaking() -> bool:
     return (BASE / "mic-active").exists()
 
 
+_held_cache = {"t": 0.0, "v": []}
+
+
+def mic_held() -> list:
+    """Who is holding the microphone open without recording through it.
+
+    Not an alarm, and not ours. An app can open a capture stream and never
+    close it -- some hold one for their whole run -- and the stream sits there
+    parked: nothing is being captured, but the object exists. That is what
+    lights the desktop's own microphone indicator, which counts streams rather
+    than recordings, and it is why the tray icon can stay lit for hours with
+    nobody listening.
+
+    We cannot close someone else's stream, and `x` deliberately only sweeps our
+    own captures. But naming who holds it turns an icon that cannot be
+    explained into one sentence that can be acted on: quit that app.
+    """
+    if time.time() - _held_cache["t"] < 5.0:
+        return _held_cache["v"]
+    held = []
+    try:
+        out = subprocess.run(["pw-dump"], capture_output=True, text=True,
+                             timeout=3).stdout
+        objs = json.loads(out)
+        byid = {o.get("id"): o for o in objs}
+        for o in objs:
+            info = o.get("info") or {}
+            props = info.get("props") or {}
+            if props.get("media.class") != "Stream/Input/Audio":
+                continue
+            if info.get("state") == "running":
+                continue           # that is recording, and mic_open() has it
+            client = (byid.get(props.get("client.id"), {}).get("info") or {})
+            cprops = client.get("props") or {}
+            pid = cprops.get("pipewire.sec.pid") or props.get("application.process.id")
+            name = ""
+            if pid:
+                try:
+                    name = (Path("/proc") / str(pid) / "comm").read_text().strip()
+                except OSError:
+                    continue       # the process is gone; the node is just residue
+            name = name or props.get("application.name") or "?"
+            held.append(f"{name} ({pid})" if pid else name)
+    except Exception:
+        held = []
+    _held_cache.update(t=time.time(), v=held)
+    return held
+
+
 def daemon_alive() -> bool:
     try:
         import os as _os
@@ -820,6 +869,17 @@ def main(stdscr):
                 centered(stdscr, notice_y, "  ⚠ MICROPHONE OPEN, NO OWNER — press x  ", cw,
                          curses.color_pair(AMBER) | curses.A_BOLD | curses.A_REVERSE,
                          x0)
+        else:
+            # Nothing is recording, but somebody may still be holding the
+            # microphone open. Said plainly, and without the alarm: there is
+            # nothing wrong here that a key of ours could fix, and the only
+            # reason to show it at all is that the desktop's indicator is lit
+            # and this is the sentence that explains it.
+            held = mic_held()
+            if held:
+                centered(stdscr, notice_y,
+                         f"  ◦ mic held open by {held[0]} — not recording  ", cw,
+                         curses.color_pair(WHITE) | curses.A_DIM, x0)
 
         tgt = dictate_target()
         if tgt:
