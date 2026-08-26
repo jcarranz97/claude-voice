@@ -181,7 +181,8 @@ def main() -> int:
 
     with wave.open(str(tmp)) as w:
         secs = w.getnframes() / w.getframerate()
-    _mod("audioq").enqueue(tmp, text)   # the queue guarantees order and turn-taking
+    # the queue guarantees order and turn-taking; the session says whose turn
+    _mod("audioq").enqueue(tmp, text, session=sid)
 
     st.update(n=st["n"] + 1, last=time.time() + secs)
     st["said"] = (st["said"] + [h])[-20:]

@@ -38,6 +38,12 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import config as _config                              # noqa: E402
+# Every microphone question -- who has it, whether anyone is actually
+# being recorded, and how to close a capture of ours that was left
+# behind -- is answered in one place, because the watchdog on the
+# systemd timer has to give the same answers this window does.
+from mic import (our_captures, mic_open, mic_speaking,      # noqa: E402,F401
+                 mic_held, daemon_alive, sweep_orphans)
 
 try:
     import spokenlog as _spokenlog                     # noqa: E402
@@ -46,6 +52,8 @@ except Exception:                                      # an empty pane, not a cr
 
 CFG = _config.load()
 BASE = _config.BASE
+# The SPEAKER's state: global, because there is one pair of speakers. What
+# each session is doing lives in turn.py, one file per session.
 STATE = BASE / "state.json"
 ENABLED = BASE / "enabled"
 # Whether the history panel was open when you last had a HUD up. A marker
@@ -79,87 +87,6 @@ def L(key: str, fallback: str) -> str:
     return CFG.get(f"hud.{key}", fallback) or fallback
 
 
-_open_cache = {"t": 0.0, "v": False}
-
-
-def mic_open() -> bool:
-    """Is ANYTHING capturing from the microphone? The truth, not what we think.
-
-    Deliberately does NOT consult our pidfile or any state of ours: the
-    dangerous case is exactly that one -- an orphaned pw-record after an
-    unclean shutdown, with no parent and no pidfile.
-
-    Counts PipeWire capture clients, not ALSA state: PipeWire keeps the PCM
-    open for several seconds after the client dies, so ALSA raises false
-    alarms. An active input stream really does mean someone is recording now.
-    """
-    if time.time() - _open_cache["t"] < 1.0:
-        return _open_cache["v"]
-    val = False
-    try:
-        out = subprocess.run(["pw-dump"], capture_output=True, text=True, timeout=3).stdout
-        objs = json.loads(out)
-        val = any(
-            o.get("type") == "PipeWire:Interface:Node"
-            and o.get("info", {}).get("props", {}).get("media.class") == "Stream/Input/Audio"
-            for o in objs)
-    except Exception:
-        # Without pw-dump, ALSA is the fallback: it errs on the side of warning
-        # too much, which is the correct side to err on for a privacy notice.
-        try:
-            val = any(f.read_text().startswith("state: RUNNING")
-                      for f in Path("/proc/asound").glob("card*/pcm*c/sub*/status"))
-        except Exception:
-            val = False
-    _open_cache.update(t=time.time(), v=val)
-    return val
-
-
-def mic_speaking() -> bool:
-    """Are you talking RIGHT NOW? Only meaningful in conversation mode."""
-    return (BASE / "mic-active").exists()
-
-
-def daemon_alive() -> bool:
-    try:
-        import os as _os
-        _os.kill(int((BASE / "listen.pid").read_text().strip()), 0)
-        return True
-    except Exception:
-        return False
-
-
-def sweep_orphans() -> int:
-    """Kill captures of ours that were left without an owner."""
-    import os as _os, signal
-    killed = 0
-    me = _os.getpid()
-    node = CFG.get("stt.node", "") or ""
-    for proc in Path("/proc").iterdir():
-        if not proc.name.isdigit() or int(proc.name) == me:
-            continue
-        try:
-            # comm is the EXECUTABLE. Matching "pw-record" in the command line
-            # kills anything that merely mentions it -- including the shell
-            # that launched this script.
-            if (proc / "comm").read_text().strip() != "pw-record":
-                continue
-            cmd = (proc / "cmdline").read_bytes().decode("utf-8", "ignore")
-        except Exception:
-            continue
-        # Ours by signature: either the configured node, or the exact raw
-        # capture flags listen.py uses. Never a blanket pw-record kill.
-        mine = (node and node in cmd) or ("--raw" in cmd and "--latency" in cmd)
-        if not mine:
-            continue
-        try:
-            _os.kill(int(proc.name), signal.SIGTERM)
-            killed += 1
-        except Exception:
-            pass
-    return killed
-
-
 _target_cache = {"t": 0.0, "pane": {}}
 
 
@@ -187,13 +114,24 @@ def dictate_target() -> str:
     return f'{p.get("dir", "")} · {p.get("title", "")}'.strip(" ·")
 
 
+_mods = {}
+
+
+def _mod(name: str):
+    """Load a sibling module once and keep it. read_state() runs on every
+    frame, and re-executing a module twenty times a second is pure waste."""
+    if name not in _mods:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(name, HERE / f"{name}.py")
+        m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        _mods[name] = m
+    return _mods[name]
+
+
 def _thinking():
     """The heartbeat module, which is where agent detection lives."""
-    import importlib.util
-    spec = importlib.util.spec_from_file_location("thinking", HERE / "thinking.py")
-    m = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(m)
-    return m
+    return _mod("thinking")
 
 
 _session_cache = {"t": 0.0, "key": None, "sid": "", "cwd": ""}
@@ -411,15 +349,43 @@ def draw_history(win, top, bottom, x0, w, scroll, said_color, mine_color) -> int
 
 
 def read_state() -> dict:
+    """What the session on screen is doing, with the speaker laid over it.
+
+    Two questions, two files. What a SESSION is doing is per session (turn.py),
+    because three windows and a bot can all be busy at once and only one of
+    them is the one being watched. What the SPEAKER is doing is global -- there
+    is one pair of them -- so it wins while it is playing, but only when the
+    line belongs to the session on screen.
+
+    Before this they shared one state.json, and whichever session finished
+    first wrote "ready" over everyone: the reactor went calm while the window
+    in front of you was still working.
+    """
+    turn = _mod("turn")
+    sid, _ = target_session()
     try:
-        d = json.loads(STATE.read_text())
+        # Unknown session (no tmux, no pane title yet): fall back to the
+        # liveliest one, which is the guess the HUD made before any of this.
+        d = turn.read(sid) if sid else turn.newest()
     except Exception:
-        return {"state": "idle", "text": "", "until": 0, "ts": 0}
+        d = {"state": "idle", "text": "", "until": 0, "ts": 0, "session": ""}
+
+    try:
+        sp = json.loads(STATE.read_text())
+    except Exception:
+        return d
     # "speaking" expires on its own: the audio is over whether or not anyone
-    # said so.
-    if d.get("state") == "speaking" and d.get("until", 0) and time.time() > d["until"]:
-        d["state"] = "ready"
-    return d
+    # said so. Past that, the session's own state is the honest answer.
+    if sp.get("state") != "speaking":
+        return d
+    if sp.get("until", 0) and time.time() > sp["until"]:
+        return d
+    owner = sp.get("session", "")
+    # No owner recorded (the CLI, or a queue item from before this change):
+    # show it rather than swallow it. Silence would be the worse error.
+    if owner and sid and owner != sid:
+        return d
+    return sp
 
 
 def draw_reactor(win, cy, cx, t, state, color, band=None):
@@ -750,6 +716,17 @@ def main(stdscr):
                 centered(stdscr, notice_y, "  ⚠ MICROPHONE OPEN, NO OWNER — press x  ", cw,
                          curses.color_pair(AMBER) | curses.A_BOLD | curses.A_REVERSE,
                          x0)
+        else:
+            # Nothing is recording, but somebody may still be holding the
+            # microphone open. Said plainly, and without the alarm: there is
+            # nothing wrong here that a key of ours could fix, and the only
+            # reason to show it at all is that the desktop's indicator is lit
+            # and this is the sentence that explains it.
+            held = mic_held()
+            if held:
+                centered(stdscr, notice_y,
+                         f"  ◦ mic held open by {held[0]} — not recording  ", cw,
+                         curses.color_pair(WHITE) | curses.A_DIM, x0)
 
         tgt = dictate_target()
         if tgt:

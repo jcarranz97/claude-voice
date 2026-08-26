@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Contextual acknowledgement: say what was asked for, not a canned phrase.
 
-  ack.py "<the prompt text>"
+  ack.py [--session <id>] "<the prompt text>"
 
 voice.py launches this from the UserPromptSubmit hook, in the background,
 because a model call takes ~0.7 s and a slow hook stalls the whole session.
@@ -102,7 +102,14 @@ def generic() -> tuple:
 
 
 def main() -> int:
-    prompt = " ".join(sys.argv[1:]).strip()
+    argv = sys.argv[1:]
+    # Whose acknowledgement this is. The queue is shared between windows, so
+    # without it the HUD cannot tell whether the voice it hears is the session
+    # it is watching.
+    session = ""
+    if len(argv) >= 2 and argv[0] == "--session":
+        session, argv = argv[1], argv[2:]
+    prompt = " ".join(argv).strip()
     audioq = _mod("audioq")
 
     wav = None
@@ -118,7 +125,7 @@ def main() -> int:
     if wav is None:
         return 0
 
-    audioq.enqueue(wav, text)
+    audioq.enqueue(wav, text, session=session)
     return 0
 
 

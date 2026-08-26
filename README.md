@@ -59,6 +59,14 @@ makes the instruction appear.
 tick all enqueue and return immediately — a slow hook stalls the session. A
 single locked player process plays them in order, one at a time.
 
+**Per session, except what is genuinely shared.** You will have several
+sessions open, and a machine can be running a bot on the same hooks. What a
+*session* is doing — thinking, done — is one file each, and so are the
+heartbeat's pidfiles; otherwise the first window to finish writes "ready" over
+everyone and its `Stop` hook kills the tick of a window that is still working.
+What the *speaker* is doing stays global, because there is one pair of them.
+The HUD reads the session it is pointed at and lays the speaker over it.
+
 **Foreign technical terms get their own phonemizer.** espeak takes one language
 per utterance, so in Spanish "merge" comes out MER-je and "queue" becomes
 KE-u-e. The primary language phonemizes the whole line (correct prosody,
@@ -303,6 +311,53 @@ transcribe its own output.
 
 ---
 
+### The microphone watchdog
+
+The HUD warns about a microphone left open, but only while the HUD is up, and
+the failure worth catching is exactly the one where nothing is up. A session
+that dies without unwinding leaves its capture stream behind; the tray icon
+stays lit; nothing that could explain it is still running. That can go unnoticed
+for hours.
+
+So the same checks run on a timer, outside the HUD and outside any session:
+
+```bash
+claude-voice mic              # who holds it, and since when
+claude-voice mic --install    # notify when anyone holds it too long
+claude-voice mic --sweep      # close a capture of ours that was left behind
+claude-voice mic --uninstall  # stop watching
+```
+
+`--install` writes a user unit and enables a timer that checks every minute. It
+is a timer firing a oneshot rather than a daemon, because a daemon would need
+something watching *it*, and this exists because the thing that was supposed to
+be watching had died. What it says depends on what it finds:
+
+| | |
+|---|---|
+| a capture of ours, no session behind it | urgent — and `--sweep` can clear it |
+| another app recording | said plainly; not ours to close |
+| another app holding a stream open, idle | quiet — but this is what lights the tray icon |
+
+Conversation mode working normally is never reported.
+
+Nothing is killed automatically. The watchdog names the holder and stops there,
+the same way `x` in the HUD only ever sweeps captures of ours.
+
+Holders are identified by pid *and* process start time. A pid alone is reused,
+and a recycled one would inherit the age of whoever held that number before —
+reporting two hours against a process born a minute ago, which is a false alarm
+shaped exactly like the real thing.
+
+Thresholds live under `[mic.watch]`: `after` (300s before the first word),
+`repeat` (1800s between reminders), `interval`, and `ignore`, a list of process
+names never worth announcing. `ignore` ships empty on purpose. An allow-list
+written in advance hides the one leak you did not predict, and a notice that
+fires constantly is one you stop reading — which is the same failure as not
+having it at all.
+
+---
+
 ## Configuration
 
 Everything lives in `~/.config/claude-voice/config.toml`. Values fall back, key
@@ -396,10 +451,31 @@ parent — usually an unclean exit from conversation mode. Press `x`. That
 warning reads the kernel's capture state, not our own bookkeeping, precisely so
 it still fires when our bookkeeping is what broke.
 
+Two things count as open: a capture stream that is *running*, whoever owns it,
+and a `pw-record` of ours being alive whatever state its stream is in — that
+second one is the orphan the warning exists for, and the one `x` can clear.
+
+Another app's *parked* stream is not an alarm, but it is not nothing either: it
+is what lights your desktop's own microphone indicator, which counts streams
+rather than recordings. So when nothing is recording and somebody is still
+holding the microphone open, the HUD says so quietly and names them —
+`mic held open by claude (852955) — not recording`. Nothing here can close
+someone else's stream, and `x` deliberately will not try; quitting that app
+releases it. The line exists so a lit tray icon has an explanation instead of
+being a thing you learn to ignore.
+
 **Dictation records but nothing arrives.** Delivery is refused unless the
 target tmux pane is running `claude`; check `claude-voice dictate --panes` and
 `~/.config/claude-voice/dictate.log`. If it records silence, the device is
 wrong — `arecord -L`, and set `stt.device` by name.
+
+**The HUD goes calm while the session is still working.** The HUD watches one
+session — the one `t` points at, the same one dictation goes to — and every
+session keeps its own state, so another window (or a bot answering messages on
+the same machine) finishing its turn no longer speaks for yours. If it still
+happens, `claude-voice sessions` prints what each one is doing, and the HUD's
+target has to be resolvable: it is found by tmux pane title, so a session
+running outside tmux falls back to showing the liveliest one.
 
 **The tick keeps going after the answer.** The `Stop` hook is what kills it, so
 a session that died mid-turn (out of tokens, a hang, Ctrl-C) leaves it running.
@@ -439,6 +515,7 @@ claude_voice/
   audioq.py             one sound at a time, in order
   thinking.py           the heartbeat, and subagent detection
   hud.py                the status window
+  mic.py                who holds the microphone; the watchdog timer
   spokenlog.py          the log of what was said out loud, both sides
   dictate.py            push-to-talk, and delivery into tmux
   listen.py             conversation mode: VAD + turn detection

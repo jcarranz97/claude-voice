@@ -59,7 +59,7 @@ def ack_phrase(name: str) -> str:
         return ""
 
 
-def play_ack() -> None:
+def play_ack(session: str = "") -> None:
     """Play a random cached acknowledgement, never the same one twice running."""
     files = sorted(ACK_DIR.glob("*.wav"))
     if not files:
@@ -76,17 +76,19 @@ def play_ack() -> None:
     # Copy: the cache original must survive, the queue consumes the file.
     tmp = Path(tempfile.gettempdir()) / f"cv-ack-{os.getpid()}.wav"
     shutil.copy(pick, tmp)
-    audioq.enqueue(tmp, ack_phrase(pick.name))
+    audioq.enqueue(tmp, ack_phrase(pick.name), session=session)
 
 
 def start_thinking(session: str = "") -> None:
     """Background heartbeat while it works. speak.py kills it on answering.
 
-    The session is passed down so the agent tick only fires for THIS window's
-    agents; otherwise two open sessions announce each other's work."""
-    pidfile = BASE / "thinking.pid"
+    The session is passed down twice over. Once to thinking.py, so the agent
+    tick only fires for THIS window's agents; and once to the pidfile name, so
+    that starting a turn here does not kill the heartbeat of a window that is
+    still working. With one shared pidfile, whoever moved last owned it."""
+    pidfile = _mod("turn").pidfile("thinking", session)
     # If one survived from an earlier turn, kill it before opening another.
-    stop_thinking()
+    stop_thinking(session)
     try:
         cmd = [sys.executable, str(HERE / "thinking.py")]
         if session:
@@ -101,9 +103,9 @@ def start_thinking(session: str = "") -> None:
         pass
 
 
-def stop_thinking() -> int:
+def stop_thinking(session: str = "") -> int:
     """Returns how many processes it killed, so the counter does not lie."""
-    pidfile = BASE / "thinking.pid"
+    pidfile = _mod("turn").pidfile("thinking", session)
     try:
         if pidfile.exists():
             # The loop spawns aplay as a child, so the whole group has to go or
@@ -127,13 +129,17 @@ def silence_all() -> int:
     thinking.py's own time cap bounds it, but this kills it instantly.
     """
     audioq = _mod("audioq")
-    killed = stop_thinking() + audioq.drain()
+    turn = _mod("turn")
+    killed = audioq.drain()
 
-    for name in ("ack.pid",):
-        f = BASE / name
+    # Every session's, not just the caller's: this is the button you press when
+    # something is making noise and you do not care which window started it.
+    for f in turn.pidfiles("thinking") + turn.pidfiles("ack"):
+        group = f.name.startswith("thinking")
         try:
             if f.exists():
-                os.kill(int(f.read_text().strip()), 15)
+                pid = int(f.read_text().strip())
+                os.killpg(pid, 15) if group else os.kill(pid, 15)
                 killed += 1
         except (ProcessLookupError, ValueError, PermissionError, OSError):
             pass
@@ -166,9 +172,13 @@ def silence_all() -> int:
         import time
         BASE.mkdir(parents=True, exist_ok=True)
         (BASE / "state.json").write_text(json.dumps(
-            {"state": "idle", "text": "", "until": 0, "ts": time.time()}))
+            {"state": "idle", "text": "", "until": 0, "ts": time.time(),
+             "session": ""}))
     except Exception:
         pass
+    # Silence means silence everywhere, so no window is left claiming to think.
+    for sid in turn.sessions():
+        turn.write(sid, "idle")
     return killed
 
 
@@ -215,23 +225,21 @@ def main() -> int:
         # Sound immediately: without this there is a long silence between
         # hitting enter and the answer landing, and it feels ignored.
         # Detached, because the model call takes ~0.7 s and a hook must return.
+        sid = data.get("session_id", "")
         if CFG.get("ack.enabled", True):
             try:
                 subprocess.Popen(
-                    [sys.executable, str(HERE / "ack.py"), data.get("prompt", "")],
+                    [sys.executable, str(HERE / "ack.py"),
+                     "--session", sid, data.get("prompt", "")],
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                     start_new_session=True)
             except Exception:
-                play_ack()             # if even that won't start, the cached one
+                play_ack(sid)          # if even that won't start, the cached one
         if CFG.get("thinking.enabled", True):
-            start_thinking(data.get("session_id", ""))
-        try:
-            import time
-            BASE.mkdir(parents=True, exist_ok=True)
-            (BASE / "state.json").write_text(json.dumps(
-                {"state": "thinking", "text": "", "until": 0, "ts": time.time()}))
-        except Exception:
-            pass
+            start_thinking(sid)
+        # This session is thinking. Only this one -- the others are whatever
+        # they already were.
+        _mod("turn").write(sid, "thinking")
         if CFG.get("instruction.enabled", True) and CFG.instruction:
             print(json.dumps({"hookSpecificOutput": {
                 "hookEventName": "UserPromptSubmit",

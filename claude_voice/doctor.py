@@ -166,6 +166,13 @@ def check_state() -> None:
         report(WARN, "heartbeat sounds", "not built (they build on first use)",
                "claude-voice build-ticks")
 
+    # Turn state is per session. Saying how many are on file makes the shared
+    # state that used to cause this class of bug visible when it misbehaves.
+    turns = list(BASE.glob("turn-*.json"))
+    report(OK, "session state",
+           f"{len(turns)} session{'s' if len(turns) != 1 else ''} on file"
+           if turns else "none yet (written on the next turn)")
+
 
 def check_input() -> None:
     """Optional: everything here is only needed for dictation and listening."""
