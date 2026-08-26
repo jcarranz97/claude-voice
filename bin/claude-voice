@@ -97,6 +97,10 @@ Add this to the "hooks" block of ~/.claude/settings.json
 (or a project's .claude/settings.json):
 
   "hooks": {
+    "SessionStart": [
+      { "hooks": [
+        { "type": "command", "command": "$PY $PKG/thinking.py --bind" } ] }
+    ],
     "UserPromptSubmit": [
       { "matcher": "", "hooks": [
         { "type": "command", "command": "$PY $PKG/voice.py --hook-context" } ] }
@@ -110,6 +114,10 @@ Add this to the "hooks" block of ~/.claude/settings.json
         { "type": "command", "command": "$PY $PKG/speak.py" } ] }
     ]
   }
+
+SessionStart notes which tmux pane the conversation is in, before it has said
+anything: without it the first dictated line of a conversation has no session
+to be filed under and is lost to the history panel.
 
 MessageDisplay drives live narration mid-turn; drop it if you only want the
 final line spoken. The voice stays off until you run: claude-voice on

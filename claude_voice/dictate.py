@@ -89,25 +89,31 @@ def claude_panes() -> list:
     tmux exposes the pane title, and Claude Code puts the conversation title
     there -- which together with the directory is the only thing telling two
     sessions apart at a glance. Without it, picking a target is guesswork.
+
+    `pane_id` is carried alongside because it is what the SESSION knows itself
+    by: a hook running inside claude reads `$TMUX_PANE` and gets `%12`, never
+    `0:1.2`. It is the handle the pane -> session binding is filed under.
     """
     try:
         out = subprocess.run(
             ["tmux", "list-panes", "-a", "-F",
              "#{session_name}:#{window_index}.#{pane_index}\t"
-             "#{pane_current_command}\t#{pane_current_path}\t#{pane_title}"],
+             "#{pane_current_command}\t#{pane_current_path}\t#{pane_title}\t"
+             "#{pane_id}"],
             capture_output=True, text=True, timeout=5).stdout
     except Exception:
         return []
     panes = []
     for line in out.splitlines():
         parts = line.split("\t")
-        if len(parts) < 4 or parts[1].strip() != "claude":
+        if len(parts) < 5 or parts[1].strip() != "claude":
             continue
         panes.append({
             "id": parts[0],
             "dir": Path(parts[2]).name or parts[2],
             "path": parts[2],
             "title": parts[3].lstrip("✳ ").strip() or "(untitled)",
+            "pane_id": parts[4],
         })
     return panes
 
@@ -164,17 +170,22 @@ def cycle() -> str:
 def target_session() -> str:
     """The session uuid behind the target pane, "" if it cannot be resolved.
 
-    The pane is the only handle dictation has; the title is what joins it to a
-    conversation, and thinking.py already does that lookup for the HUD. Same
-    answer here, so a dictated line is filed under the session that received
-    it rather than under the machine.
+    The pane is the only handle dictation has, and thinking.py owns the join
+    from one to the other -- same lookup the HUD makes, so a dictated line is
+    filed under the session that received it rather than under the machine.
+
+    The pane id matters here more than anywhere else. Dictation's first line
+    of a conversation arrives BEFORE the exchange that gives the window its
+    title, so a title-only lookup came up empty exactly once per conversation,
+    and exactly on the line that opens it.
     """
     cur = cfg().get("pane")
     pane = next((p for p in claude_panes() if p["id"] == cur), None)
     if not pane:
         return ""
     try:
-        return _mod("thinking").session_for(pane["path"], pane["title"])
+        return _mod("thinking").session_for(pane["path"], pane["title"],
+                                            pane.get("pane_id", ""))
     except Exception:
         return ""
 

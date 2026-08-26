@@ -22,6 +22,13 @@ So both sides write here instead, at the point where a line becomes sound:
                               rather than typed (conversation mode goes
                               through it too)
 
+The two learn the session differently. `out` is handed it by the hook that
+fires; `in` only holds a tmux pane and has to ask which conversation runs
+there, which is why the hooks bind pane to session at SessionStart -- before
+that binding existed, the line that OPENED a conversation arrived before the
+window had a title to be recognised by, and every conversation lost its first
+spoken line to `spoken-default.jsonl`.
+
 Whose history is a question for the READER: `tail()` answers about the session
 it is given and about no other. The HUD asks about the session it is watching,
 narrows to that pane's project when the title cannot name it, and only falls
@@ -114,7 +121,10 @@ def record(side: str, text: str, session: str = "") -> None:
 
     Without a session the line lands in the `default` log rather than being
     dropped: the CLI speaks with no session to name, and a line nobody can
-    attribute is still a line that was said out loud.
+    attribute is still a line that was said out loud. It should now be rare
+    from dictation -- a session is addressable from its pane from the moment
+    it starts -- so a `default` log filling up with `in` lines means the
+    SessionStart hook is not installed. `claude-voice doctor` says so.
     """
     text = (text or "").strip()
     if not text or not CFG.get("history.enabled", True):

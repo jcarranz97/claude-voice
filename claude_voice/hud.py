@@ -208,13 +208,13 @@ def target_session() -> tuple:
     session still claimed there were agents running.
     """
     tgt = dictate_target_info()
-    key = (tgt.get("path"), tgt.get("title"))
+    key = (tgt.get("path"), tgt.get("title"), tgt.get("pane_id"))
     if key == _session_cache["key"] and time.time() - _session_cache["t"] < 20:
         return _session_cache["sid"], _session_cache["cwd"]
     sid = ""
     if key[0]:
         try:
-            sid = _thinking().session_for(key[0], key[1] or "")
+            sid = _thinking().session_for(key[0], key[1] or "", key[2] or "")
         except Exception:
             sid = ""
     _session_cache.update({"t": time.time(), "key": key, "sid": sid,

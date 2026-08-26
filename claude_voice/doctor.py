@@ -125,7 +125,13 @@ def _hook_files() -> list:
 
 def check_hooks() -> None:
     wanted = {"UserPromptSubmit": "voice.py", "Stop": "speak.py",
-              "MessageDisplay": "narrate.py"}
+              "MessageDisplay": "narrate.py", "SessionStart": "thinking.py"}
+    # What is lost when one of the two soft ones is missing. Neither stops the
+    # voice, so neither is worth a red line -- but "not installed" alone tells
+    # nobody whether it matters.
+    soft = {"MessageDisplay": "optional: live narration",
+            "SessionStart": "the first dictated line of a conversation "
+                            "is filed under `default`"}
     found = {}
     for p, label in _hook_files():
         try:
@@ -147,10 +153,10 @@ def check_hooks() -> None:
 
     for ev, script in wanted.items():
         if ev not in found:
-            optional = ev == "MessageDisplay"
-            report(WARN if optional else BAD, f"hook {ev}",
-                   "not installed" + (" (optional: live narration)" if optional else ""),
-                   "" if optional else "claude-voice hooks")
+            why = soft.get(ev)
+            report(WARN if why else BAD, f"hook {ev}",
+                   "not installed" + (f" ({why})" if why else ""),
+                   "claude-voice hooks")
             continue
         cmd, label = found[ev]
         # The path in the hook is absolute and frozen at install time, so a

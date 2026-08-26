@@ -116,16 +116,21 @@ claude-voice on              # off is the default, always
 claude-voice hud             # in a spare terminal
 ```
 
+Updating an existing install? Print the snippet again and compare — it gains hooks over time, and a missing one costs you a feature rather than breaking the voice. `claude-voice doctor` names the one you are missing and what it does.
+
 <details>
 <summary>What the hooks do</summary>
 
 | Hook | Script | What it does |
 |---|---|---|
+| `SessionStart` | `thinking.py --bind` | Notes which tmux pane the conversation is in, before it has said anything |
 | `UserPromptSubmit` | `voice.py --hook-context` | Injects the TTS instruction, plays an acknowledgement, starts the heartbeat |
 | `MessageDisplay` | `narrate.py` | Speaks progress between tool calls (optional) |
 | `Stop` | `speak.py` | Speaks the `<!-- TTS: -->` line, stops the heartbeat |
 
 Drop the `MessageDisplay` entry if you only want the final line spoken.
+
+`SessionStart` is what lets a pane name its conversation. A window that has not exchanged anything yet still carries the default `Claude Code` title and has no transcript to match it against, so without the binding the very first dictated line of a conversation has no session to be filed under and never reaches the history panel. It costs nothing and says nothing; it writes one small file.
 
 </details>
 
@@ -612,7 +617,7 @@ claude_voice/
   narrate.py            mid-turn progress; the MessageDisplay hook
   ack.py                the instant acknowledgement
   audioq.py             one sound at a time, in order
-  thinking.py           the heartbeat, and subagent detection
+  thinking.py           the heartbeat, subagent detection, pane -> session
   hud.py                the status window
   mic.py                who holds the microphone; the watchdog timer
   spokenlog.py          the log of what was said out loud, both sides

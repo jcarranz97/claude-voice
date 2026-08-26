@@ -33,12 +33,22 @@ heartbeat would chirp about someone else's work.
 
   thinking.py --agents [uuid]          which agents are running (there, or all)
   thinking.py --session <uuid>         run the loop bound to that session
-  thinking.py --whose <dir> <title>    which session a tmux pane belongs to
+  thinking.py --whose <dir> <title> [pane]   which session a tmux pane belongs to
+  thinking.py --panes                  the pane -> session bindings on record
+  thinking.py --bind                   internal: SessionStart, binds pane -> session
+
+Which pane is which session
+---------------------------
+`session_for()` answers that, and it is asked by everything holding a pane and
+wanting a conversation: the HUD, and dictation deciding which spoken log a
+sentence belongs in. It has two ways of answering, and it tries them in that
+order because only the first is exact.
 """
 
 import json
 import math
 import os
+import re
 import struct
 import subprocess
 import sys
@@ -81,6 +91,14 @@ AGENT_FRESH = 90          # wrote just now: alive, no further questions
 AGENT_QUIET = 900         # quiet, but if it left a tool call open, still working
 
 TUNE = BASE / "tick.json"
+
+# The pane -> session binding, one file per pane, the way turn state is one
+# file per session. Written by the hooks, which are the only side that knows a
+# session id for certain; read by anything holding a pane and no session.
+PANE_PREFIX = "pane-"
+# Generous, because a conversation can legitimately stay open for days and
+# every prompt refreshes the file anyway. This only sweeps panes long gone.
+PANE_STALE = 7 * 86400
 
 
 def timing() -> tuple:
@@ -138,15 +156,103 @@ def _last_ai_title(path: Path) -> dict:
         return {}
 
 
-def session_for(cwd: str, title: str) -> str:
+def _pane_file(pane: str):
+    """Where that pane's binding lives, None if the id is not one.
+
+    Pane ids are `%12`, and a filename should not have to carry a `%`.
+    Stripping it is unambiguous: tmux only ever issues `%<n>`.
+    """
+    safe = re.sub(r"[^A-Za-z0-9._-]", "", str(pane or ""))[:64]
+    return BASE / f"{PANE_PREFIX}{safe}.json" if safe else None
+
+
+def bind(session: str, pane: str = "", cwd: str = "") -> None:
+    """Record that this pane is running this session.
+
+    Called from the hooks, which are handed the session id and run as children
+    of the claude process -- so `$TMUX_PANE` names the pane it sits in. That
+    makes this the one exact join between the two, and the only one available
+    before a conversation has said anything.
+
+    Best effort in both senses: a hook must not fail over this, and a hook must
+    not be slowed by it either -- one small file, written and renamed.
+    """
+    pane = pane or os.environ.get("TMUX_PANE", "")
+    if not session or not pane:
+        return                      # outside tmux there is no pane to bind to
+    f = _pane_file(pane)
+    if not f:
+        return
+    try:
+        BASE.mkdir(parents=True, exist_ok=True)
+        tmp = f.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps({"session": session, "cwd": cwd or "",
+                                   "ts": time.time()}))
+        os.replace(tmp, f)          # a reader never sees a half-written binding
+    except Exception:
+        return
+    sweep_panes()
+
+
+def bound_session(pane: str, cwd: str = "") -> str:
+    """The session bound to that pane, "" if there is none to trust.
+
+    `cwd` is checked when both sides know it: a pane whose claude exited and
+    came back in another directory without the SessionStart hook installed
+    would otherwise keep answering with the conversation before it. Returning
+    "" there costs the title lookup; returning the wrong session costs a line
+    filed under somebody else's conversation.
+    """
+    f = _pane_file(pane)
+    if not f:
+        return ""
+    try:
+        d = json.loads(f.read_text())
+    except Exception:
+        return ""
+    was = str(d.get("cwd") or "")
+    if cwd and was and str(cwd).rstrip("/") != was.rstrip("/"):
+        return ""
+    return str(d.get("session") or "")
+
+
+def pane_files() -> list:
+    try:
+        return sorted(BASE.glob(f"{PANE_PREFIX}*.json"))
+    except Exception:
+        return []
+
+
+def sweep_panes(max_age: float = PANE_STALE) -> None:
+    now = time.time()
+    for p in pane_files():
+        try:
+            if now - p.stat().st_mtime > max_age:
+                p.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def session_for(cwd: str, title: str, pane: str = "") -> str:
     """Which session runs in that tmux pane. "" if it cannot be known.
 
-    The title is the only thread joining a pane to its session: the claude
-    process carries no uuid in its environment and holds no transcript open,
-    and on resuming a conversation the process start no longer matches the
-    file's. The title does: tmux shows the conversation's, and the transcript
-    stores it in an ai-title line.
+    Two answers, exact one first.
+
+    `pane` is the binding the hooks wrote: the session id as the session itself
+    reported it, with nothing inferred. It is there from SessionStart, which
+    means it is there before the conversation has exchanged a word.
+
+    The title is the fallback, and the only one there was before the binding
+    existed. tmux shows the conversation's title and the transcript stores it
+    in an ai-title line, which joins the two -- but the ai-title is written
+    from the first exchange, so a window that has not spoken yet still carries
+    the default title and matches nothing. It also still covers a session that
+    was already running when the hooks were installed, and one whose pane the
+    binding never reached.
     """
+    exact = bound_session(pane, cwd)
+    if exact:
+        return exact
     title = (title or "").lstrip("✳ ").strip()
     if not title:
         return ""
@@ -354,7 +460,28 @@ def main() -> int:
         for d in live:
             print(f"    · {d}")
     elif arg == "--whose" and len(sys.argv) >= 4:
-        print(f"  session: {session_for(sys.argv[2], sys.argv[3]) or '(unidentified)'}")
+        pane = sys.argv[4] if sys.argv[4:] else ""
+        print(f"  session: {session_for(sys.argv[2], sys.argv[3], pane) or '(unidentified)'}")
+    elif arg == "--bind":
+        # SessionStart. It fires before the conversation has exchanged
+        # anything, which is the whole point: that first moment is the one the
+        # title lookup cannot cover. Also fires on resume, so a conversation
+        # coming back under a new id rebinds instead of leaving the old one.
+        try:
+            d = json.load(sys.stdin)
+        except Exception:
+            return 0
+        bind(d.get("session_id", ""), cwd=d.get("cwd", ""))
+    elif arg == "--panes":
+        for f in pane_files():
+            try:
+                d = json.loads(f.read_text())
+            except Exception:
+                continue
+            print(f'  %{f.stem[len(PANE_PREFIX):]}  {d.get("session", "")[:8]}  '
+                  f'{d.get("cwd", "")}')
+        if not pane_files():
+            print("  no pane is bound (is the SessionStart hook installed?)")
     elif arg == "--show":
         d, i = timing()
         print(f"  first tick: {d}s   interval: {i}s")

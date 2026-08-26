@@ -141,6 +141,8 @@ cat <<EOF
 
   1. Install the hooks:   claude-voice hooks
      (paste the snippet into ~/.claude/settings.json)
+     Already had them? Print it again anyway — the snippet gains hooks over
+     time, and \`claude-voice doctor\` names the one you are missing.
 
   2. Turn the voice on:   claude-voice on
   3. Watch it work:       claude-voice hud   (in a spare terminal)
