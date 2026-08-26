@@ -258,6 +258,16 @@ def main() -> int:
             data = json.load(sys.stdin)
         except Exception:
             return 0
+        # Before the switch is consulted, because this is not about sound: the
+        # binding is how a pane names its conversation, and dictation files its
+        # spoken log by it whether the voice is on or off. SessionStart already
+        # wrote one; this covers a session that was running before the hook was
+        # installed, and refreshes the file so a live pane is never swept.
+        try:
+            _mod("thinking").bind(data.get("session_id", ""),
+                                  cwd=data.get("cwd", ""))
+        except Exception:
+            pass
         if not enabled(data.get("session_id", "")):
             return 0
         # Sound immediately: without this there is a long silence between
