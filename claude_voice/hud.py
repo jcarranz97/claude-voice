@@ -84,35 +84,76 @@ def L(key: str, fallback: str) -> str:
 _open_cache = {"t": 0.0, "v": False}
 
 
+def our_captures() -> list:
+    """PIDs of pw-record processes that are ours, by command-line signature.
+
+    Deliberately by signature and not by pidfile: the case worth catching is
+    exactly the one where the pidfile is gone -- an orphan left by an unclean
+    shutdown, with no parent and nobody able to name it.
+    """
+    node = CFG.get("stt.node", "") or ""
+    pids = []
+    for proc in Path("/proc").iterdir():
+        if not proc.name.isdigit():
+            continue
+        try:
+            if (proc / "comm").read_text().strip() != "pw-record":
+                continue
+            cmd = (proc / "cmdline").read_bytes().decode("utf-8", "ignore")
+        except Exception:
+            continue
+        if (node and node in cmd) or ("--raw" in cmd and "--latency" in cmd):
+            pids.append(int(proc.name))
+    return pids
+
+
 def mic_open() -> bool:
-    """Is ANYTHING capturing from the microphone? The truth, not what we think.
+    """Is the microphone actually in use? The truth, not what we think.
 
-    Deliberately does NOT consult our pidfile or any state of ours: the
-    dangerous case is exactly that one -- an orphaned pw-record after an
-    unclean shutdown, with no parent and no pidfile.
+    Two things count, and neither is "a capture stream exists":
 
-    Counts PipeWire capture clients, not ALSA state: PipeWire keeps the PCM
-    open for several seconds after the client dies, so ALSA raises false
-    alarms. An active input stream really does mean someone is recording now.
+    A stream that is RUNNING -- somebody is pulling audio right now, whoever
+    they are. Existence is not enough: a capture node lingers as `idle` or
+    `suspended` long after recording stops, and an app that holds its input
+    open for its whole run (Claude Code's own dictation does) parks one there
+    until it quits. The desktop's own indicator counts those, which is why the
+    system tray can show a microphone while nothing is being recorded.
+
+    Or a pw-record of OURS being alive, whatever state its stream is in. That
+    is the orphan this warning exists for, and `x` can actually clear it. It
+    also keeps the post-stop verification honest: a process on its way out
+    stops pulling audio before it exits, and treating that instant as "closed"
+    would skip the sweep in precisely the case that needs it.
+
+    What we deliberately do NOT warn about is another app's parked stream. It
+    has an owner, nobody is being recorded, and `x` cannot clear it -- so the
+    warning would stand there permanently with no action behind it, and a
+    privacy notice that is always on is one you stop reading.
     """
     if time.time() - _open_cache["t"] < 1.0:
         return _open_cache["v"]
     val = False
     try:
-        out = subprocess.run(["pw-dump"], capture_output=True, text=True, timeout=3).stdout
-        objs = json.loads(out)
-        val = any(
-            o.get("type") == "PipeWire:Interface:Node"
-            and o.get("info", {}).get("props", {}).get("media.class") == "Stream/Input/Audio"
-            for o in objs)
+        val = bool(our_captures())
     except Exception:
-        # Without pw-dump, ALSA is the fallback: it errs on the side of warning
-        # too much, which is the correct side to err on for a privacy notice.
+        val = False
+    if not val:
         try:
-            val = any(f.read_text().startswith("state: RUNNING")
-                      for f in Path("/proc/asound").glob("card*/pcm*c/sub*/status"))
+            out = subprocess.run(["pw-dump"], capture_output=True, text=True, timeout=3).stdout
+            objs = json.loads(out)
+            val = any(
+                o.get("type") == "PipeWire:Interface:Node"
+                and o.get("info", {}).get("props", {}).get("media.class") == "Stream/Input/Audio"
+                and o.get("info", {}).get("state") == "running"
+                for o in objs)
         except Exception:
-            val = False
+            # Without pw-dump, ALSA is the fallback. It reads RUNNING too, so
+            # it agrees with the rule above rather than second-guessing it.
+            try:
+                val = any(f.read_text().startswith("state: RUNNING")
+                          for f in Path("/proc/asound").glob("card*/pcm*c/sub*/status"))
+            except Exception:
+                val = False
     _open_cache.update(t=time.time(), v=val)
     return val
 
@@ -136,26 +177,14 @@ def sweep_orphans() -> int:
     import os as _os, signal
     killed = 0
     me = _os.getpid()
-    node = CFG.get("stt.node", "") or ""
-    for proc in Path("/proc").iterdir():
-        if not proc.name.isdigit() or int(proc.name) == me:
+    # Ours by signature -- the configured node, or the exact raw capture flags
+    # listen.py uses. Never a blanket pw-record kill: comm is matched against
+    # the EXECUTABLE, so a shell that merely mentions pw-record is not a target.
+    for pid in our_captures():
+        if pid == me:
             continue
         try:
-            # comm is the EXECUTABLE. Matching "pw-record" in the command line
-            # kills anything that merely mentions it -- including the shell
-            # that launched this script.
-            if (proc / "comm").read_text().strip() != "pw-record":
-                continue
-            cmd = (proc / "cmdline").read_bytes().decode("utf-8", "ignore")
-        except Exception:
-            continue
-        # Ours by signature: either the configured node, or the exact raw
-        # capture flags listen.py uses. Never a blanket pw-record kill.
-        mine = (node and node in cmd) or ("--raw" in cmd and "--latency" in cmd)
-        if not mine:
-            continue
-        try:
-            _os.kill(int(proc.name), signal.SIGTERM)
+            _os.kill(pid, signal.SIGTERM)
             killed += 1
         except Exception:
             pass

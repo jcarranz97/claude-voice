@@ -404,6 +404,15 @@ parent — usually an unclean exit from conversation mode. Press `x`. That
 warning reads the kernel's capture state, not our own bookkeeping, precisely so
 it still fires when our bookkeeping is what broke.
 
+Two things count as open: a capture stream that is *running*, whoever owns it,
+and a `pw-record` of ours being alive whatever state its stream is in — that
+second one is the orphan the warning exists for, and the one `x` can clear.
+What does not count is another app's parked stream. Your desktop's own
+microphone indicator does count those, so the tray icon can be lit while the
+HUD is quiet: an app that holds its input open for its whole run leaves a
+suspended stream behind, nobody is being recorded, and there is nothing `x`
+could do about it. Quitting that app releases it.
+
 **Dictation records but nothing arrives.** Delivery is refused unless the
 target tmux pane is running `claude`; check `claude-voice dictate --panes` and
 `~/.config/claude-voice/dictate.log`. If it records silence, the device is
