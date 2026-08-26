@@ -79,8 +79,9 @@ def enqueue(wav: Path, text: str = "", flush_pending: bool = False,
                 pass
 
     # The one place every spoken thing passes through, so the one place worth
-    # writing the spoken log from: order here is playback order.
-    _record(text)
+    # writing the spoken log from: order here is playback order. The session
+    # is carried through: history is one conversation's record, not the box's.
+    _record(text, session)
 
     n = _next_seq()
     dest = QUEUE / f"{n:08d}.wav"
@@ -94,7 +95,7 @@ def enqueue(wav: Path, text: str = "", flush_pending: bool = False,
     ensure_player()
 
 
-def _record(text: str) -> None:
+def _record(text: str, session: str = "") -> None:
     """Log the line for the HUD's history pane. Never let it cost a hook."""
     if not text:
         return
@@ -104,7 +105,7 @@ def _record(text: str) -> None:
             "spokenlog", Path(__file__).resolve().parent / "spokenlog.py")
         m = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(m)
-        m.record("out", text)
+        m.record("out", text, session=session)
     except Exception:
         pass
 

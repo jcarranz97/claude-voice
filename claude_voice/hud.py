@@ -26,7 +26,9 @@ receive the text: recording into a void looks exactly like not being heard.
 The history panel reads the spoken log (spokenlog.py), which is written where
 sound is produced rather than parsed out of the transcript: narration and
 acknowledgements never reach the transcript, and a dictated line is
-indistinguishable there from a typed one.
+indistinguishable there from a typed one. It shows the session being watched,
+the same one `t` switches, so the panel is one conversation and not every
+window on the machine interleaved by the clock.
 """
 
 import curses
@@ -200,27 +202,57 @@ def agents_live() -> list:
     return _agents_cache["list"]
 
 
-_hist_cache = {"mtime": -1.0, "w": -1, "rows": []}
+_hist_sid = {"t": 0.0, "key": None, "sid": ""}
+
+
+def history_session() -> str:
+    """Which conversation the panel is showing.
+
+    The pane's session when its title names one, and spokenlog.follow() for
+    when it does not -- the same policy `claude-voice history` follows, so the
+    two never disagree about whose history you are reading.
+    """
+    sid, cwd = target_session()
+    if sid:
+        return sid
+    if time.time() - _hist_sid["t"] < 2.0 and cwd == _hist_sid["key"]:
+        return _hist_sid["sid"]              # the panel asks 20 times a second
+    try:
+        sid = _spokenlog.follow("", cwd)
+    except Exception:
+        sid = ""
+    _hist_sid.update(t=time.time(), key=cwd, sid=sid)
+    return sid
+
+
+_hist_cache = {"mtime": -1.0, "w": -1, "sid": None, "rows": []}
 
 
 def history_rows(width: int) -> list:
     """The spoken log wrapped to the panel: (text, side, continuation) rows.
 
-    Cached on the log's mtime and the width. The HUD redraws 20 times a second
-    and the file only changes when something is actually said, so re-reading
-    per frame would be pure waste.
+    The log of the session being watched -- the one `t` switches, the one
+    dictation reaches -- as resolved by history_session(). Empty when that
+    session has said nothing yet, which is the honest answer: a panel that
+    borrows another conversation to look busy is worse than a blank one.
+
+    Cached on the log's mtime, the width and the session. The HUD redraws 20
+    times a second and the file only changes when something is actually said,
+    so re-reading per frame would be pure waste.
     """
     if _spokenlog is None or width < 20:
         return []
     try:
-        mt = _spokenlog.mtime()
+        sid = history_session()
+        mt = _spokenlog.mtime(sid)
     except Exception:
         return []
-    if mt == _hist_cache["mtime"] and width == _hist_cache["w"]:
+    if (mt == _hist_cache["mtime"] and width == _hist_cache["w"]
+            and sid == _hist_cache["sid"]):
         return _hist_cache["rows"]
 
     try:
-        entries = _spokenlog.tail(int(CFG.get("history.show", 200) or 200))
+        entries = _spokenlog.tail(int(CFG.get("history.show", 200) or 200), sid)
     except Exception:
         entries = []
 
@@ -237,7 +269,7 @@ def history_rows(width: int) -> list:
         rows.append((head + body[0], e["side"], False))
         for cont in body[1:]:
             rows.append((" " * len(head) + cont, e["side"], True))
-    _hist_cache.update(mtime=mt, w=width, rows=rows)
+    _hist_cache.update(mtime=mt, w=width, sid=sid, rows=rows)
     return rows
 
 

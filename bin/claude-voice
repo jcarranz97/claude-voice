@@ -18,7 +18,8 @@ Switch
 
 Watch
   claude-voice hud                the status window
-  claude-voice history [n]        the last n spoken lines, both sides
+  claude-voice history [n]        the last n spoken lines of this conversation
+  claude-voice history [n] --all  ... of every session on this machine
   claude-voice sessions           what each open session is doing right now
   claude-voice mic                who is holding the microphone, and since when
   claude-voice mic --sweep        close a capture of ours that was left behind

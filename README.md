@@ -152,7 +152,8 @@ claude-voice silence                       # panic button: cut all sound now
 claude-voice status                        # is it on? is this session muted?
 
 claude-voice hud                           # the status window, in a spare terminal
-claude-voice history 20                    # the last 20 lines spoken, both sides
+claude-voice history 20                    # the last 20 lines of this conversation
+claude-voice history 20 --all              # ... of every session on this machine
 claude-voice say "test one two"            # synthesize and play, ignoring the switch
 claude-voice config                        # what is actually in effect, and from where
 claude-voice doctor                        # check the install and say what is wrong
@@ -284,11 +285,34 @@ have them: only the final `<!-- TTS: -->` line reaches it. Narration is derived
 on the fly, the acknowledgement is a separate model call, and a dictated
 sentence arrives indistinguishable from a typed one. So `audioq.enqueue()` —
 the one choke point every sound passes through — and `dictate.deliver()` each
-append a line to `~/.config/claude-voice/spoken.jsonl`, in the order things
-were actually heard. `claude-voice history` prints the same log in the
-terminal.
+append a line to `~/.config/claude-voice/spoken-<session-id>.jsonl`, in the
+order things were actually heard. `claude-voice history` prints the same log in
+the terminal.
 
-The log is capped and trimmed; turn it off with `enabled = false` under
+**One log per conversation.** The panel shows the session it is watching — the
+one `t` switches, the one dictation reaches. Shared, it was not a dialogue at
+all: with two windows open you got a question from one and an answer from the
+other, interleaved by the clock, with nothing on screen saying they belonged to
+different conversations. `claude-voice history --all` interleaves them on
+purpose, which is the right answer to "what did this machine say in the last
+hour" and the only way to read a log written before the split.
+
+A pane is joined to its conversation by its title, which Claude Code only sets
+once it has named the conversation — so a fresh window still says `Claude Code`
+and cannot be matched. There the panel shows the liveliest conversation **of
+that pane's project**, and nothing at all when that project has said nothing
+yet. Only outside tmux, with no pane to point at, does it fall back to the
+liveliest session on the machine. A blank panel beside a new window is the
+honest answer; showing whichever window spoke last is how a per-session log
+still looks shared.
+
+Resuming a conversation with `--continue` or `--resume` comes back with a new
+session id, so the panel starts blank even though the conversation did not. The
+old log is still there — `claude-voice history --session <id>` — but it does
+not follow you across the resume.
+
+The log is capped and trimmed per session, and a session that has been silent
+for `keep_days` is swept away. Turn it off with `enabled = false` under
 `[history]` and only that panel goes away.
 
 ### Dictation and conversation mode
@@ -387,7 +411,8 @@ node = "alsa_input.usb-..."            # pw-record --list-targets
 [history]
 enabled = true                    # the spoken log behind the HUD's h panel
 position = "left"                 # left, right or bottom of the HUD window
-cap = 400                         # lines kept; older ones are trimmed away
+cap = 400                         # lines kept per session; older ones trimmed
+keep_days = 7                     # a session silent this long is swept away
 ```
 
 ALSA card *numbers* reorder on reconnect. A setup pinned to `plughw:4,0`

@@ -124,12 +124,17 @@ DEFAULTS = {
     },
     "history": {
         # The spoken log behind the HUD's history pane: what was said out
-        # loud, both sides. Nothing else reads it, so turning it off costs
-        # only that pane.
+        # loud, both sides. One log per conversation, so the cap and the
+        # retention below are per session. Nothing else reads it, so turning
+        # it off costs only that pane.
         "enabled": True,
-        "cap": 400,                # entries kept on disk; older ones are trimmed
+        "cap": 400,                # entries kept per session; older ones trimmed
         "show": 200,               # entries the panel reads back
         "position": "left",        # left, right or bottom of the HUD window
+        # A log outlives the turn that produced it, so this clock is days and
+        # not turn.py's hours: a conversation you come back to tomorrow still
+        # has its history.
+        "keep_days": 7,            # a session silent this long is swept away
     },
     "hud": {
         # Spaced out on purpose: the HUD letterspaces them as a title.
@@ -269,7 +274,8 @@ def show() -> None:
           f"on {cfg.get('stt.device')}")
     print(f"  history     : {'on' if cfg.get('history.enabled', True) else 'off'} "
           f"({cfg.get('history.position')}), "
-          f"last {cfg.get('history.cap')} spoken lines")
+          f"last {cfg.get('history.cap')} spoken lines per session, "
+          f"kept {cfg.get('history.keep_days')} days")
 
 
 if __name__ == "__main__":
