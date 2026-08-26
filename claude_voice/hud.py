@@ -10,6 +10,7 @@ it only watches. Closing it breaks nothing.
 
   m (or space)  turn the voice off / ON
                 turning it off silences whatever is playing, instantly
+  l             language: cycle to the next preset, and relabel in place
   h             history: show/hide what was said out loud, both sides
   d             dictate: record, transcribe, send to Claude
   t             switch which Claude session receives dictation
@@ -21,7 +22,13 @@ It works out on its own when you are recording with /voice, by reading the
 capture state: there is no dictation hook to attach to.
 
 d and c are refused, with the reason on screen, when no Claude Code session can
-receive the text: recording into a void looks exactly like not being heard.
+receive the text: recording into a void looks exactly like not being heard. l
+is refused the same way when the other language's voice was never downloaded:
+switching into a preset that cannot speak is the same kind of silent failure.
+
+The labels on this window come from the preset, so l has to reload the config
+and recompute them in place -- quitting and reopening the HUD is not an
+acceptable answer to a keystroke.
 
 The history panel reads the spoken log (spokenlog.py), which is written where
 sound is produced rather than parsed out of the transcript: narration and
@@ -33,6 +40,8 @@ window on the machine interleaved by the clock.
 
 import curses
 import json
+import os
+import signal
 import subprocess
 import sys
 import math
@@ -43,6 +52,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import config as _config                              # noqa: E402
+import lang as _lang                                  # noqa: E402
 # Every microphone question -- who has it, whether anyone is actually
 # being recorded, and how to close a capture of ours that was left
 # behind -- is answered in one place, because the watchdog on the
@@ -90,6 +100,36 @@ TITLE = " ".join(TITLE.upper())
 
 def L(key: str, fallback: str) -> str:
     return CFG.get(f"hud.{key}", fallback) or fallback
+
+
+def reload_cfg() -> None:
+    """Pick up a language switch without being reopened.
+
+    CFG and TITLE are resolved once at import, which is right for every other
+    module here -- they are short-lived processes -- and wrong for the one
+    window that stays open across a switch. The modules imported above keep
+    their own copies, but nothing they answer (which microphone, where the
+    panel sits) is a language question.
+    """
+    global CFG, TITLE
+    CFG = _config.load(reload=True)
+    TITLE = " ".join(((CFG.get("hud.title", "") or CFG.name).strip()).upper())
+
+
+_lang_cache = {"preset": None, "name": "", "label": ""}
+
+
+def next_language() -> tuple:
+    """(preset, what that language calls itself) for the one `l` switches to.
+
+    Cached against the active preset: the legend is redrawn twenty times a
+    second and the answer is two TOML files off disk.
+    """
+    if _lang_cache["preset"] != CFG.preset:
+        nxt = _lang.following(CFG.preset)
+        _lang_cache.update(preset=CFG.preset, name=nxt,
+                           label=_lang.label(nxt) if nxt else "")
+    return _lang_cache["name"], _lang_cache["label"]
 
 
 _target_cache = {"t": 0.0, "pane": {}}
@@ -538,6 +578,44 @@ def centered(win, y, text, w, attr=0, x0=0):
         pass
 
 
+LISTEN_PID = BASE / "listen.pid"
+
+
+def conversation_alive() -> bool:
+    """Is the continuous listening daemon running? A pidfile is not an answer:
+    a session that died leaves one behind, and nothing would ever start again."""
+    try:
+        os.kill(int(LISTEN_PID.read_text().strip()), 0)
+        return True
+    except Exception:
+        LISTEN_PID.unlink(missing_ok=True)
+        return False
+
+
+def conversation_stop() -> None:
+    """Stop it, and make sure the microphone actually closed."""
+    try:
+        # The whole group: pw-record is its child.
+        os.killpg(int(LISTEN_PID.read_text().strip()), signal.SIGTERM)
+    except Exception:
+        pass
+    LISTEN_PID.unlink(missing_ok=True)
+    # Verify, do not assume: if the mic is still open after the signal, an
+    # orphan was left and has to be swept.
+    for _ in range(12):
+        time.sleep(0.15)
+        # fresh=True: the one-second cache is what makes the HUD cheap, and
+        # exactly what must not be trusted here.
+        if not mic_open(fresh=True):
+            break
+    else:
+        sweep_orphans()
+
+
+def conversation_start() -> None:
+    _run("listen.py", detach=True)
+
+
 def _run(script: str, *args, detach: bool = False) -> None:
     cmd = [sys.executable, str(HERE / script), *args]
     if detach:
@@ -558,7 +636,9 @@ def main(stdscr):
         curses.init_pair(i, fg, -1)
 
     t0 = time.time()
-    silenced_at = 0.0
+    # One transient line under the legend: the voice was silenced, the
+    # language changed. Whatever it says, it says it for two seconds.
+    notice_at, notice = 0.0, ""
     refused_at, refused_why = 0.0, ""
     # Reopen the way you left it: h is a preference, not a per-run decision.
     history, hist_scroll = panel_open(), 0
@@ -595,38 +675,32 @@ def main(stdscr):
             sweep_orphans()
         if ch == ord("c"):
             # Conversation mode: toggle the continuous listening daemon.
-            pf = BASE / "listen.pid"
+            alive = conversation_alive()
             # Starting is refused; stopping never is, or a daemon left over
             # from a session that has since closed could not be killed here.
-            blocked_now = dictate_blocked(fresh=True) if not pf.exists() else ""
+            blocked_now = "" if alive else dictate_blocked(fresh=True)
             if blocked_now:
-                refused_at, refused_why = time.time(), blocked_now
-            alive = False
-            try:
-                import os as _os
-                _os.kill(int(pf.read_text().strip()), 0); alive = True
-            except Exception:
-                pf.unlink(missing_ok=True)
-            if alive:
-                try:
-                    import os as _os, signal
-                    # the whole group: pw-record is its child
-                    _os.killpg(int(pf.read_text().strip()), signal.SIGTERM)
-                except Exception:
-                    pass
-                pf.unlink(missing_ok=True)
-                # Verify, do not assume: if the mic is still open after the
-                # signal, an orphan was left and has to be swept.
-                for _ in range(12):
-                    time.sleep(0.15)
-                    # fresh=True: the one-second cache is what makes the HUD
-                    # cheap, and exactly what must not be trusted here.
-                    if not mic_open(fresh=True):
-                        break
-                else:
-                    sweep_orphans()
-            elif not blocked_now:
-                _run("listen.py", detach=True)
+                refused_at = time.time()
+                refused_why = f"{blocked_now} — nothing to dictate to"
+            elif alive:
+                conversation_stop()
+            else:
+                conversation_start()
+        if ch == ord("l"):
+            # Language: the next preset in the cycle, relabelled in place.
+            listening = conversation_alive()
+            ok, msg = _lang.switch_next()
+            if not ok:
+                refused_at, refused_why = time.time(), msg
+            else:
+                reload_cfg()
+                notice_at, notice = time.time(), f"· {msg} ·"
+                # Everything else reads the config per invocation and follows
+                # on its own. This daemon read its Whisper language when it
+                # started, so it is the one thing a switch has to restart.
+                if listening:
+                    conversation_stop()
+                    conversation_start()
         if ch == ord("t"):
             _run("dictate.py", "--next")
             # Refresh now, not in 2 s: the first thing you look at after
@@ -642,7 +716,8 @@ def main(stdscr):
             blocked_now = ("" if (BASE / "dictate.pid").exists()
                            else dictate_blocked(fresh=True))
             if blocked_now:
-                refused_at, refused_why = time.time(), blocked_now
+                refused_at = time.time()
+                refused_why = f"{blocked_now} — nothing to dictate to"
             else:
                 _run("dictate.py", "--toggle", detach=True)
         if ch in (ord("m"), ord(" ")):
@@ -651,7 +726,7 @@ def main(stdscr):
                 # again". If it is droning mid-answer, this is the key.
                 ENABLED.unlink(missing_ok=True)
                 _run("voice.py", "silence")
-                silenced_at = time.time()
+                notice_at, notice = time.time(), "· voice off, silence ·"
             else:
                 ENABLED.parent.mkdir(parents=True, exist_ok=True)
                 ENABLED.touch()
@@ -730,22 +805,38 @@ def main(stdscr):
         centered(stdscr, 2, badge, w,
                  curses.color_pair(GREEN if on else WHITE) |
                  (curses.A_BOLD | curses.A_REVERSE if on else curses.A_DIM))
-        keys = [f"m: {'turn OFF and silence' if on else 'turn the voice ON'}",
-                "d: dictate", "c: conversation", "t: session",
-                f"h: {'hide history' if history else 'history'}", "q: quit"]
-        # Wide separators while they fit; tighter before letting the last key
-        # fall off the edge, which is what an untruncated line is worth here.
-        keys = ("   ·   ".join(keys) if len("   ·   ".join(keys)) <= w - 4
-                else "  ·  ".join(keys))
+        # Named after what it WILL DO, like the others: the language you get
+        # by pressing it, written in that language. Hidden when there is no
+        # other language with a voice on disk -- a key that can only refuse.
+        other, other_label = next_language()
+
+        def legend(voice_label: str, sep: str) -> str:
+            row = [f"m: {voice_label}", "d: dictate", "c: conversation",
+                   "t: session"]
+            if other and other != CFG.preset:
+                row.append(f"l: {other_label}")
+            row += [f"h: {'hide history' if history else 'history'}", "q: quit"]
+            return sep.join(row)
+
+        # Wide separators while they fit, then tighter, then the one label
+        # long enough to be worth shortening -- in that order, because losing
+        # the space between keys costs less than losing a key off the edge.
+        full = "turn OFF and silence" if on else "turn the voice ON"
+        short = "OFF, silence" if on else "voice ON"
+        for voice_label, sep in ((full, "   ·   "), (full, "  ·  "),
+                                 (full, " · "), (short, " · ")):
+            keys = legend(voice_label, sep)
+            if len(keys) <= w - 4:
+                break
         centered(stdscr, 3, keys, w,
                  curses.color_pair(GREEN) | curses.A_BOLD if not on else curses.A_DIM)
         if time.time() - refused_at < 2.5:
             # Louder than the footer, and only right after the key was
             # pressed: the answer to "I pressed d and nothing happened".
-            centered(stdscr, 4, f"  ⚠ {refused_why} — nothing to dictate to  ", w,
+            centered(stdscr, 4, f"  ⚠ {refused_why}  ", w,
                      curses.color_pair(AMBER) | curses.A_BOLD | curses.A_REVERSE)
-        elif time.time() - silenced_at < 2.0:
-            centered(stdscr, 4, "· voice off, silence ·", w,
+        elif time.time() - notice_at < 2.0:
+            centered(stdscr, 4, notice, w,
                      curses.color_pair(AMBER) | curses.A_BOLD)
 
         if panel:

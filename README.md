@@ -21,7 +21,7 @@ And a HUD, in a spare terminal, so you can see all of it at a glance:
 ```
                         B O R R A   B O T
                           VOICE ON
-   m: turn OFF and silence · d: dictate · c: conversation · h: history · q: quit
+  m: turn OFF and silence · d: dictate · c: conversation · l: Español · h: history · q: quit
 
                               ·  ·  ·
                         ○              ○
@@ -97,6 +97,9 @@ cd claude-voice
 ./install.sh --no-stt        # text-to-speech only, no microphone
 ```
 
+One language is enough to start; a second one is two files, later, with no
+reinstall: `claude-voice lang --fetch es`.
+
 That builds a virtualenv, downloads a Piper voice, writes a config file, and
 puts `claude-voice` on your PATH. It does **not** touch your Claude settings —
 hooks are yours to install:
@@ -150,6 +153,9 @@ claude-voice off                           # stop, and silence anything playing 
 claude-voice solo                          # mute just this one session
 claude-voice silence                       # panic button: cut all sound now
 claude-voice status                        # is it on? is this session muted?
+claude-voice lang                          # which language speaks, and what else is here
+claude-voice lang en                       # switch to it — the same thing l does in the HUD
+claude-voice lang --fetch en               # download that language's voice first
 
 claude-voice hud                           # the status window, in a spare terminal
 claude-voice history 20                    # the last 20 lines of this conversation
@@ -220,6 +226,7 @@ echo /path/to/your/venv/bin/python > ~/.config/claude-voice/python
 | key | |
 |---|---|
 | `m` / space | voice off / ON — off silences whatever is playing, instantly |
+| `l` | language: switch to the next preset, labelled in the language it gives you |
 | `d` | dictate: record, transcribe, send |
 | `c` | conversation mode: continuous listening |
 | `t` | switch which Claude session receives dictation |
@@ -430,6 +437,56 @@ The **instruction** — the text injected into every prompt — is a config valu
 not a constant. The register belongs to you, not to the tool. Make it terse,
 make it formal, make it a pirate; it is your ear.
 
+### Switching language
+
+Switching language is switching preset, and it is one keystroke:
+
+```bash
+claude-voice lang                # what speaks now, and what else is on disk
+claude-voice lang en             # switch — or press l in the HUD
+claude-voice lang --fetch en     # download that voice, if it never was
+```
+
+The choice lives in `~/.config/claude-voice/preset`, a file holding a name,
+next to `enabled` and `hud-history`. Deliberately **not** in `config.toml`:
+flipping one key there would mean a tool rewriting TOML you wrote by hand, and
+that eventually eats a comment it did not write. Delete the marker and the
+config file's own `general.preset` is back in charge.
+
+Nothing needs restarting. The hooks are short-lived processes that read the
+config per invocation, so the next prompt gets the new instruction and the next
+dictation the new Whisper language. The HUD reloads its labels in place.
+Conversation mode is the one exception — its daemon holds the language for the
+length of its run — so the HUD restarts it for you when you switch.
+
+Switching **inverts two layers**, and this is the part worth knowing. A config
+file written for Spanish carries Spanish in it: the voice model, the
+instruction, the acknowledgement phrases. Left on top it would keep speaking
+Spanish inside the English preset, which is exactly what makes a language
+switch look broken while everything else works. So while the active preset is
+not the one your config file names, the language pack wins — for the keys it
+defines, and only those. Your microphone device and your panel position are in
+no preset, and never move.
+
+To keep a personal setting through a switch, say which language it belongs to:
+
+```toml
+[preset.en.tts]
+voice_model = "~/.local/share/piper-voices/en_US-lessac-high.onnx"
+
+[preset.es.tts]
+voice_model = "~/.local/share/piper-voices/es_MX-claude-high.onnx"
+```
+
+That table is the top layer and holds whichever way the switch is thrown.
+
+Two things refuse rather than half-work. A language whose `.onnx` was never
+downloaded declines with the reason on screen — switching into a voice that
+cannot speak is a silent failure — and `--fetch` is the way out. And the
+acknowledgement cache is kept per preset, in `acks/<preset>/`, because it is
+indexed by position: one shared directory would play the old language's wav
+while the spoken log recorded the new language's words.
+
 ### Pronunciation
 
 When a word comes out wrong, fix it by ear — an automated phoneme diff cannot
@@ -506,6 +563,18 @@ happens, `claude-voice sessions` prints what each one is doing, and the HUD's
 target has to be resolvable: it is found by tmux pane title, so a session
 running outside tmux falls back to showing the liveliest one.
 
+**It still speaks the old language after switching.** Something above the
+preset is pinning it. `claude-voice config` prints the preset in effect and
+where it came from, and `claude-voice doctor` names the voice model actually
+loaded. The usual culprit is a `[tts] voice_model` (or an `[instruction] text`)
+in your own `config.toml`, written for the language you switched away from —
+move it under `[preset.<name>]` so it applies to that language only.
+
+**`l` refuses in the HUD.** The other language's voice was never downloaded.
+`claude-voice lang` lists what is on disk and what is missing;
+`claude-voice lang --fetch <name>` gets it, and caches its acknowledgements
+while it is there.
+
 **The tick keeps going after the answer.** The `Stop` hook is what kills it, so
 a session that died mid-turn (out of tokens, a hang, Ctrl-C) leaves it running.
 It caps itself, or `claude-voice silence` ends it now.
@@ -537,6 +606,7 @@ the instant you hit enter — costs one small model call per prompt. Set
 bin/claude-voice        the only entry point you need
 claude_voice/
   config.py             layered configuration
+  lang.py               the language switch: preset in, preset out
   voice.py              the switch; the UserPromptSubmit hook
   speak.py              synthesis, phoneme mixing; the Stop hook
   narrate.py            mid-turn progress; the MessageDisplay hook

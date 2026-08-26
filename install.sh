@@ -98,8 +98,13 @@ else
 preset = "$PRESET"
 name = "Claude"          # shown in the HUD banner
 
-[tts]
-voice_model = "$VOICES/$MODEL.onnx"
+# The voice model is NOT pinned here on purpose. presets/$PRESET.toml already
+# names it, and a pin in this file sits above the preset -- so switching
+# language would change everything except the voice doing the speaking.
+# Pin one per language instead, if you want your own:
+#
+# [preset.$PRESET.tts]
+# voice_model = "$VOICES/$MODEL.onnx"
 
 # [narrate]
 # word_limit = 50        # spoken whole below this
@@ -139,6 +144,10 @@ cat <<EOF
 
   2. Turn the voice on:   claude-voice on
   3. Watch it work:       claude-voice hud   (in a spare terminal)
+
+  A second language, later, without reinstalling anything:
+      claude-voice lang --fetch es    # download its voice and cache its acks
+      claude-voice lang es            # or press l in the HUD
 
   Check it over any time with:   claude-voice doctor
   Worth an alias, you will open it a lot:

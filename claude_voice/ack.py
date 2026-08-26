@@ -84,7 +84,10 @@ def contextual(prompt: str) -> str:
 
 def generic() -> tuple:
     """The cached phrase, as a safety net: (wav, what it says) or (None, "")."""
-    files = sorted((BASE / "acks").glob("*.wav"))
+    voice = _mod("voice")
+    # Per preset: the cache is indexed by position, so the other language's
+    # wavs here would say one thing and log another.
+    files = sorted(voice.ack_dir().glob("*.wav"))
     if not files:
         return None, ""
     last = BASE / "last-ack"
@@ -98,7 +101,7 @@ def generic() -> tuple:
     shutil.copy(pick, tmp)
     # The words matter as much as the sound: the spoken log records what was
     # heard, and a cached phrase is heard like any other.
-    return tmp, _mod("voice").ack_phrase(pick.name)
+    return tmp, voice.ack_phrase(pick.name)
 
 
 def main() -> int:
