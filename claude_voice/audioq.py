@@ -50,18 +50,29 @@ def _next_seq() -> int:
         return 1
 
 
-def enqueue(wav: Path, text: str = "", flush_pending: bool = False) -> None:
+def enqueue(wav: Path, text: str = "", flush_pending: bool = False,
+            session: str = "") -> None:
     """Append to the queue. flush_pending drops whatever has not played yet.
 
     The final answer uses flush_pending: hearing "let me check the config file"
     after the work is already done helps nobody. Whatever is playing right now
     is allowed to finish -- cutting mid-word sounds worse than waiting a second.
+
+    It drops only THIS session's pending notices. The queue is shared -- one
+    pair of speakers -- but "the work is done" is only true for the session
+    that finished, and dropping everyone's notices meant another window's
+    narration vanished without ever being heard.
+
+    `session` is carried in the meta so the HUD can tell whose voice is coming
+    out of the speaker, and stay quiet about a session it is not watching.
     """
     QUEUE.mkdir(parents=True, exist_ok=True)
     if flush_pending:
         for old in QUEUE.glob("*.json"):
             try:
                 meta = json.loads(old.read_text())
+                if session and meta.get("session", "") not in (session, ""):
+                    continue
                 Path(meta["wav"]).unlink(missing_ok=True)
                 old.unlink(missing_ok=True)
             except Exception:
@@ -78,7 +89,8 @@ def enqueue(wav: Path, text: str = "", flush_pending: bool = False) -> None:
     except OSError:
         import shutil
         shutil.copy(wav, dest)
-    (QUEUE / f"{n:08d}.json").write_text(json.dumps({"wav": str(dest), "text": text}))
+    (QUEUE / f"{n:08d}.json").write_text(json.dumps(
+        {"wav": str(dest), "text": text, "session": session or ""}))
     ensure_player()
 
 
@@ -122,12 +134,18 @@ def ensure_player() -> None:
         pass
 
 
-def _set_state(state: str, text: str = "", secs: float = 0.0) -> None:
+def _set_state(state: str, text: str = "", secs: float = 0.0,
+               session: str = "") -> None:
+    """The state of the SPEAKER, which is global on purpose: there is one pair
+    of them. `session` says whose line it is, so the HUD can decide whether the
+    window it is watching is the one talking. What each session is DOING lives
+    in turn.py, one file each."""
     try:
         BASE.mkdir(parents=True, exist_ok=True)
         (BASE / "state.json").write_text(json.dumps({
             "state": state, "text": text,
-            "until": time.time() + secs if secs else 0, "ts": time.time()}))
+            "until": time.time() + secs if secs else 0, "ts": time.time(),
+            "session": session or ""}))
     except Exception:
         pass
 
@@ -157,6 +175,7 @@ def play_loop() -> int:
                 meta = json.loads(meta_path.read_text())
                 wav = Path(meta["wav"])
                 text = meta.get("text", "")
+                owner = meta.get("session", "")
             except Exception:
                 meta_path.unlink(missing_ok=True)
                 continue
@@ -168,7 +187,7 @@ def play_loop() -> int:
             except Exception:
                 pass
 
-            _set_state("speaking", text, secs)
+            _set_state("speaking", text, secs, owner)
             try:
                 proc = subprocess.Popen(["aplay", "-q", str(wav)],
                                         stdout=subprocess.DEVNULL,

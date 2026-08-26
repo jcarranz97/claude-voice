@@ -59,6 +59,14 @@ makes the instruction appear.
 tick all enqueue and return immediately — a slow hook stalls the session. A
 single locked player process plays them in order, one at a time.
 
+**Per session, except what is genuinely shared.** You will have several
+sessions open, and a machine can be running a bot on the same hooks. What a
+*session* is doing — thinking, done — is one file each, and so are the
+heartbeat's pidfiles; otherwise the first window to finish writes "ready" over
+everyone and its `Stop` hook kills the tick of a window that is still working.
+What the *speaker* is doing stays global, because there is one pair of them.
+The HUD reads the session it is pointed at and lays the speaker over it.
+
 **Foreign technical terms get their own phonemizer.** espeak takes one language
 per utterance, so in Spanish "merge" comes out MER-je and "queue" becomes
 KE-u-e. The primary language phonemizes the whole line (correct prosody,
@@ -400,6 +408,14 @@ it still fires when our bookkeeping is what broke.
 target tmux pane is running `claude`; check `claude-voice dictate --panes` and
 `~/.config/claude-voice/dictate.log`. If it records silence, the device is
 wrong — `arecord -L`, and set `stt.device` by name.
+
+**The HUD goes calm while the session is still working.** The HUD watches one
+session — the one `t` points at, the same one dictation goes to — and every
+session keeps its own state, so another window (or a bot answering messages on
+the same machine) finishing its turn no longer speaks for yours. If it still
+happens, `claude-voice sessions` prints what each one is doing, and the HUD's
+target has to be resolvable: it is found by tmux pane title, so a session
+running outside tmux falls back to showing the liveliest one.
 
 **The tick keeps going after the answer.** The `Stop` hook is what kills it, so
 a session that died mid-turn (out of tokens, a hang, Ctrl-C) leaves it running.

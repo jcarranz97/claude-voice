@@ -50,39 +50,52 @@ def audio_available() -> bool:
     return any((Path(rt) / s).exists() for s in ("pipewire-0", "pulse/native"))
 
 
-def set_state(state: str, text: str = "", secs: float = 0.0) -> None:
-    """Publish state for the HUD. Best effort."""
+def _turn():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("turn", HERE / "turn.py")
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+def set_state(session: str, state: str, text: str = "", secs: float = 0.0) -> None:
+    """Publish this session's state for the HUD. Best effort.
+
+    Per session, because it used to be one file for all of them and the last
+    window to finish spoke for everybody: three sessions open, one answers, and
+    the HUD went calm over two that were still working.
+    """
     try:
-        import time
-        p = BASE / "state.json"
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(json.dumps({
-            "state": state, "text": text,
-            "until": time.time() + secs if secs else 0,
-            "ts": time.time(),
-        }))
+        _turn().write(session, state, text, secs)
     except Exception:
         pass
 
 
-def stop_background() -> None:
+def stop_background(session: str = "") -> None:
     """Kill the heartbeat and the acknowledgement. Called at the END of every
     turn, even when there is nothing to say -- otherwise the tick keeps
-    ticking into an empty room."""
-    for name, group in (("thinking.pid", True), ("ack.pid", False)):
-        pidfile = BASE / name
-        try:
-            if not pidfile.exists():
-                continue
-            pid = int(pidfile.read_text().strip())
-            os.killpg(pid, 15) if group else os.kill(pid, 15)
-        except (ProcessLookupError, ValueError, PermissionError, OSError):
-            pass
-        finally:
+    ticking into an empty room.
+
+    Only this session's. The pidfiles used to be shared, so a Stop hook here
+    cut the tick of a window that was still thinking -- and with a bot
+    answering messages on the same machine, that fired all day.
+    """
+    turn = _turn()
+    for kind, group in (("thinking", True), ("ack", False)):
+        for pidfile in ({turn.pidfile(kind, session), turn.pidfile(kind, "")}
+                        if session else {turn.pidfile(kind, "")}):
             try:
-                pidfile.unlink(missing_ok=True)
-            except Exception:
+                if not pidfile.exists():
+                    continue
+                pid = int(pidfile.read_text().strip())
+                os.killpg(pid, 15) if group else os.kill(pid, 15)
+            except (ProcessLookupError, ValueError, PermissionError, OSError):
                 pass
+            finally:
+                try:
+                    pidfile.unlink(missing_ok=True)
+                except Exception:
+                    pass
 
 
 def session_mute(session_id: str) -> Path:
@@ -249,11 +262,11 @@ def main() -> int:
             data = json.load(sys.stdin)
         except Exception:
             return 0
-        # First thing, whatever happens next.
-        stop_background()
+        session_id = data.get("session_id", "")
+        # First thing, whatever happens next -- but only for this session.
+        stop_background(session_id)
         if data.get("stop_hook_active"):
             return 0
-        session_id = data.get("session_id", "")
         # Docs are explicit: use last_assistant_message, not the transcript file.
         raw = data.get("last_assistant_message", "")
         text = extract_spoken(raw)
@@ -279,7 +292,7 @@ def main() -> int:
         return 0
 
     if not text or not audio_available():
-        set_state("idle")
+        set_state(session_id, "idle")
         return 0
 
     tmp = Path(tempfile.gettempdir()) / f"cv-speak-{os.getpid()}.wav"
@@ -290,9 +303,12 @@ def main() -> int:
         spec.loader.exec_module(audioq)
         # flush_pending: progress notes that never played are worthless now --
         # the work is done. The conclusion replaces them.
-        audioq.enqueue(tmp, text, flush_pending=True)
+        audioq.enqueue(tmp, text, flush_pending=True, session=session_id)
+        # The turn is over even while the answer is still being read out: the
+        # speaker has its own state, and the HUD lays it over this one.
+        set_state(session_id, "ready")
     else:
-        set_state("idle")
+        set_state(session_id, "idle")
     return 0
 
 

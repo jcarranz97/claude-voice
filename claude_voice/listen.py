@@ -186,7 +186,10 @@ def set_speaking(active: bool) -> None:
 
 def gated() -> bool:
     """Am I the one talking? With headphones there is no echo, but I would
-    still hear myself."""
+    still hear myself.
+
+    Reads the global speaker state on purpose: it does not matter WHICH session
+    is talking, the room is the room."""
     try:
         st = json.loads((BASE / "state.json").read_text())
         if st.get("state") != "speaking":

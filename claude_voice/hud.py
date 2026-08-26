@@ -46,6 +46,8 @@ except Exception:                                      # an empty pane, not a cr
 
 CFG = _config.load()
 BASE = _config.BASE
+# The SPEAKER's state: global, because there is one pair of speakers. What
+# each session is doing lives in turn.py, one file per session.
 STATE = BASE / "state.json"
 ENABLED = BASE / "enabled"
 # Whether the history panel was open when you last had a HUD up. A marker
@@ -187,13 +189,24 @@ def dictate_target() -> str:
     return f'{p.get("dir", "")} · {p.get("title", "")}'.strip(" ·")
 
 
+_mods = {}
+
+
+def _mod(name: str):
+    """Load a sibling module once and keep it. read_state() runs on every
+    frame, and re-executing a module twenty times a second is pure waste."""
+    if name not in _mods:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(name, HERE / f"{name}.py")
+        m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        _mods[name] = m
+    return _mods[name]
+
+
 def _thinking():
     """The heartbeat module, which is where agent detection lives."""
-    import importlib.util
-    spec = importlib.util.spec_from_file_location("thinking", HERE / "thinking.py")
-    m = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(m)
-    return m
+    return _mod("thinking")
 
 
 _session_cache = {"t": 0.0, "key": None, "sid": "", "cwd": ""}
@@ -411,15 +424,43 @@ def draw_history(win, top, bottom, x0, w, scroll, said_color, mine_color) -> int
 
 
 def read_state() -> dict:
+    """What the session on screen is doing, with the speaker laid over it.
+
+    Two questions, two files. What a SESSION is doing is per session (turn.py),
+    because three windows and a bot can all be busy at once and only one of
+    them is the one being watched. What the SPEAKER is doing is global -- there
+    is one pair of them -- so it wins while it is playing, but only when the
+    line belongs to the session on screen.
+
+    Before this they shared one state.json, and whichever session finished
+    first wrote "ready" over everyone: the reactor went calm while the window
+    in front of you was still working.
+    """
+    turn = _mod("turn")
+    sid, _ = target_session()
     try:
-        d = json.loads(STATE.read_text())
+        # Unknown session (no tmux, no pane title yet): fall back to the
+        # liveliest one, which is the guess the HUD made before any of this.
+        d = turn.read(sid) if sid else turn.newest()
     except Exception:
-        return {"state": "idle", "text": "", "until": 0, "ts": 0}
+        d = {"state": "idle", "text": "", "until": 0, "ts": 0, "session": ""}
+
+    try:
+        sp = json.loads(STATE.read_text())
+    except Exception:
+        return d
     # "speaking" expires on its own: the audio is over whether or not anyone
-    # said so.
-    if d.get("state") == "speaking" and d.get("until", 0) and time.time() > d["until"]:
-        d["state"] = "ready"
-    return d
+    # said so. Past that, the session's own state is the honest answer.
+    if sp.get("state") != "speaking":
+        return d
+    if sp.get("until", 0) and time.time() > sp["until"]:
+        return d
+    owner = sp.get("session", "")
+    # No owner recorded (the CLI, or a queue item from before this change):
+    # show it rather than swallow it. Silence would be the worse error.
+    if owner and sid and owner != sid:
+        return d
+    return sp
 
 
 def draw_reactor(win, cy, cx, t, state, color, band=None):
