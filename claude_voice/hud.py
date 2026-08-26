@@ -20,6 +20,9 @@ it only watches. Closing it breaks nothing.
 It works out on its own when you are recording with /voice, by reading the
 capture state: there is no dictation hook to attach to.
 
+d and c are refused, with the reason on screen, when no Claude Code session can
+receive the text: recording into a void looks exactly like not being heard.
+
 The history panel reads the spoken log (spokenlog.py), which is written where
 sound is produced rather than parsed out of the transcript: narration and
 acknowledgements never reach the transcript, and a dictated line is
@@ -43,7 +46,7 @@ import config as _config                              # noqa: E402
 # behind -- is answered in one place, because the watchdog on the
 # systemd timer has to give the same answers this window does.
 from mic import (our_captures, mic_open, mic_speaking,      # noqa: E402,F401
-                 mic_held, daemon_alive, sweep_orphans)
+                 mic_held, daemon_alive, sweep_orphans, listen_stranded)
 
 try:
     import spokenlog as _spokenlog                     # noqa: E402
@@ -109,9 +112,27 @@ def dictate_target_info() -> dict:
 def dictate_target() -> str:
     """How that session is shown on screen."""
     p = dictate_target_info()
-    if not p:
+    if not p.get("ok"):
         return ""
     return f'{p.get("dir", "")} · {p.get("title", "")}'.strip(" ·")
+
+
+def dictate_blocked(fresh: bool = False) -> str:
+    """Why nothing can be dictated, or "" when something can.
+
+    Drawn as a WARNING rather than as a missing line: an absent footer reads
+    as ordinary chrome, and "nobody is listening" is the one thing the HUD
+    exists to make obvious before you start talking.
+    """
+    if fresh:
+        # A key press is worth one tmux query: refusing because of a
+        # two-second-old cache, right after the session was opened, would be
+        # the same lie in the other direction.
+        _target_cache["t"] = 0.0
+    p = dictate_target_info()
+    if p.get("ok"):
+        return ""
+    return p.get("why") or "no Claude Code session"
 
 
 _mods = {}
@@ -506,6 +527,7 @@ def main(stdscr):
 
     t0 = time.time()
     silenced_at = 0.0
+    refused_at, refused_why = 0.0, ""
     # Reopen the way you left it: h is a preference, not a per-run decision.
     history, hist_scroll = panel_open(), 0
     while True:
@@ -542,6 +564,11 @@ def main(stdscr):
         if ch == ord("c"):
             # Conversation mode: toggle the continuous listening daemon.
             pf = BASE / "listen.pid"
+            # Starting is refused; stopping never is, or a daemon left over
+            # from a session that has since closed could not be killed here.
+            blocked_now = dictate_blocked(fresh=True) if not pf.exists() else ""
+            if blocked_now:
+                refused_at, refused_why = time.time(), blocked_now
             alive = False
             try:
                 import os as _os
@@ -560,12 +587,13 @@ def main(stdscr):
                 # signal, an orphan was left and has to be swept.
                 for _ in range(12):
                     time.sleep(0.15)
-                    _open_cache["t"] = 0.0        # no cache while verifying
-                    if not mic_open():
+                    # fresh=True: the one-second cache is what makes the HUD
+                    # cheap, and exactly what must not be trusted here.
+                    if not mic_open(fresh=True):
                         break
                 else:
                     sweep_orphans()
-            else:
+            elif not blocked_now:
                 _run("listen.py", detach=True)
         if ch == ord("t"):
             _run("dictate.py", "--next")
@@ -577,7 +605,14 @@ def main(stdscr):
         if ch == ord("d"):
             # Dictation: record / stop and deliver. Runs detached because
             # transcription takes ~1 s and the HUD must keep animating.
-            _run("dictate.py", "--toggle", detach=True)
+            # A recording already under way is always allowed to stop: the
+            # refusal is about opening the microphone, not closing it.
+            blocked_now = ("" if (BASE / "dictate.pid").exists()
+                           else dictate_blocked(fresh=True))
+            if blocked_now:
+                refused_at, refused_why = time.time(), blocked_now
+            else:
+                _run("dictate.py", "--toggle", detach=True)
         if ch in (ord("m"), ord(" ")):
             if ENABLED.exists():
                 # Turning it off means SHUT UP NOW, not just "don't speak
@@ -598,11 +633,20 @@ def main(stdscr):
         # thing that can happen on screen.
         if mic_speaking():
             st = "listening"
+        # ...but not when there is nowhere to deliver what is being said. The
+        # microphone being on is not the same as being listened to, and while
+        # conversation mode is holding, "LISTENING" is the one word on this
+        # screen that would be a lie. The rings stop drawing energy inward and
+        # the meter goes flat with it: nothing IS coming in.
+        stranded = listen_stranded() if daemon_alive() else ""
+        if stranded:
+            st = "stranded"
 
         label, color = {
             "thinking":  (L("thinking", "T H I N K I N G"), CYAN),
             "speaking":  (L("speaking", "S P E A K I N G"), AMBER),
             "listening": (L("listening", "L I S T E N I N G"), MAGENTA),
+            "stranded":  (L("stranded", "N O T   L I S T E N I N G"), AMBER),
             "ready":     (L("ready", "R E A D Y"), GREEN),
         }.get(st, (L("idle", "S T A N D I N G   B Y"), WHITE))
 
@@ -612,7 +656,7 @@ def main(stdscr):
         # detected independently, so this shows even when the session that
         # launched them is not the one speaking.
         agents = agents_live()
-        if agents and st not in ("speaking", "listening"):
+        if agents and st not in ("speaking", "listening", "stranded"):
             label = L("agents", "A G E N T S") + (f"   x{len(agents)}" if len(agents) > 1 else "")
             color = BLUE
             st = "thinking"          # spin the reactor, do not breathe
@@ -641,7 +685,7 @@ def main(stdscr):
             continue
 
         on = ENABLED.exists()
-        if not on and st != "listening" and not agents:
+        if not on and st not in ("listening", "stranded") and not agents:
             # With the voice off, saying so is more useful than animating a
             # state. But listening still shows: it does not depend on my voice.
             label, color = (L("voice_off", "V O I C E   O F F"), WHITE)
@@ -663,7 +707,12 @@ def main(stdscr):
                 else "  ·  ".join(keys))
         centered(stdscr, 3, keys, w,
                  curses.color_pair(GREEN) | curses.A_BOLD if not on else curses.A_DIM)
-        if time.time() - silenced_at < 2.0:
+        if time.time() - refused_at < 2.5:
+            # Louder than the footer, and only right after the key was
+            # pressed: the answer to "I pressed d and nothing happened".
+            centered(stdscr, 4, f"  ⚠ {refused_why} — nothing to dictate to  ", w,
+                     curses.color_pair(AMBER) | curses.A_BOLD | curses.A_REVERSE)
+        elif time.time() - silenced_at < 2.0:
             centered(stdscr, 4, "· voice off, silence ·", w,
                      curses.color_pair(AMBER) | curses.A_BOLD)
 
@@ -708,7 +757,18 @@ def main(stdscr):
         # shown even when the daemon is dead: an open microphone with no owner
         # is precisely the case worth shouting about.
         if mic_open():
-            if daemon_alive():
+            if stranded:
+                # The microphone IS open and nothing is on the other end.
+                # Said in the loudest slot the HUD has, and said differently
+                # while you are mid-sentence, because that is the moment the
+                # silence would otherwise be mistaken for being listened to.
+                msg = (f"  ⚠ {stranded} — you are talking to nothing  "
+                       if mic_speaking() else
+                       f"  ⚠ {stranded} — conversation on hold  ")
+                centered(stdscr, notice_y, msg[:cw - 2], cw,
+                         curses.color_pair(AMBER) | curses.A_BOLD | curses.A_REVERSE,
+                         x0)
+            elif daemon_alive():
                 centered(stdscr, notice_y, "  ● CONVERSATION — microphone open  ", cw,
                          curses.color_pair(MAGENTA) | curses.A_BOLD | curses.A_REVERSE,
                          x0)
@@ -729,9 +789,14 @@ def main(stdscr):
                          curses.color_pair(WHITE) | curses.A_DIM, x0)
 
         tgt = dictate_target()
+        blocked = dictate_blocked()
         if tgt:
             centered(stdscr, foot_y, f"dictation → {tgt}"[:cw - 4], cw,
                      curses.color_pair(MAGENTA) | curses.A_DIM, x0)
+        elif blocked:
+            centered(stdscr, foot_y,
+                     f"⚠ {blocked} — dictation disabled"[:cw - 4], cw,
+                     curses.color_pair(AMBER) | curses.A_BOLD, x0)
 
         said = d.get("text", "")
         if said and not strip:

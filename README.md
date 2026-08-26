@@ -306,6 +306,9 @@ claude-voice dictate --pane 0:0.0   # pick one (or press t in the HUD)
 Sending is **refused** unless the target pane is running `claude`. In a shell,
 a bad transcription would execute as a command.
 
+With no such pane, both modes are **disabled rather than silently useless**.
+The microphone is not opened at all, the HUD replaces its footer with `⚠ no Claude Code session — dictation disabled`, and pressing `d` or `c` flashes the same reason instead of recording into a void. Otherwise a dead setup and an unheard sentence look identical: silence. Conversation mode also watches for the session closing under it, and **holds** rather than stopping: within about three seconds it stops transcribing, the reactor stops saying `LISTENING` — it says `NOT LISTENING`, stops drawing the inward wave, and the meter goes flat, because nothing is coming in — and the banner becomes `⚠ no Claude Code session — conversation on hold`, which becomes `you are talking to nothing` while you are actually mid-sentence. Voice activity is still detected — that is the whole point, so speaking into a dead setup looks different from speaking into a live one — but nothing is transcribed, because the result has nowhere to go. Open a session again and it resumes on its own, from the next sentence; you never have to remember to switch listening back on. Nothing needs restarting when a session comes back — the HUD re-checks every couple of seconds, and every key press checks afresh.
+
 Conversation mode also gates itself while the voice is speaking, so it does not
 transcribe its own output.
 
@@ -466,7 +469,8 @@ being a thing you learn to ignore.
 
 **Dictation records but nothing arrives.** Delivery is refused unless the
 target tmux pane is running `claude`; check `claude-voice dictate --panes` and
-`~/.config/claude-voice/dictate.log`. If it records silence, the device is
+`~/.config/claude-voice/dictate.log`. `claude-voice dictate --can-send` answers
+the same question in one line, and exits non-zero when nothing can receive text. If it records silence, the device is
 wrong — `arecord -L`, and set `stt.device` by name.
 
 **The HUD goes calm while the session is still working.** The HUD watches one

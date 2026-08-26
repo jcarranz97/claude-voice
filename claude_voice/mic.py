@@ -69,7 +69,7 @@ def our_captures() -> list:
     return pids
 
 
-def mic_open() -> bool:
+def mic_open(fresh: bool = False) -> bool:
     """Is the microphone actually in use? The truth, not what we think.
 
     Two things count, and neither is "a capture stream exists":
@@ -92,7 +92,7 @@ def mic_open() -> bool:
     warning would stand there permanently with no action behind it, and a
     privacy notice that is always on is one you stop reading.
     """
-    if time.time() - _open_cache["t"] < 1.0:
+    if not fresh and time.time() - _open_cache["t"] < 1.0:
         return _open_cache["v"]
     val = False
     try:
@@ -172,6 +172,19 @@ def mic_held() -> list:
         held = []
     _held_cache.update(t=time.time(), v=held)
     return held
+
+
+def listen_stranded() -> str:
+    """Why the listening daemon is holding rather than working, or "".
+
+    Written by listen.py when there is no Claude session to deliver to. The
+    daemon stays up on purpose -- it resumes on its own when a session opens
+    -- so without this the HUD would keep drawing a working conversation.
+    """
+    try:
+        return (BASE / "listen-stranded").read_text().strip()
+    except Exception:
+        return ""
 
 
 def daemon_alive() -> bool:

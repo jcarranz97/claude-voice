@@ -90,6 +90,7 @@ todavia = "toðaβˈia"            # in case the text arrives without the accent
 thinking  = "P E N S A N D O"
 speaking  = "H A B L A N D O"
 listening = "E S C U C H A N D O"
+stranded  = "S I N   S E S I Ó N"
 ready     = "L I S T O"
 idle      = "E N   E S P E R A"
 agents    = "A G E N T E S"

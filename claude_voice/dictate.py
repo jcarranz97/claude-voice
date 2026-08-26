@@ -6,6 +6,7 @@
   dictate.py --toggle         start recording / stop and send
   dictate.py --status         current state
   dictate.py --target         the target pane as JSON (used by the HUD)
+  dictate.py --can-send       exit 0 if a Claude session can receive text
 
 Why tmux
 --------
@@ -121,6 +122,31 @@ def describe(target: str) -> str:
     return target or "(not set)"
 
 
+# Why the wording matters: "no session" and "the session you picked is gone"
+# look identical from the microphone's side -- nothing gets delivered -- but
+# they need different fixes, so they are never collapsed into one message.
+NO_SESSION = "no Claude Code session"
+STALE_TARGET = "target session is gone"
+
+
+def target_status() -> tuple:
+    """(deliverable, why-not). The single answer to "is anyone listening?".
+
+    Everything that opens the microphone asks this FIRST. Recording into a
+    void and discovering it afterwards costs a transcription and, worse, makes
+    a dead setup look exactly like one that simply did not hear you.
+    """
+    panes = claude_panes()
+    if not panes:
+        return False, NO_SESSION
+    target = cfg().get("pane")
+    if not target:
+        return False, NO_SESSION
+    if not any(p["id"] == target for p in panes):
+        return False, STALE_TARGET
+    return True, ""
+
+
 def cycle() -> str:
     """Move to the next Claude pane. Returns the new target's description."""
     panes = claude_panes()
@@ -136,15 +162,13 @@ def cycle() -> str:
 
 def deliver(text: str) -> bool:
     """Type the text into the pane and send it. Refused if it is not claude."""
-    target = cfg().get("pane")
-    if not target:
-        log("no target pane: set one with --pane")
-        return False
-    if not pane_is_claude(target):
+    ok, why = target_status()
+    if not ok:
         # This check IS the guardrail: in a shell, a bad transcription would
         # execute as a command.
-        log(f"pane {target} is not running claude: refusing to send")
+        log(f"refusing to send: {why}")
         return False
+    target = cfg().get("pane")
     try:
         # -l = literal: do not interpret the text as key names.
         subprocess.run(["tmux", "send-keys", "-t", target, "-l", text],
@@ -174,7 +198,17 @@ def recording() -> bool:
         return False
 
 
-def start() -> None:
+def start() -> bool:
+    """Open the microphone -- unless there is nothing to deliver to.
+
+    Refusing here rather than at delivery time is the whole point: a
+    transcription that cannot go anywhere is a minute of the user's breath and
+    a second of Whisper spent to produce silence.
+    """
+    ok, why = target_status()
+    if not ok:
+        log(f"not recording: {why}")
+        return False
     BASE.mkdir(parents=True, exist_ok=True)
     RECWAV.unlink(missing_ok=True)
     proc = subprocess.Popen(
@@ -184,6 +218,7 @@ def start() -> None:
         start_new_session=True)
     RECPID.write_text(str(proc.pid))
     log("recording")
+    return True
 
 
 def stop_and_send() -> None:
@@ -227,9 +262,18 @@ def main() -> int:
         if not panes:
             print("    none (is claude running outside tmux?)")
     elif arg == "--target":
-        # For the HUD: path and title are what identify the session.
+        # For the HUD: path and title are what identify the session, and
+        # ok/why are what it shows when there is no session to name.
         cur = cfg().get("pane")
-        print(json.dumps(next((p for p in claude_panes() if p["id"] == cur), {})))
+        ok, why = target_status()
+        info = next((p for p in claude_panes() if p["id"] == cur), {})
+        print(json.dumps({**info, "ok": ok, "why": why}))
+    elif arg == "--can-send":
+        # For anything that wants the answer without parsing JSON: exit 0 when
+        # a session is there, 1 when not, with the reason on stdout.
+        ok, why = target_status()
+        print(why or describe(cfg().get("pane")))
+        return 0 if ok else 1
     elif arg == "--next":
         print(f"  target: {cycle()}")
     elif arg == "--pane" and sys.argv[2:]:
@@ -239,13 +283,21 @@ def main() -> int:
         print(f"  target: {sys.argv[2]}" + ("" if ok else "   (careful: no claude there)"))
     elif arg == "--toggle":
         try:
-            stop_and_send() if recording() else start()
+            if recording():
+                stop_and_send()
+            elif not start():
+                # Non-zero so a key binding or script can react instead of
+                # assuming the microphone opened.
+                print(f"  {target_status()[1]}: dictation disabled")
+                return 1
         except Exception as e:
             log(f"ERROR: {type(e).__name__}: {e}")
             return 1
     else:
+        ok, why = target_status()
         print(f"  recording : {'yes' if recording() else 'no'}")
-        print(f"  target    : {describe(cfg().get('pane'))}")
+        print(f"  target    : {describe(cfg().get('pane'))}"
+              + ("" if ok else f"   ({why}: dictation disabled)"))
         print(f"  device    : {DEVICE}")
     return 0
 

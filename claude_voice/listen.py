@@ -64,6 +64,7 @@ COMPLETE = float(CFG.get("listen.complete", 0.55))  # probability above which it
 # COMPLETE blindly.
 MAX_UTT_S = float(CFG.get("listen.max_utterance_s", 30))
 GATE_TAIL_MS = 250              # stay deaf a little longer after speaking, for the DAC tail
+TARGET_CHECK_S = 3.0            # how often to confirm there is still a session to talk to
 
 # PipeWire node to capture from. Empty = the system default source.
 MIC_NODE = CFG.get("stt.node", "") or ""
@@ -184,6 +185,25 @@ def set_speaking(active: bool) -> None:
         pass
 
 
+def set_stranded(why: str) -> None:
+    """Publish "the microphone is on, but nothing you say is going anywhere".
+
+    Conversation mode is not turned OFF when the session closes: you may open
+    another one in a minute, and having to remember to switch listening back on
+    is exactly the friction this mode exists to remove. So it holds, and this
+    file is how the HUD knows to stop drawing a mode that looks like it works.
+    """
+    try:
+        BASE.mkdir(parents=True, exist_ok=True)
+        f = BASE / "listen-stranded"
+        if why:
+            f.write_text(why)
+        else:
+            f.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
 def gated() -> bool:
     """Am I the one talking? With headphones there is no echo, but I would
     still hear myself.
@@ -209,11 +229,48 @@ def run() -> None:
     asr = WhisperModel(ASR_MODEL, device="cpu", compute_type="int8",
                        cpu_threads=os.cpu_count() or 4)
     log(f"listening (end of turn between {FLOOR_MS:.0f} and {CEIL_MS:.0f} ms)")
+    next_check = time.time() + TARGET_CHECK_S
+    stranded = ""
+    set_stranded("")
 
     pre = deque(maxlen=int(PREROLL_MS / FRAME_MS))
     frames, speaking, silence_ms, asked = [], False, 0.0, 0.0
 
     for frame in capture():
+        # Watch the session, not just the microphone. Waiting for an
+        # undelivered sentence to notice the session is gone means talking to
+        # nothing first -- and the HUD says "listening" the whole time, which
+        # is the exact lie this is meant to stop. Polled on a clock rather
+        # than per frame: it is a tmux query, not free.
+        if time.time() >= next_check:
+            next_check = time.time() + TARGET_CHECK_S
+            ok, why = dictate.target_status()
+            if ok and stranded:
+                log("session is back: listening again")
+                stranded = ""
+                set_stranded("")
+                # Start the sentence from here. The VAD is recurrent, and
+                # half a phrase said while nobody was listening is not the
+                # beginning of the first one that will be delivered.
+                frames, speaking, silence_ms = [], False, 0.0
+                pre.clear(); vad.reset(); set_speaking(False)
+            elif not ok and why != stranded:
+                log(f"stranded: {why} -- listening, but delivering nowhere")
+                stranded = why
+                set_stranded(why)
+
+        if stranded:
+            # Keep the VAD running and nothing else. Voice activity is what
+            # tells the HUD you are mid-sentence, which is when "there is no
+            # session" is worth saying; transcription is skipped, because the
+            # result has nowhere to go.
+            was, speaking = speaking, vad(frame) > ON
+            if speaking != was:
+                set_speaking(speaking)
+            frames, silence_ms = [], 0.0
+            pre.clear()
+            continue
+
         if gated():
             # Discard anything half-captured and clear the recurrent state:
             # otherwise the first phrase after I speak comes out contaminated.
@@ -274,7 +331,12 @@ def run() -> None:
             continue
 
         log(f"[{why}] {text}")
-        dictate.deliver(text)
+        if not dictate.deliver(text):
+            # The poll above normally gets there first; this is the race where
+            # the session closed while the sentence was being transcribed.
+            stranded = dictate.target_status()[1] or "no Claude Code session"
+            log(f"stranded: undelivered ({stranded})")
+            set_stranded(stranded)
 
 
 def check() -> None:
@@ -300,6 +362,17 @@ def main() -> int:
         check()
         return 0
     BASE.mkdir(parents=True, exist_ok=True)
+
+    # Refuse before the microphone opens, not after the first sentence is
+    # transcribed and thrown away: conversation mode would otherwise listen,
+    # transcribe and discard indefinitely, looking exactly like a mode that is
+    # working but never being answered.
+    ok, why = _mod("dictate").target_status()
+    if not ok:
+        log(f"not starting: {why}")
+        print(f"  {why}: conversation disabled")
+        return 1
+
     PIDFILE.write_text(str(os.getpid()))
 
     # Without this, SIGTERM kills the process instantly, capture()'s `finally`
@@ -314,6 +387,7 @@ def main() -> int:
     finally:
         PIDFILE.unlink(missing_ok=True)
         set_speaking(False)
+        set_stranded("")
         log("stopped")
     return 0
 
