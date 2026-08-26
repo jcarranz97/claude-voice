@@ -6,6 +6,8 @@
 
 [general]
 preset = "en"
+# Named in its own language: this labels the HUD key that switches into it.
+language = "English"
 
 [tts]
 voice_model = "~/.local/share/piper-voices/en_US-amy-medium.onnx"

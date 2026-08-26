@@ -15,6 +15,10 @@ Switch
   claude-voice solo               mute just this session
   claude-voice silence            panic button: cut all sound now
   claude-voice status             is it on? is this session muted?
+  claude-voice lang               which language speaks, and what else is here
+  claude-voice lang es            switch to that language pack
+  claude-voice lang --next        cycle to the next one, like l in the HUD
+  claude-voice lang --fetch es    download that language's voice
 
 Watch
   claude-voice hud                the status window
@@ -43,7 +47,7 @@ Setup
   claude-voice hooks              print the settings.json snippet to install
   claude-voice doctor             check the install and say what is wrong
   claude-voice config             what is in effect, and where it came from
-  claude-voice build-acks         re-synthesize the cached acknowledgements
+  claude-voice build-acks [lang]  re-synthesize the cached acknowledgements
   claude-voice build-ticks        regenerate the heartbeat sounds
 
 Config lives in ~/.config/claude-voice/config.toml
@@ -81,7 +85,8 @@ case "$cmd" in
   narrate)     exec "$PY" "$PKG/narrate.py" "$@" ;;
   queue)       exec "$PY" "$PKG/audioq.py" "$@" ;;
   config)      exec "$PY" "$PKG/config.py" "$@" ;;
-  build-acks)  exec "$PY" "$PKG/voice.py" --build-acks ;;
+  lang)        exec "$PY" "$PKG/lang.py" "$@" ;;
+  build-acks)  exec "$PY" "$PKG/voice.py" --build-acks "$@" ;;
   build-ticks) exec "$PY" "$PKG/thinking.py" --build "$@" ;;
   agents)      exec "$PY" "$PKG/thinking.py" --agents "$@" ;;
   sessions)    exec "$PY" "$PKG/turn.py" "$@" ;;

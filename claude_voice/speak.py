@@ -130,7 +130,7 @@ def extract_spoken(text: str) -> str:
     return line[:int(CFG.get("tts.max_chars", 400))]
 
 
-def mixed_phonemes(ph, text: str) -> list:
+def mixed_phonemes(ph, text: str, cfg=None) -> list:
     """Primary-language phonemes for the whole line, foreign words swapped in.
 
     Phonemizing span-by-span looks obvious and is wrong twice over: the space
@@ -142,7 +142,8 @@ def mixed_phonemes(ph, text: str) -> list:
     that G2P mangles. espeak emits ' ' between words, so the segments align 1:1
     with text.split(), which is what makes the substitution safe.
     """
-    primary = CFG.primary_voice
+    cfg = cfg or CFG
+    primary = cfg.primary_voice
     # espeak splits on sentence boundaries and emits no ' ' between them, so
     # join with one or the segment count drifts from the word count and the
     # whole substitution silently falls back to the plain primary language.
@@ -153,8 +154,8 @@ def mixed_phonemes(ph, text: str) -> list:
             flat.append(" ")
         flat.extend(s)
 
-    foreign = CFG.foreign_voice
-    terms, overrides = CFG.foreign_terms, CFG.overrides
+    foreign = cfg.foreign_voice
+    terms, overrides = cfg.foreign_terms, cfg.overrides
     if not overrides and not (foreign and terms):
         return flat                      # single-language setup: nothing to do
 
@@ -204,24 +205,27 @@ def mixed_phonemes(ph, text: str) -> list:
     return out
 
 
-def synthesize(text: str, path: Path) -> bool:
+def synthesize(text: str, path: Path, cfg=None) -> bool:
+    """Speak `text` into `path`. A cfg other than the active one is how the
+    language switch warms the other preset's cache without adopting it."""
     from piper import PiperVoice, SynthesisConfig
     from piper.phonemize_espeak import EspeakPhonemizer
 
-    model = CFG.voice_model
+    cfg = cfg or CFG
+    model = cfg.voice_model
     if not model.exists():
         return False
 
     voice = PiperVoice.load(str(model))
     ph = EspeakPhonemizer()
 
-    phonemes = mixed_phonemes(ph, text)
+    phonemes = mixed_phonemes(ph, text, cfg=cfg)
     if not phonemes:
         return False
 
     ids = voice.phonemes_to_ids(phonemes)
     audio = voice.phoneme_ids_to_audio(
-        ids, SynthesisConfig(length_scale=CFG.length_scale))
+        ids, SynthesisConfig(length_scale=cfg.length_scale))
 
     # phoneme_ids_to_audio returns float32 normalized to -1..1, NOT int16.
     # Writing those bytes straight into a 16-bit WAV yields full-scale white

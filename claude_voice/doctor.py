@@ -54,10 +54,11 @@ def check_tts() -> None:
         return
     report(OK, "piper-tts", "importable")
 
-    model = CFG.voice_model
+    model, named = CFG.voice_model, CFG.voice_model_named
     if model.exists():
         mb = model.stat().st_size / 1e6
-        report(OK, "voice model", f"{model.name} ({mb:.0f} MB)")
+        stand = f" — standing in for {named.name}" if model != named else ""
+        report(OK, "voice model", f"{model.name} ({mb:.0f} MB){stand}")
     else:
         report(BAD, "voice model", f"missing: {model}",
                "download a voice from huggingface.co/rhasspy/piper-voices, "
@@ -91,9 +92,25 @@ def check_config() -> None:
     else:
         report(WARN, "config", "absent, running on defaults",
                f"write {_config.CONFIG} to change voice, language or device")
-    report(OK, "preset", f"{CFG.get('general.preset')} "
+    name, source = _config.active_preset()
+    where = {"switch": "switched with `claude-voice lang`",
+             "config": "from the config file",
+             "default": "built-in default"}[source]
+    report(OK, "preset", f"{name} — {CFG.language}, {where} "
            f"({CFG.primary_voice}"
            + (f" + {CFG.foreign_voice}" if CFG.foreign_voice else "") + ")")
+
+    # The other languages on disk, and whether pressing `l` would work. A
+    # switch that refuses is only obvious once you press it.
+    for other in (p for p in _config.presets() if p != name):
+        cfg = _config.resolve(other)
+        if cfg.voice_model.exists():
+            report(OK, f"preset {other}",
+                   f"{cfg.language} — ready, {cfg.voice_model.name}")
+        else:
+            report(WARN, f"preset {other}",
+                   f"{cfg.language}: no voice downloaded for it",
+                   f"claude-voice lang --fetch {other}")
 
 
 def _hook_files() -> list:
@@ -153,12 +170,15 @@ def check_state() -> None:
     report(OK if on else WARN, "switch", "ON" if on else "off",
            "" if on else "claude-voice on")
 
-    acks = list((BASE / "acks").glob("*.wav")) if (BASE / "acks").is_dir() else []
+    # Per preset: the cache is indexed by position, so one directory shared
+    # between languages says one phrase and logs another.
+    ack_dir = BASE / "acks" / CFG.preset
+    acks = list(ack_dir.glob("*.wav")) if ack_dir.is_dir() else []
     if acks:
-        report(OK, "cached acknowledgements", f"{len(acks)} built")
+        report(OK, "cached acknowledgements", f"{len(acks)} built for {CFG.preset}")
     elif CFG.get("ack.enabled", True):
-        report(WARN, "cached acknowledgements", "none built",
-               "claude-voice build-acks")
+        report(WARN, "cached acknowledgements", f"none built for {CFG.preset}",
+               f"claude-voice build-acks {CFG.preset}")
 
     if (BASE / "tick.wav").exists():
         report(OK, "heartbeat sounds", "built")

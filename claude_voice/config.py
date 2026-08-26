@@ -6,9 +6,32 @@ Layering, lowest priority first:
   1. DEFAULTS below            -- a working English setup, no config file needed
   2. presets/<lang>.toml       -- language pack: voice, espeak codes, phrasing
   3. ~/.config/claude-voice/config.toml   -- the user's own overrides
+  4. that file's [preset.<name>] table     -- overrides for one language only
 
 Anything absent from a layer falls through to the one under it, key by key, so
 a config file that sets a single value does not wipe out the rest.
+
+Which preset is active is not only the config file's business: BASE/"preset",
+a marker file holding a name, is the language switch (`claude-voice lang`, or
+`l` in the HUD). It sits above general.preset so the switch never has to edit
+hand-written TOML, and absent -- which is the normal case -- the config's own
+value stands.
+
+Switching inverts layers 2 and 3, and that is deliberate. A config file
+written for Spanish carries Spanish in it: the voice model, the instruction
+text, the acknowledgement phrases. Kept on top, those personal values would
+keep speaking Spanish inside an English preset, which is the failure that
+makes the switch look broken while everything else works. So while the active
+preset is NOT the one the config file names, the language pack wins over the
+config for the keys it defines -- and only those: a microphone device or a
+panel position, which no preset mentions, survives untouched.
+
+To keep a personal setting through a switch, name the language it belongs to:
+
+    [preset.en.tts]
+    voice_model = "~/.local/share/piper-voices/en_US-lessac-high.onnx"
+
+That table is the top layer, so it holds whichever way the switch is thrown.
 
 Why TOML and not JSON: the interesting values here are prose -- the spoken
 instruction, the acknowledgement phrases, a dictation glossary. Multi-line
@@ -40,6 +63,11 @@ BASE = Path(os.environ.get("CLAUDE_VOICE_HOME",
                            Path.home() / ".config" / "claude-voice"))
 
 CONFIG = BASE / "config.toml"
+# The language switch: a name, or absent. A marker file next to `enabled` and
+# `hud-history`, for the same reason those are -- state a keystroke can write
+# without a tool ever rewriting the file the user hand-edits.
+PRESET_FILE = BASE / "preset"
+PRESETS = REPO / "presets"
 
 # A complete, working configuration. If the user never writes a config file,
 # these values run -- in English, with a voice install.sh downloads by default.
@@ -47,6 +75,10 @@ DEFAULTS = {
     "general": {
         "name": "Claude",          # shown in the HUD banner
         "preset": "en",            # which presets/<name>.toml to layer in
+        # How this preset names its own language, on screen. Written in the
+        # language itself -- "Espanol", not "Spanish" -- because it labels the
+        # key that switches INTO it, and that key is read by whoever wants it.
+        "language": "English",
     },
     "tts": {
         "voice_model": "~/.local/share/piper-voices/en_US-amy-medium.onnx",
@@ -178,6 +210,41 @@ def _read(path: Path) -> dict:
         return {}
 
 
+# Quality, best first, as Piper names it in the filename.
+_QUALITY = {"high": 0, "medium": 1, "low": 2}
+
+
+def voice_like(model: Path) -> Path:
+    """A downloaded voice for the same language, when the named one is absent.
+
+    A preset has to name some voice, but what matters is a voice that speaks
+    the language. Refusing to switch to English because en_US-amy-medium.onnx
+    specifically was never downloaded -- while en_US-lessac-high.onnx sits in
+    the same directory -- is a technicality, not an answer.
+
+    Same locale before same language, then the better quality, then the name,
+    so the choice is stable rather than whatever the directory listed first.
+    A voice missing its .onnx.json is not a candidate: Piper cannot load it.
+    """
+    locale = model.name.split("-")[0]              # en_US
+    lang = locale.split("_")[0]                    # en
+    found = []
+    try:
+        candidates = list(model.parent.glob("*.onnx"))
+    except OSError:
+        return model
+    for cand in candidates:
+        if not (cand.parent / (cand.name + ".json")).exists():
+            continue
+        cloc = cand.name.split("-")[0]
+        if cloc.split("_")[0] != lang:
+            continue
+        quality = cand.name.removesuffix(".onnx").rsplit("-", 1)[-1]
+        found.append((0 if cloc == locale else 1,
+                      _QUALITY.get(quality, 3), cand.name, cand))
+    return min(found)[3] if found else model
+
+
 class Config:
     def __init__(self, data: dict):
         self._d = data
@@ -200,7 +267,25 @@ class Config:
         return self.get("general.name", "Claude")
 
     @property
+    def preset(self) -> str:
+        return self.get("general.preset", "en")
+
+    @property
+    def language(self) -> str:
+        """How this preset names its own language, for the key that picks it."""
+        return self.get("general.language", "") or self.preset
+
+    @property
     def voice_model(self) -> Path:
+        """The voice that will actually speak: the one asked for if it is on
+        disk, otherwise another one for the same language that is."""
+        named = self.path("tts.voice_model")
+        return named if named.exists() else voice_like(named)
+
+    @property
+    def voice_model_named(self) -> Path:
+        """What the configuration asked for, substitution or not. This is what
+        `--fetch` downloads and what a "missing" message should name."""
         return self.path("tts.voice_model")
 
     @property
@@ -233,27 +318,85 @@ class Config:
         return self._d
 
 
+def presets() -> list:
+    """Every language pack on disk, in a stable order -- the cycle `l` walks."""
+    try:
+        return sorted(p.stem for p in PRESETS.glob("*.toml"))
+    except OSError:
+        return []
+
+
+def configured_preset() -> str:
+    """The preset the config file itself names, switch or no switch."""
+    user = _read(CONFIG)
+    name = (user.get("general", {}) or {}).get(
+        "preset", DEFAULTS["general"]["preset"])
+    return str(name or DEFAULTS["general"]["preset"])
+
+
+def active_preset() -> tuple:
+    """(name, where it came from): "switch", "config" or "default".
+
+    A marker naming a preset that is not on disk is ignored rather than
+    obeyed: a stale switch must not take the voice down, and the config's own
+    preset is a working answer.
+    """
+    try:
+        switched = PRESET_FILE.read_text().strip()
+    except (OSError, ValueError):
+        switched = ""
+    if switched and (PRESETS / f"{switched}.toml").exists():
+        return switched, "switch"
+    name = configured_preset()
+    return name, "config" if CONFIG.exists() else "default"
+
+
+def _compose(preset_name: str, user: dict) -> "Config":
+    """The four layers, assembled. See the module docstring for the why."""
+    # [preset.<name>] is addressed to one language, so it is not part of the
+    # layer that gets stepped over when the language changes.
+    per_preset = dict((user.get("preset") or {}).get(preset_name, {}) or {})
+    user = {k: v for k, v in user.items() if k != "preset"}
+    pack = _read(PRESETS / f"{preset_name}.toml") if preset_name else {}
+
+    data = _merge({}, DEFAULTS)
+    if preset_name and preset_name != configured_preset():
+        # Switched away: the language pack outranks a config file written for
+        # the other language.
+        data = _merge(data, user)
+        data = _merge(data, pack)
+    else:
+        data = _merge(data, pack)
+        data = _merge(data, user)
+    data = _merge(data, per_preset)
+    # Whatever the layers said, the preset in effect is the one we composed.
+    data.setdefault("general", {})["preset"] = preset_name
+    return Config(data)
+
+
+def resolve(preset_name: str) -> Config:
+    """What the configuration WOULD be under that preset, without switching.
+
+    The language switch has to know whether the other voice is even on disk
+    before it commits, and refusing is only honest if the answer comes from
+    the same layering the switch would produce.
+    """
+    return _compose(preset_name, _read(CONFIG))
+
+
 _cached = None
 
 
 def load(reload: bool = False) -> Config:
-    """DEFAULTS <- preset <- user config. Cached; hooks are short-lived anyway."""
+    """The layers, in effect. Cached; hooks are short-lived anyway.
+
+    reload=True is for the one process that outlives a change: the HUD, whose
+    labels have to follow the language switch without being reopened.
+    """
     global _cached
     if _cached is not None and not reload:
         return _cached
-
-    data = _merge({}, DEFAULTS)
-
-    # The user's file picks the preset, so read it once to find out, then
-    # layer preset under it and read it again on top.
-    user = _read(CONFIG)
-    preset_name = (user.get("general", {}) or {}).get(
-        "preset", DEFAULTS["general"]["preset"])
-    if preset_name:
-        data = _merge(data, _read(REPO / "presets" / f"{preset_name}.toml"))
-    data = _merge(data, user)
-
-    _cached = Config(data)
+    _cached = _compose(active_preset()[0], _read(CONFIG))
     return _cached
 
 
@@ -262,9 +405,18 @@ def show() -> None:
     cfg = load()
     print(f"  config file : {CONFIG}{'' if CONFIG.exists() else '  (absent, using defaults)'}")
     print(f"  state dir   : {BASE}")
-    print(f"  preset      : {cfg.get('general.preset')}")
+    name, source = active_preset()
+    origin = {"switch": f"switched, {PRESET_FILE.name} file",
+              "config": "from the config file",
+              "default": "built-in default"}[source]
+    others = [p for p in presets() if p != name]
+    print(f"  preset      : {name} — {cfg.language} ({origin})"
+          + (f"; also on disk: {', '.join(others)}" if others else ""))
+    named = cfg.voice_model_named
     print(f"  voice model : {cfg.voice_model}"
-          f"{'' if cfg.voice_model.exists() else '   MISSING'}")
+          + ("" if cfg.voice_model.exists() else "   MISSING")
+          + (f"   (standing in for {named.name}, not downloaded)"
+             if cfg.voice_model != named else ""))
     print(f"  speech      : {cfg.primary_voice}"
           + (f" + {cfg.foreign_voice} for {len(cfg.foreign_terms)} terms"
              if cfg.foreign_voice else " (single language)"))

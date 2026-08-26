@@ -8,7 +8,7 @@
   voice.py silence   cut all sound right now -- the panic button
 
   voice.py --hook-context   internal: UserPromptSubmit
-  voice.py --build-acks     re-synthesize the cached acknowledgements
+  voice.py --build-acks [preset]   re-synthesize the cached acknowledgements
 
 The voice is OFF by default, on purpose.
 
@@ -32,8 +32,37 @@ import config as _config                              # noqa: E402
 CFG = _config.load()
 BASE = _config.BASE
 STATE = BASE / "enabled"
-ACK_DIR = BASE / "acks"
+ACKS = BASE / "acks"
 LAST_ACK = BASE / "last-ack"
+
+
+def ack_dir(preset: str = "") -> Path:
+    """Where the cached acknowledgements for a preset live.
+
+    Per preset, and not one directory rebuilt on every switch, for two
+    reasons. Rebuilding is seconds of synthesis, which is not what a keystroke
+    should cost; and the cache is indexed by position -- ack03.wav is the
+    fourth phrase in ack.phrases -- so a directory holding the other
+    language's wavs speaks one phrase while the spoken log records another.
+    Keeping them apart means switching back is instant and always honest.
+    """
+    _migrate_flat_acks()
+    return ACKS / (preset or CFG.preset)
+
+
+def _migrate_flat_acks() -> None:
+    """Older installs cached acks/*.wav with no preset under them. Those were
+    built for whatever the config named, so that is where they belong."""
+    try:
+        loose = list(ACKS.glob("*.wav"))
+        if not loose:
+            return
+        home = ACKS / _config.configured_preset()
+        home.mkdir(parents=True, exist_ok=True)
+        for wav in loose:
+            wav.rename(home / wav.name)
+    except OSError:
+        pass
 
 
 def _mod(name: str):
@@ -61,7 +90,7 @@ def ack_phrase(name: str) -> str:
 
 def play_ack(session: str = "") -> None:
     """Play a random cached acknowledgement, never the same one twice running."""
-    files = sorted(ACK_DIR.glob("*.wav"))
+    files = sorted(ack_dir().glob("*.wav"))
     if not files:
         return
     prev = LAST_ACK.read_text().strip() if LAST_ACK.exists() else ""
@@ -182,22 +211,31 @@ def silence_all() -> int:
     return killed
 
 
-def build_acks() -> None:
-    """Synthesize the acknowledgement cache. Run once, or when changing voice."""
+def build_acks(preset: str = "") -> None:
+    """Synthesize the acknowledgement cache. Run once, or when changing voice.
+
+    A preset name builds that language's cache instead of the active one,
+    which is how the switch warms the other side without speaking it.
+    """
     speak = _mod("speak")
-    phrases = CFG.get("ack.phrases", []) or []
+    cfg = _config.resolve(preset) if preset else CFG
+    phrases = cfg.get("ack.phrases", []) or []
     if not phrases:
         print("  no ack.phrases configured -- nothing to build")
         return
 
-    ACK_DIR.mkdir(parents=True, exist_ok=True)
-    for old in ACK_DIR.glob("*.wav"):
+    out_dir = ack_dir(preset or cfg.preset)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for old in out_dir.glob("*.wav"):
         old.unlink()
     for i, phrase in enumerate(phrases):
-        out = ACK_DIR / f"ack{i:02d}.wav"
-        if speak.synthesize(phrase, out):
+        out = out_dir / f"ack{i:02d}.wav"
+        # synthesize() reads the module-level config, so building another
+        # preset's cache means lending speak.py that preset for the duration.
+        if speak.synthesize(phrase, out, cfg=cfg):
             print(f"  {out.name}  {phrase}")
-    print(f"\n  {len(list(ACK_DIR.glob('*.wav')))} acknowledgements cached")
+    print(f"\n  {len(list(out_dir.glob('*.wav')))} acknowledgements cached "
+          f"for {out_dir.name}")
 
 
 def session_mute(session_id: str) -> Path:
@@ -248,7 +286,7 @@ def main() -> int:
         return 0
 
     if arg == "--build-acks":
-        build_acks()
+        build_acks(sys.argv[2] if sys.argv[2:] else "")
         return 0
 
     if arg in ("silence", "--silence", "shut"):

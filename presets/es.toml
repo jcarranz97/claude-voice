@@ -6,6 +6,8 @@
 
 [general]
 preset = "es"
+# En su propio idioma: es la etiqueta de la tecla que cambia a este preset.
+language = "Español"
 
 [tts]
 voice_model = "~/.local/share/piper-voices/es_MX-ald-medium.onnx"
