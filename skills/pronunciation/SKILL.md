@@ -10,8 +10,9 @@ right level of fix, and **verify it by ear with them** — not declare victory
 because the phonemes look correct.
 
 Everything is driven from the config, not from code. Rules live in
-`~/.config/claude-voice/config.toml` (which overrides the language preset in
-`presets/<lang>.toml`).
+`~/.config/claude-voice/config.toml`, which overrides the language pack. Your
+own language packs live beside it in `~/.config/claude-voice/presets/`;
+nothing that is edited by hand lives inside the install.
 
 ## 1. Identify the word
 
@@ -47,11 +48,12 @@ For `overrides`, write espeak IPA. A reliable trick is to spell the word the
 way it should be pronounced and extract the phonemes from that:
 
 ```bash
-CLAUDE_VOICE_PYTHON=... python -c "
-from piper.phonemize_espeak import EspeakPhonemizer
-p = EspeakPhonemizer()
-print(''.join(''.join(s) for s in p.phonemize('es-419', 'kiubectl')))"
+claude-voice pron diag kiubectl
 ```
+
+`diag` takes anything, real word or not, so spelling it as it should sound and
+reading the phonemes back is the short way to write an override without
+guessing.
 
 ## 4. Verify in context, not in isolation
 

@@ -1,20 +1,21 @@
 #!/usr/bin/env bash
-# Set up claude-voice: virtualenv, Piper voice, config, and a CLI on PATH.
+# Set up claude-voice: the package, a Piper voice, a config, and the caches.
 #
 #   ./install.sh                 English, default voice
 #   ./install.sh --preset es     Spanish (es_MX)
 #   ./install.sh --no-stt        skip speech-to-text (smaller install, no mic)
+#
+# Nothing here is required. `uv tool install "claude-voice[stt]"` gets you the
+# program; this script exists to also fetch a voice and warm the caches, which
+# is the difference between installed and ready.
 #
 # It does NOT edit ~/.claude/settings.json. Hooks are yours to install:
 # run `claude-voice hooks` afterwards and paste the snippet it prints.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SHARE="$HOME/.local/share/claude-voice"
-VENV="$SHARE/venv"
 VOICES="$HOME/.local/share/piper-voices"
 CONFIG_DIR="${CLAUDE_VOICE_HOME:-$HOME/.config/claude-voice}"
-BINDIR="$HOME/.local/bin"
 
 PRESET="en"
 WITH_STT=1
@@ -26,43 +27,51 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-[ -f "$HERE/presets/$PRESET.toml" ] || { echo "no such preset: $PRESET" >&2; exit 2; }
+[ -f "$HERE/claude_voice/presets/$PRESET.toml" ] || { echo "no such preset: $PRESET" >&2; exit 2; }
 
 say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 
 # --- system dependencies -----------------------------------------------------
+# Python is deliberately not among these: uv brings its own.
 say "Checking system tools"
 missing=()
-command -v aplay     >/dev/null || missing+=("alsa-utils (aplay)")
-command -v python3   >/dev/null || missing+=("python3")
-[ "$WITH_STT" = 1 ] && { command -v pw-record >/dev/null || missing+=("pipewire-utils (pw-record)"); }
-[ "$WITH_STT" = 1 ] && { command -v arecord   >/dev/null || missing+=("alsa-utils (arecord)"); }
+command -v aplay >/dev/null || missing+=("alsa-utils (aplay)")
+if [ "$WITH_STT" = 1 ]; then
+  command -v pw-record >/dev/null || missing+=("pipewire-utils (pw-record)")
+  command -v arecord   >/dev/null || missing+=("alsa-utils (arecord)")
+fi
 if [ ${#missing[@]} -gt 0 ]; then
   echo "  missing: ${missing[*]}"
-  echo "  Debian/Ubuntu:  sudo apt install alsa-utils pipewire-audio-client-libraries python3-venv"
-  echo "  Fedora:         sudo dnf install alsa-utils pipewire-utils python3"
-  echo "  Arch:           sudo pacman -S alsa-utils pipewire python"
+  echo "  Debian/Ubuntu:  sudo apt install alsa-utils pipewire-audio-client-libraries"
+  echo "  Fedora:         sudo dnf install alsa-utils pipewire-utils"
+  echo "  Arch:           sudo pacman -S alsa-utils pipewire"
   exit 1
 fi
 echo "  ok"
 
-python3 - <<'EOF' || { echo "  claude-voice needs Python 3.11+ (for tomllib)"; exit 1; }
-import sys
-raise SystemExit(0 if sys.version_info >= (3, 11) else 1)
-EOF
-
-# --- virtualenv --------------------------------------------------------------
-say "Creating the virtualenv at $VENV"
-mkdir -p "$SHARE"
-[ -d "$VENV" ] || python3 -m venv "$VENV"
-"$VENV/bin/pip" install --quiet --upgrade pip
-echo "  installing piper-tts"
-"$VENV/bin/pip" install --quiet piper-tts anthropic
-if [ "$WITH_STT" = 1 ]; then
-  echo "  installing faster-whisper + onnxruntime (this one is big)"
-  "$VENV/bin/pip" install --quiet faster-whisper onnxruntime huggingface_hub numpy
+# --- uv ----------------------------------------------------------------------
+say "Checking uv"
+if command -v uv >/dev/null; then
+  echo "  already installed: $(uv --version)"
+else
+  echo "  not found — installing from astral.sh"
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  # The installer puts it here and edits your shell rc, which does not help
+  # the rest of *this* script.
+  export PATH="$HOME/.local/bin:$PATH"
+  command -v uv >/dev/null || { echo "  uv still not on PATH — open a new shell and re-run" >&2; exit 1; }
+  echo "  ok: $(uv --version)"
 fi
-echo "  ok"
+
+# --- the package -------------------------------------------------------------
+say "Installing claude-voice"
+if [ "$WITH_STT" = 1 ]; then
+  echo "  with speech-to-text (faster-whisper and onnxruntime — this one is big)"
+  uv tool install --force "$HERE[stt]"
+else
+  echo "  text-to-speech only"
+  uv tool install --force "$HERE"
+fi
 
 # --- the voice model ---------------------------------------------------------
 MODEL_URL_BASE="https://huggingface.co/rhasspy/piper-voices/resolve/main"
@@ -85,21 +94,21 @@ fi
 
 # --- config ------------------------------------------------------------------
 say "Writing the config"
-mkdir -p "$CONFIG_DIR"
+mkdir -p "$CONFIG_DIR" "$CONFIG_DIR/presets"
 if [ -f "$CONFIG_DIR/config.toml" ]; then
   echo "  $CONFIG_DIR/config.toml exists — leaving it alone"
 else
   cat > "$CONFIG_DIR/config.toml" <<EOF
-# claude-voice — your overrides. Anything left out falls back to
-# presets/$PRESET.toml, then to the built-in defaults.
+# claude-voice — your overrides. Anything left out falls back to the language
+# pack for $PRESET, then to the built-in defaults.
 # Run \`claude-voice config\` to see what is actually in effect.
 
 [general]
 preset = "$PRESET"
 name = "Claude"          # shown in the HUD banner
 
-# The voice model is NOT pinned here on purpose. presets/$PRESET.toml already
-# names it, and a pin in this file sits above the preset -- so switching
+# The voice model is NOT pinned here on purpose. The language pack already
+# names it, and a pin in this file sits above the pack -- so switching
 # language would change everything except the voice doing the speaking.
 # Pin one per language instead, if you want your own:
 #
@@ -116,25 +125,12 @@ name = "Claude"          # shown in the HUD banner
 EOF
   echo "  wrote $CONFIG_DIR/config.toml"
 fi
-# Record the interpreter so the CLI finds it without an env var. An existing
-# venv can be reused by editing this one line.
-echo "$VENV/bin/python" > "$CONFIG_DIR/python"
-
-# --- CLI on PATH -------------------------------------------------------------
-say "Linking the CLI"
-mkdir -p "$BINDIR"
-ln -sf "$HERE/bin/claude-voice" "$BINDIR/claude-voice"
-chmod +x "$HERE/bin/claude-voice"
-echo "  $BINDIR/claude-voice -> $HERE/bin/claude-voice"
-case ":$PATH:" in
-  *":$BINDIR:"*) ;;
-  *) echo "  NOTE: $BINDIR is not on your PATH — add it to your shell rc" ;;
-esac
+echo "  your own language packs go in $CONFIG_DIR/presets/"
 
 # --- warm the caches ---------------------------------------------------------
 say "Building the acknowledgement and tick sounds"
-CLAUDE_VOICE_PYTHON="$VENV/bin/python" "$HERE/bin/claude-voice" build-acks || true
-CLAUDE_VOICE_PYTHON="$VENV/bin/python" "$HERE/bin/claude-voice" build-ticks || true
+claude-voice build-acks  || true
+claude-voice build-ticks || true
 
 say "Done."
 cat <<EOF

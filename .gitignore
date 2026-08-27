@@ -6,3 +6,6 @@ venv/
 *.onnx.json
 *.wav
 config.toml
+dist/
+*.egg-info/
+uv.lock
