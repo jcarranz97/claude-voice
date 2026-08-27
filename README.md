@@ -26,17 +26,19 @@ Everything runs on your machine. No audio leaves it.
 
 The reactor carries the state, and only the state: the instrument panel around it never changes colour, because a window whose chrome dims when nothing is happening reads as a window that is broken.
 
-**Speaking.** Amber, and the meter under it moves with the voice. The line it is saying is written underneath.
+**Speaking.** Amber, and the reactor moves to the voice itself — it swells on a vowel, spikes on a stressed syllable and falls into the gaps between words, so a two-word answer and a long one no longer look the same. The line it is saying is written underneath.
 
 ![Speaking](docs/hud-speaking.jpg)
 
-**Listening.** Conversation mode is armed — the dashed ring — and you are talking right now. The microphone badge has its own colour, because the ear being open is not a state of Claude's, and confusing the two is how you end up talking to a window that stopped listening ten minutes ago.
+**Listening.** Conversation mode is armed — the dashed ring — and you are talking right now, with the reactor following how loudly. The microphone badge has its own colour, because the ear being open is not a state of Claude's, and confusing the two is how you end up talking to a window that stopped listening ten minutes ago.
 
 ![Listening](docs/hud-listening.jpg)
 
 **Armed and quiet.** The same ring, the badge reading `ready to listen`. This is the state that used to be invisible: microphone open, nothing arriving, indistinguishable from the mode being off.
 
 ![Conversation mode, waiting](docs/hud-conversation.jpg)
+
+**How it follows the voice.** The two directions are not the same problem, and only one of them is hard. A line being spoken is a finished file before a sample of it is played, so its shape is known in advance: the player measures it once, publishes the envelope with the moment playback started, and every window draws it off the clock. Nothing is streamed and nothing can drift — a window opened mid-sentence catches up on the right syllable. The microphone has no such luxury, so its level is published as it is heard, about twenty-five times a second, and the reactor rises fast and falls slowly the way an ear does rather than the way a graph does. Both are advisory: a window that cannot read either still animates, it just animates blind, which is what it did before.
 
 **Agents.** Waiting on subagents looks the same as thinking from the inside, but it is not the same thing — if agents are out, the wait has an owner. Each one gets a small reactor of its own, in orbit around the main one, so the count is something you read rather than something you tally; the panel beside it names what each is doing.
 

@@ -22,7 +22,6 @@ import os
 import subprocess
 import sys
 import time
-import wave
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -136,19 +135,37 @@ def ensure_player() -> None:
 
 
 def _set_state(state: str, text: str = "", secs: float = 0.0,
-               session: str = "") -> None:
+               session: str = "", env=None, t0: float = 0.0) -> None:
     """The state of the SPEAKER, which is global on purpose: there is one pair
     of them. `session` says whose line it is, so the HUD can decide whether the
     window it is watching is the one talking. What each session is DOING lives
-    in turn.py, one file each."""
+    in turn.py, one file each.
+
+    `env` and `t0` are the shape of the line and the moment it started: the
+    HUDs read them off the clock, so the reactor moves with the syllables
+    instead of on a timer of its own. They are written once per utterance --
+    a level streamed twenty-five times a second through a state file would be
+    twenty-five chances to catch a half-written one.
+    """
     try:
         BASE.mkdir(parents=True, exist_ok=True)
         (BASE / "state.json").write_text(json.dumps({
             "state": state, "text": text,
             "until": time.time() + secs if secs else 0, "ts": time.time(),
-            "session": session or ""}))
+            "session": session or "",
+            "env": env or [], "t0": t0, "step": _level().STEP}))
     except Exception:
         pass
+
+
+def _level():
+    """level.py, loaded the way every module here loads its neighbours."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "level", Path(__file__).resolve().parent / "level.py")
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
 
 
 def play_loop() -> int:
@@ -181,18 +198,22 @@ def play_loop() -> int:
                 meta_path.unlink(missing_ok=True)
                 continue
 
-            secs = 0.0
+            secs, env = 0.0, []
             try:
-                with wave.open(str(wav)) as w:
-                    secs = w.getnframes() / w.getframerate()
+                # The duration and the shape come off the same read. It costs
+                # about half a millisecond per second of audio, which is paid
+                # once, here, rather than by every window on every frame.
+                secs, env = _level().envelope(wav)
             except Exception:
                 pass
 
-            _set_state("speaking", text, secs, owner)
             try:
                 proc = subprocess.Popen(["aplay", "-q", str(wav)],
                                         stdout=subprocess.DEVNULL,
                                         stderr=subprocess.DEVNULL)
+                # After the spawn, not before it: t0 is meant to be the moment
+                # sound starts, and forking is the slowest part of getting there.
+                _set_state("speaking", text, secs, owner, env, time.time())
                 NOWFILE.write_text(str(proc.pid))
                 proc.wait()
             except Exception:

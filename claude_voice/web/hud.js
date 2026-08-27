@@ -16,6 +16,10 @@ const $ = (id) => document.getElementById(id);
 
 let snap = null;
 let flashUntil = 0;
+/* The microphone level, as last published. Speech arrives here about twenty
+ * times a second and the page repaints sixty, so it is a target to move
+ * towards rather than a value to draw. */
+let heard = 0;
 
 /* --- the window itself -------------------------------------------------
  *
@@ -68,6 +72,9 @@ function windowControls() {
 
 function connect() {
   const es = new EventSource(`/events?token=${TOKEN}`);
+  // Its own event, because it arrives far more often than everything else
+  // and none of the rest of the window has to be touched when it does.
+  es.addEventListener("level", (e) => { heard = parseFloat(e.data) || 0; });
   es.onmessage = (e) => {
     snap = JSON.parse(e.data);
     if ($("boot")) $("boot").remove();
@@ -79,6 +86,7 @@ function connect() {
     // rather than freezing on the last frame, which reads as a live HUD.
     document.body.dataset.state = "voice_off";
     $("mode").textContent = "disconnected";
+    heard = 0;                     // nothing is being heard down a dead pipe
   };
 }
 
@@ -369,17 +377,62 @@ const sats = $("satellites");
 const wave = $("wave").getContext("2d");
 
 /* Lobes, wobble and spin per state -- the same distinctions the terminal
-   HUD drew with rings that breathed, spun or pulsed. */
+   HUD drew with rings that breathed, spun or pulsed. `live` is how much of
+   the shape the voice is allowed to take over when there is a voice: the two
+   states that HAVE one give away most of it, and the rest keep their clock,
+   because nothing is coming in to move them. */
 const SHAPE = {
-  thinking:  { lobes: 11, wob: 7,  spin: 0.55, breathe: 2,  bars: 0.55 },
-  agents:    { lobes: 13, wob: 9,  spin: 1.10, breathe: 2,  bars: 0.75 },
-  speaking:  { lobes: 9,  wob: 12, spin: 0.18, breathe: 7,  bars: 1.00 },
-  listening: { lobes: 10, wob: 14, spin: -0.4, breathe: 5,  bars: 0.95 },
-  stranded:  { lobes: 9,  wob: 1,  spin: 0,    breathe: 0,  bars: 0.04 },
-  ready:     { lobes: 9,  wob: 5,  spin: 0.12, breathe: 4,  bars: 0.28 },
-  idle:      { lobes: 9,  wob: 4,  spin: 0.08, breathe: 5,  bars: 0.22 },
-  voice_off: { lobes: 9,  wob: 2,  spin: 0.03, breathe: 3,  bars: 0.08 },
+  thinking:  { lobes: 11, wob: 7,  spin: 0.55, breathe: 2,  bars: 0.55, live: 0 },
+  agents:    { lobes: 13, wob: 9,  spin: 1.10, breathe: 2,  bars: 0.75, live: 0 },
+  speaking:  { lobes: 9,  wob: 6,  spin: 0.18, breathe: 3,  bars: 0.30, live: 1 },
+  listening: { lobes: 10, wob: 7,  spin: -0.4, breathe: 2,  bars: 0.25, live: 1 },
+  stranded:  { lobes: 9,  wob: 1,  spin: 0,    breathe: 0,  bars: 0.04, live: 0 },
+  ready:     { lobes: 9,  wob: 5,  spin: 0.12, breathe: 4,  bars: 0.28, live: 0 },
+  idle:      { lobes: 9,  wob: 4,  spin: 0.08, breathe: 5,  bars: 0.22, live: 0 },
+  voice_off: { lobes: 9,  wob: 2,  spin: 0.03, breathe: 3,  bars: 0.08, live: 0 },
 };
+
+/* How much the voice moves the reactor, once it has one.
+ *
+ * The shape above is a state; this is a sentence. Loudness swells the whole
+ * ring (SWELL), spikes the lobes (SPIKE) and lights the core, so a long word
+ * and a short one no longer look the same -- which was the whole complaint:
+ * the reactor changed colour when I started talking and then animated at
+ * exactly the rate it always had. */
+const SWELL = 26;
+const SPIKE = 13;
+
+/* Attack and release. A meter that rises and falls at the same speed reads as
+ * a graph; an ear rises fast and lets go slowly, and that asymmetry is most
+ * of what makes this look like it is following the voice rather than
+ * plotting it. At 60 fps these are per-frame fractions of the distance. */
+const ATTACK = 0.5;
+const RELEASE = 0.11;
+
+let amp = 0;
+
+/* What the voice is doing at this exact instant, 0..1.
+ *
+ * While a line is being spoken the page has its whole envelope and the moment
+ * playback started, so it reads it off the clock -- sixty times a second, all
+ * of them correct, with nothing sent per frame. Otherwise it is the ear, and
+ * the ear is whatever last arrived. */
+function voiceNow() {
+  const L = snap?.level;
+  if (snap?.state === "speaking" && L?.env?.length && L.t0) {
+    const n = L.env.length;
+    let x = (Date.now() / 1000 - L.t0 - (L.lead || 0)) / (L.step || 0.04);
+    // Outside the line, silence -- not the last value held. Same rule, and
+    // the same slack at either end, as level.py: two windows drawing one
+    // sentence must not disagree about when it is over.
+    if (x <= -1 || x >= n) return 0;
+    x = Math.max(0, Math.min(n - 1, x));
+    const i = Math.floor(x);
+    if (i >= n - 1) return L.env[n - 1] / 100;
+    return (L.env[i] + (L.env[i + 1] - L.env[i]) * (x - i)) / 100;
+  }
+  return heard;
+}
 
 /* One closed periodic path. The radius is a base plus two sines that each
  * complete a whole number of turns around the circle, so the seam where the
@@ -440,13 +493,26 @@ function satellites(t, s) {
 function frame(now) {
   const t = now / 1000;
   const s = SHAPE[snap?.state] || SHAPE.idle;
-  const base = 92 + Math.sin(t * 1.1) * s.breathe;
 
-  blob.setAttribute("d", ring(0, 0, base, s, t, 0, 180));
-  fill.setAttribute("r", (46 + Math.sin(t * 1.1) * s.breathe * 0.8).toFixed(1));
+  const want = s.live ? voiceNow() : 0;
+  amp += (want - amp) * (want > amp ? ATTACK : RELEASE);
+  const v = amp * s.live;
+
+  // The wobble grows with the voice, so the ring goes from round to jagged
+  // on a stressed syllable instead of wobbling by the same amount all the
+  // way through a sentence.
+  const shape = { ...s, wob: s.wob + SPIKE * v };
+  const base = 92 + Math.sin(t * 1.1) * s.breathe + SWELL * v;
+
+  blob.setAttribute("d", ring(0, 0, base, shape, t, 0, 180));
+  blob.setAttribute("stroke-width", (3 + 2.6 * v).toFixed(2));
+  fill.setAttribute("r", (46 + Math.sin(t * 1.1) * s.breathe * 0.8 + 34 * v).toFixed(1));
   satellites(t, s);
 
-  bars(t, s.bars);
+  // The meter reads the same number as the ring, which is the point of
+  // having one under the other. Its own texture stays: a bar graph of one
+  // value is a block, and the eye reads a block as a broken meter.
+  bars(t, s.live ? 0.12 + 0.95 * v : s.bars);
   requestAnimationFrame(frame);
 }
 

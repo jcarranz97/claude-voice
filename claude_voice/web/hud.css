@@ -229,7 +229,10 @@ h2 {
 #reactor { width: min(52vh, 100%); aspect-ratio: 1; color: var(--hue); overflow: visible; }
 #blob { fill: none; stroke: var(--hue); stroke-width: 3; stroke-linejoin: round; }
 .halo { fill: none; stroke: var(--hue); stroke-opacity: .13; }
-#core-fill { transition: r .4s ease; }
+/* No transition on r: the core is driven per frame now, and a quarter of a
+   second of easing turns a syllable into a slow bloom. The smoothing that
+   remains is in the script, where it can rise faster than it falls. */
+#core-fill { }
 
 /* A subagent, drawn as a small reactor in orbit. The same shape as the
    one in the middle, thinner and dimmer, because that is the relationship:

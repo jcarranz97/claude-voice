@@ -39,6 +39,11 @@ sys.path.insert(0, str(HERE))
 import config as _config                              # noqa: E402
 import focus as _focus                                # noqa: E402
 import lang as _lang                                  # noqa: E402
+# How loud the voice is at this instant, in either direction. Both windows
+# ask the same way, for the same reason every other question here is asked
+# once: a reactor that pulses to a different number than the meter under it
+# is two instruments disagreeing about one room.
+import level as _level                                # noqa: E402
 # Every microphone question -- who has it, whether anyone is actually
 # being recorded, and how to close a capture of ours that was left
 # behind -- is answered in one place, because the watchdog on the
@@ -790,12 +795,57 @@ def snapshot() -> dict:
                      "next": other, "next_label": other_label},
         "session": {"id": tgt.get("session", "") or target_session()[0],
                     "dir": tgt.get("dir", ""), "title": tgt.get("title", "")},
+        "level": level_shape(),
         "system": system_stats(),
         "history": history_entries(),
         "labels": {k: L(k, k) for k in
                    ("history", "history_empty", "history_you", "history_said",
                     "mic_ready", "mic_hearing", "mic_deaf")},
         "ts": time.time(),
+    }
+
+
+def level_now(d: dict = None) -> float:
+    """How loud the voice is right now, 0..1, whoever is talking.
+
+    The mouth wins over the ear: while a line is playing, the envelope is
+    what to move to, and the microphone at that moment is hearing the
+    speakers rather than you. `d` is the state the caller already read --
+    the curses HUD reads it once a frame and has no reason to read it twice.
+    """
+    d = read_state() if d is None else d
+    if d.get("state") == "speaking" and d.get("env"):
+        return _level.at(d["env"], d.get("t0", 0), d.get("step", _level.STEP))
+    return _level.live()
+
+
+def ear_level() -> tuple:
+    """(anyone listening, how loud), for a caller that wants only the ear.
+
+    One stat and one short read, which is what makes it safe to ask twenty
+    times a second from a stream thread.
+    """
+    return _level.publishing(), _level.live()
+
+
+def level_shape() -> dict:
+    """The whole shape of the line being spoken, for a front end that would
+    rather interpolate it itself.
+
+    The browser gets this instead of a level: it repaints sixty times a
+    second and the state stream ticks four, so a number sent from here would
+    arrive as fifteen frames of the same value. The envelope and the moment
+    it started are enough to draw every one of those frames correctly, and
+    they are sent once per utterance rather than per frame.
+    """
+    d = read_state()
+    speaking = d.get("state") == "speaking"
+    return {
+        "env": d.get("env", []) if speaking else [],
+        "t0": d.get("t0", 0) if speaking else 0,
+        "step": d.get("step", _level.STEP),
+        "lead": _level.LEAD,
+        "live": _level.live(),
     }
 
 
