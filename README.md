@@ -412,6 +412,8 @@ CPU, memory, disk, and the graphics card's load and VRAM, named by its actual
 board — the spoken log down the left and whatever is running down the right. It is not a
 browser tab — see below for what it actually opens in.
 
+**The repo panel** names what the watched session is working on: the repository, the branch, the pull request that branch has open, and the state of its checks — how many passing, how many running, and the names of the ones that failed. It is there for the ten minutes after a push, when the only question in the room is whether the thing went green and the answer otherwise costs another window. The branch is read off disk and is always current; the rest comes from `gh` on a slow clock — about once a minute, every twelve seconds while something is still running — asked in the background, so a slow network can make that row late but can never make the window stutter. No repository, no `gh`, no pull request: the rows that have no answer are not drawn, and `hud.github = false` turns the GitHub half off entirely. The terminal HUD says the same thing on its top row.
+
 Worth an alias, since you will open it constantly:
 
 ```bash
@@ -758,6 +760,13 @@ timeout = 3.0                     # past this, the cached phrase plays instead
 
 [hud]
 required = true                   # no window open, nothing of ours runs at all
+github = true                     # the repo panel may ask gh about its pull request
+
+[hud.panels]                      # which blocks the window draws; all on by default
+system = true                     # cpu, memory, disk, gpu
+repo = true                       # repository, branch, pull request, checks
+session = true                    # where dictation goes, language, microphone
+agents = true                     # the list of running subagents
 
 [history]
 enabled = true                    # the spoken log behind the HUD's h panel
@@ -765,6 +774,18 @@ position = "left"                 # left, right or bottom of the HUD window
 cap = 400                         # lines kept per session; older ones trimmed
 keep_days = 7                     # a session silent this long is swept away
 ```
+
+**Turning blocks off.** `[hud.panels]` is how the window is made to fit the way you work. Everything is on out of the box, because a HUD that hides half of itself until you find a config file looks broken — but not everybody works in pull requests, and a panel listing subagents is noise to somebody who has never launched one:
+
+```toml
+[hud.panels]
+repo = false                      # no GitHub, no branch row, nothing asked
+agents = false                    # the list goes; the reactor still says AGENTS
+```
+
+Off is genuinely off, not hidden: with `repo = false` the branch is not read and `gh` is never called. The one thing a panel switch does not touch is the reactor, which shows the state of the work rather than a block of the window — waiting on subagents still colours it, and still says so, with the list switched off. The terminal HUD honours the same switches for the two blocks it draws. Changes take effect when the HUD is next opened.
+
+`hud.github` is a narrower switch, and the only thing in this program that talks to a network. With it on, the HUD asks `gh` about the branch the watched session is on — roughly once a minute, and once every twelve seconds while a check is still running. Set it to `false` and the panel keeps the repository and the branch, which are read off disk, and stops asking about anything else. Use this one to keep the branch and drop the network; use `hud.panels.repo` to drop the block entirely.
 
 `hud.required` is the one worth thinking about before changing. Set it to
 `false` and you get the older behaviour — the voice runs on the hooks alone and
