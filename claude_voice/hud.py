@@ -189,8 +189,15 @@ def draw_history(win, top, bottom, x0, w, scroll, said_color, mine_color) -> int
     return scroll
 
 
-def draw_reactor(win, cy, cx, t, state, color, band=None):
+def draw_reactor(win, cy, cx, t, state, color, band=None, level=0.0):
     """Rings that breathe, spin or pulse depending on state.
+
+    `level` is how loud the voice is at this instant, 0..1 -- the same number
+    the web HUD swells its ring with, and the same one the bars below use.
+    On a character grid a radius cannot grow smoothly, so loudness is spent
+    on how far OUT the pulse reaches: a quiet syllable lights the inner ring,
+    a loud one lights all three. Three rings is a coarse meter, but it is a
+    meter, and it moves with the sentence rather than with a timer.
 
     Clipped to the band (top, bottom, x0, width) so a ring never bleeds into
     the history panel, whichever edge it is on.
@@ -213,25 +220,22 @@ def draw_reactor(win, cy, cx, t, state, color, band=None):
                 bright = 1.0 - delta / arc
                 _plot(win, cy, cx, radius, a, glyph, color,
                       curses.A_BOLD if bright > 0.55 else curses.A_DIM, y0, y1, x0, x1)
-        elif state == "listening":
-            # Wave travelling INWARD: speaking sends energy out, listening
-            # draws it in. Same shape inverted, and legible at a glance.
-            phase = 1.0 - ((t * 2.6) % 1.0)
-            near = abs((radius / 7.0) - phase) < 0.30
+        elif state in ("listening", "speaking"):
+            # A pulse travelling outward while I talk and inward while you
+            # do: energy leaving, energy arriving. Which rings it is allowed
+            # to reach is the voice's to decide.
+            out = state == "speaking"
+            phase = (t * 3.4) % 1.0 if out else 1.0 - ((t * 2.6) % 1.0)
+            near = abs((radius / 7.0) - phase) < (0.28 if out else 0.30)
+            # Room for the quietest audible thing to still light the first
+            # ring: reach is 0.4 of the way out at silence, all of it at full.
+            lit = radius / 7.0 <= 0.4 + 0.6 * level
             steps = int(radius * 9)
             for i in range(steps):
                 a = 2 * math.pi * i / steps
                 _plot(win, cy, cx, radius, a, glyph, color,
-                      curses.A_BOLD if near else curses.A_DIM, y0, y1, x0, x1)
-        elif state == "speaking":
-            # radial pulse outward, like a voice wave
-            phase = (t * 3.4) % 1.0
-            near = abs((radius / 7.0) - phase) < 0.28
-            steps = int(radius * 9)
-            for i in range(steps):
-                a = 2 * math.pi * i / steps
-                _plot(win, cy, cx, radius, a, glyph, color,
-                      curses.A_BOLD if near else curses.A_DIM, y0, y1, x0, x1)
+                      curses.A_BOLD if near and lit else curses.A_DIM,
+                      y0, y1, x0, x1)
         else:
             # slow breathing
             breath = (math.sin(t * 0.9) + 1) / 2
@@ -252,16 +256,24 @@ def _plot(win, cy, cx, r, angle, glyph, color, attr, y0, y1, x0, x1):
             pass
 
 
-def draw_bars(win, y, cx, t, state, color, w, x0=0):
-    """VU-style bars. They thrash while speaking, nearly flat otherwise."""
+def draw_bars(win, y, cx, t, state, color, w, x0=0, level=0.0):
+    """VU-style bars. They follow the voice while there is one, and are nearly
+    flat otherwise.
+
+    The texture is still synthetic -- twenty-one bars of one number is a
+    block, and a block reads as a broken meter -- but its height is the real
+    level now, so the bars fall in the gaps between words.
+    """
     n = 21
     out = []
     for i in range(n):
         if state == "speaking":
             v = abs(math.sin(t * 7 + i * 0.7)) * abs(math.cos(t * 3.1 + i * 0.35))
+            v = (0.1 + 0.9 * level) * (0.45 + 0.55 * v)
         elif state == "listening":
             # slower and shallower than speaking: this is input, not output
             v = abs(math.sin(t * 4.5 + i * 0.9)) * 0.75
+            v = (0.1 + 0.9 * level) * (0.45 + 0.55 * v)
         elif state == "thinking":
             v = abs(math.sin(t * 2.2 + i * 0.55)) * 0.45
         else:
@@ -296,6 +308,7 @@ def main(stdscr):
         curses.init_pair(i, fg, -1)
 
     t0 = time.time()
+    level = 0.0
     # One transient line under the legend: the voice was silenced, the
     # language changed. Whatever it says, it says it for two seconds.
     notice_at, notice = 0.0, ""
@@ -349,6 +362,12 @@ def main(stdscr):
                 notice_at, notice = time.time(), f"· {msg} ·"
 
         d = read_state()
+        # Attack fast, release slowly -- the asymmetry of an ear rather than
+        # of a graph. The web HUD smooths the same way; the fractions differ
+        # because it repaints three times as often as this does, and a
+        # per-frame fraction is only a speed once you know the frame rate.
+        want = core.level_now(d)
+        level += (want - level) * (0.85 if want > level else 0.3)
         st = d.get("state", "idle")
         age = time.time() - d.get("ts", 0) if d.get("ts") else 1e9
         if st in ("thinking", "speaking") and age > IDLE_AFTER:
@@ -485,7 +504,7 @@ def main(stdscr):
         foot_y = rbot if strip else rbot - 3
         cy = (rtop + rbot) // 2 - 1
         cx = x0 + cw // 2
-        draw_reactor(stdscr, cy, cx, t, st, color, reactor)
+        draw_reactor(stdscr, cy, cx, t, st, color, reactor, level)
         # Centred on the reactor's own axis, not on the band: rounding the two
         # separately leaves the label half a cell off and a ring glyph peeking
         # out of its last letter.
@@ -495,7 +514,7 @@ def main(stdscr):
         except curses.error:
             pass
         draw_bars(stdscr, min(foot_y - 1, cy + 9), cx, t, st, color,
-                  x0 + cw, x0)
+                  x0 + cw, x0, level)
 
         if agents:
             # What they are doing, not just how many.

@@ -55,6 +55,13 @@ TOKEN = secrets.token_urlsafe(24)
 TICK = 0.25
 HEARTBEAT = 15.0
 
+# The microphone level, which is the one thing here that changes faster than
+# the state does. It rides the same stream as a named event, and only while
+# something is actually publishing it -- an idle window still gets one message
+# every fifteen seconds and no more. The line being SPOKEN needs none of this:
+# its whole shape is in the state, and the page draws it off the clock.
+LEVEL_TICK = 0.05
+
 # A window that has gone quiet this long is a window that was closed. Long
 # enough to survive a reload, short enough that closing the HUD closes the
 # microphone while you are still in the room.
@@ -109,12 +116,14 @@ class World:
             self.clients -= 1
             self.last_client = time.time()
 
-    def wait(self, seen):
-        """Block until the state changes, or long enough to send a heartbeat."""
+    def wait(self, seen, timeout: float = HEARTBEAT):
+        """Block until the state changes, or until the timeout. A shorter one
+        is how a stream that is also carrying levels wakes up often enough to
+        send them without ever polling the state faster than the state moves."""
         with self.cond:
             if self.seq != seen:
                 return self.seq, self.data
-            self.cond.wait(HEARTBEAT)
+            self.cond.wait(timeout)
             return self.seq, (self.data if self.seq != seen else "")
 
     def abandoned(self) -> bool:
@@ -235,16 +244,36 @@ class Handler(BaseHTTPRequestHandler):
         # EventSource expects and what closing the window produces.
         self.end_headers()
         seen = WORLD.join()
+        sent, spoke = -1.0, time.time()
         try:
             self.wfile.write(b"retry: 1000\n\n")
             self.wfile.flush()
             while not WORLD.stop.is_set():
-                seen, data = WORLD.wait(seen)
-                # A comment when nothing changed: it keeps anything in the
-                # middle from reaping the stream, and it is how this end
-                # notices a window that was closed without a FIN.
-                chunk = f"data: {data}\n\n" if data else ":\n\n"
-                self.wfile.write(chunk.encode())
+                open_ear, level = core.ear_level()
+                seen, data = WORLD.wait(seen, LEVEL_TICK if open_ear else HEARTBEAT)
+                out = f"data: {data}\n\n" if data else ""
+                if not open_ear:
+                    # The ear closed: say so once, so a page holding the last
+                    # level does not hold it forever.
+                    if sent >= 0:
+                        out += "event: level\ndata: 0\n\n"
+                    sent = -1.0
+                elif level != sent:
+                    # Named, so the page can take it without re-rendering
+                    # everything else, and only when the number has moved: a
+                    # quiet room is one message, not twenty a second of them.
+                    sent = level
+                    out += f"event: level\ndata: {level}\n\n"
+                # A comment when nothing has been said for a while: it keeps
+                # anything in the middle from reaping the stream, and it is
+                # how this end notices a window closed without a FIN. A
+                # silent room sends nothing at all, so it still needs one.
+                if not out and time.time() - spoke >= HEARTBEAT:
+                    out = ":\n\n"
+                if not out:
+                    continue
+                spoke = time.time()
+                self.wfile.write(out.encode())
                 self.wfile.flush()
         except (BrokenPipeError, ConnectionResetError, OSError):
             pass                                   # you closed the window

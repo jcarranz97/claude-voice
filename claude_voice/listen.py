@@ -40,6 +40,7 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import config as _config                              # noqa: E402
+import level as LEVEL                                 # noqa: E402
 import presence as _presence                          # noqa: E402
 
 CFG = _config.load()
@@ -66,6 +67,13 @@ COMPLETE = float(CFG.get("listen.complete", 0.55))  # probability above which it
 MAX_UTT_S = float(CFG.get("listen.max_utterance_s", 30))
 GATE_TAIL_MS = 250              # stay deaf a little longer after speaking, for the DAC tail
 TARGET_CHECK_S = 3.0            # how often to confirm there is still a session to talk to
+
+# What the HUD's reactor moves to while you talk. Tuned by ear against a
+# normal speaking voice at a normal distance: it is a picture of the room,
+# not a measurement of it, so it is allowed to clip at the top -- shouting
+# and speaking up should both look like the reactor is full.
+LEVEL_GAIN = 8.0
+LEVEL_CURVE = 0.7               # lifts the quiet half; consonants are quiet
 
 # PipeWire node to capture from. Empty = the system default source.
 MIC_NODE = CFG.get("stt.node", "") or ""
@@ -186,6 +194,29 @@ def set_speaking(active: bool) -> None:
         pass
 
 
+_level_next = 0.0
+
+
+def publish_level(frame, quiet: bool) -> None:
+    """Hand the HUDs a number to move to, about twenty-five times a second.
+
+    Throttled to the envelope's own resolution rather than written per frame:
+    thirty-one writes a second buys nothing the eye can see over twenty-five,
+    and this runs between two syllables of somebody talking. The arithmetic
+    sits behind the throttle for the same reason.
+    """
+    global _level_next
+    now = time.time()
+    if now < _level_next:
+        return
+    _level_next = now + LEVEL.STEP
+    if quiet:
+        LEVEL.publish(0.0)
+        return
+    rms = float(np.sqrt(np.mean(frame * frame)))
+    LEVEL.publish(min(1.0, (rms * LEVEL_GAIN) ** LEVEL_CURVE) if rms > 0 else 0.0)
+
+
 def set_stranded(why: str) -> None:
     """Publish "the microphone is on, but nothing you say is going anywhere".
 
@@ -238,6 +269,14 @@ def run() -> None:
     frames, speaking, silence_ms, asked = [], False, 0.0, 0.0
 
     for frame in capture():
+        # The level goes out first, before any of the branches below can
+        # `continue` past it. It is published on every path where the
+        # microphone is genuinely open -- including stranded, where the
+        # whole point is that talking to nothing must still LOOK like
+        # talking -- and silenced only while I am the one making noise.
+        mine = gated()
+        publish_level(frame, mine)
+
         # Watch the session, not just the microphone. Waiting for an
         # undelivered sentence to notice the session is gone means talking to
         # nothing first -- and the HUD says "listening" the whole time, which
@@ -280,7 +319,7 @@ def run() -> None:
             pre.clear()
             continue
 
-        if gated():
+        if mine:
             # Discard anything half-captured and clear the recurrent state:
             # otherwise the first phrase after I speak comes out contaminated.
             frames, speaking, silence_ms = [], False, 0.0
@@ -400,6 +439,7 @@ def main() -> int:
         pass
     finally:
         PIDFILE.unlink(missing_ok=True)
+        LEVEL.clear()
         set_speaking(False)
         set_stranded("")
         log("stopped")
