@@ -893,10 +893,12 @@ def main(stdscr):
         # other language with a voice on disk -- a key that can only refuse.
         other, other_label = next_language()
 
-        def legend(voice_label: str, sep: str) -> str:
-            row = [f"m: {voice_label}", "d: dictate", "c: conversation",
-                   "t: session",
-                   f"f: {'all sessions' if fstate else 'only this'}"]
+        def legend(voice_label: str, focus_label: str, sep: str) -> str:
+            # The two silencing keys sit together, in scope order: m takes the
+            # machine, f takes everything except the session t points at.
+            # Apart, f read as a view control and got pressed as one.
+            row = [f"m: {voice_label}", f"f: {focus_label}",
+                   "d: dictate", "c: conversation", "t: session"]
             if other and other != CFG.preset:
                 row.append(f"l: {other_label}")
             row += [f"h: {'hide history' if history else 'history'}", "q: quit"]
@@ -907,9 +909,13 @@ def main(stdscr):
         # the space between keys costs less than losing a key off the edge.
         full = "turn OFF and silence" if on else "turn the voice ON"
         short = "OFF, silence" if on else "voice ON"
-        for voice_label, sep in ((full, "   ·   "), (full, "  ·  "),
-                                 (full, " · "), (short, " · ")):
-            keys = legend(voice_label, sep)
+        f_full = "unmute the rest" if fstate else "mute the rest"
+        f_short = "unmute rest" if fstate else "mute rest"
+        for voice_label, focus_label, sep in (
+                (full, f_full, "   ·   "), (full, f_full, "  ·  "),
+                (full, f_full, " · "), (short, f_full, " · "),
+                (short, f_short, " · ")):
+            keys = legend(voice_label, focus_label, sep)
             if len(keys) <= w - 4:
                 break
         centered(stdscr, 3, keys, w,

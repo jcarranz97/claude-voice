@@ -290,12 +290,12 @@ running `hud.py` directly reach the same code.
 
 | key | |
 |---|---|
-| `m` / space | voice off / ON — off silences whatever is playing, instantly |
+| `m` / space | voice off / ON, for the whole machine — off silences whatever is playing, instantly |
+| `f` | mute every session except the one `t` points at, and unmute them again |
 | `l` | language: switch to the next preset, labelled in the language it gives you |
 | `d` | dictate: record, transcribe, send |
 | `c` | conversation mode: continuous listening |
 | `t` | switch which Claude session receives dictation — the voice follows it |
-| `f` | focus: only that session speaks / every session speaks again |
 | `h` | history: show/hide the spoken log beside the reactor |
 | `x` | close an orphaned microphone capture (emergency) |
 | `q` | quit the HUD (the voice keeps working) |
