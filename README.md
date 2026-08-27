@@ -3,7 +3,7 @@
 Give Claude Code a voice, an ear, and a status display — locally, with no
 cloud speech services.
 
-It hooks into Claude Code and does four things:
+It hooks into Claude Code and does five things:
 
 - **Speaks** a one-line summary at the end of every turn, in a local neural
   voice (Piper). Not the response body — a line the model writes *for the ear*.
@@ -16,10 +16,36 @@ It hooks into Claude Code and does four things:
 - **Remembers what was said out loud**, both sides, so you can read back the
   line you missed without leaving the HUD.
 
-And a HUD, in a spare terminal, so you can see all of it at a glance:
+And a HUD — a frameless window that shows all of it at a glance, and answers the questions you would otherwise ask by squinting at a terminal: is it listening, is it about to speak, is anything actually running.
+
+![The HUD while Claude is working](docs/hud-thinking.jpg)
+
+Everything runs on your machine. No audio leaves it.
+
+## What it looks like
+
+The reactor carries the state, and only the state: the instrument panel around it never changes colour, because a window whose chrome dims when nothing is happening reads as a window that is broken.
+
+**Speaking.** Amber, and the meter under it moves with the voice. The line it is saying is written underneath.
+
+![Speaking](docs/hud-speaking.jpg)
+
+**Listening.** Conversation mode is armed — the dashed ring — and you are talking right now. The microphone badge has its own colour, because the ear being open is not a state of Claude's, and confusing the two is how you end up talking to a window that stopped listening ten minutes ago.
+
+![Listening](docs/hud-listening.jpg)
+
+**Armed and quiet.** The same ring, the badge reading `ready to listen`. This is the state that used to be invisible: microphone open, nothing arriving, indistinguishable from the mode being off.
+
+![Conversation mode, waiting](docs/hud-conversation.jpg)
+
+**Agents.** Waiting on subagents looks the same as thinking from the inside, but it is not the same thing — if agents are out, the wait has an owner. Each one gets a small reactor of its own, in orbit around the main one, so the count is something you read rather than something you tally; the panel beside it names what each is doing.
+
+![Subagents running](docs/hud-agents.jpg)
+
+There is a second surface for the same HUD, drawn out of ring glyphs in a terminal, for a machine with no desktop:
 
 ```
-                        B O R R A   B O T
+                          C L A U D E
                           VOICE ON
   m: turn OFF and silence · d: dictate · c: conversation · l: Español · h: history · q: quit
 
@@ -34,7 +60,24 @@ And a HUD, in a spare terminal, so you can see all of it at a glance:
                    «Done, the tests pass.»
 ```
 
-Everything runs on your machine. No audio leaves it.
+Both read the same module, so they cannot disagree about what is on screen — only about how it is drawn.
+
+## Where it runs
+
+| | |
+|---|---|
+| **Linux** | supported |
+| **macOS** | not yet |
+| **Windows** | not yet |
+
+Linux only for now, and not by preference. The parts that are tied to it are the ones that touch the machine directly: PipeWire and ALSA for capture, `/proc` and `/sys` for the system and GPU meters, systemd for the microphone watchdog, and WebKitGTK for the window. None of that is unportable in principle; none of it is written yet.
+
+| runtime | |
+|---|---|
+| **Claude Code** | supported |
+| others | planned |
+
+The voice attaches through Claude Code's hooks — `SessionStart`, `UserPromptSubmit`, `MessageDisplay` and `Stop` — and dictation delivers into a tmux pane running `claude`. Other agent runtimes are the intended direction; today it is Claude Code.
 
 ---
 
@@ -135,7 +178,7 @@ Paste it into the `"hooks"` block of `~/.claude/settings.json` (or a project's
 
 ```bash
 claude-voice on              # off is the default, always
-claude-voice hud             # in a spare terminal
+claude-voice hud             # the status window
 ```
 
 Updating an existing install? Print the snippet again and compare — it gains hooks over time, and a missing one costs you a feature rather than breaking the voice. `claude-voice doctor` names the one you are missing and what it does.
@@ -205,7 +248,8 @@ claude-voice lang                          # which language speaks, and what els
 claude-voice lang en                       # switch to it — the same thing l does in the HUD
 claude-voice lang --fetch en               # download that language's voice first
 
-claude-voice hud                           # the status window, in a spare terminal
+claude-voice hud                           # the status window
+claude-voice hud --terminal                # ... in a terminal, for a box with no desktop
 claude-voice monitor                       # what has the microphone and speakers — anyone's
 claude-voice monitor --watch               # ... live, until you quit
 claude-voice history 20                    # the last 20 lines of this conversation
@@ -264,12 +308,16 @@ pane inherited the number.
 
 ### The HUD
 
-Open it in a terminal you can leave alone — it repaints 20 times a second and
-takes over the window:
+Open it and leave it up:
 
 ```bash
 claude-voice hud
 ```
+
+That is a frameless window: a real reactor with a real glow, system meters —
+CPU, memory, disk, and the graphics card's load and VRAM, named by its actual
+board — the spoken log down the left and whatever is running down the right. It is not a
+browser tab — see below for what it actually opens in.
 
 Worth an alias, since you will open it constantly:
 
@@ -282,6 +330,84 @@ If you had an alias pointing straight at a checkout — `python /some/path/hud.p
 path stops mattering: it resolves the interpreter and the module locations for
 you, so moving or updating the checkout cannot leave you running a stale copy.
 
+### The same HUD, in a terminal
+
+There is a second surface, drawn out of ring glyphs on a character grid:
+
+```bash
+claude-voice hud --terminal
+```
+
+It is the right one for a machine with no desktop, an ssh session, or a spare
+pane you already have open, and it is a straight downgrade anywhere else — a
+character grid cannot draw a curve.
+
+Same HUD either way. The reactor, the history, the system meters, the keys and
+every refusal come from one module (`hudcore.py`) that both windows read, so
+there is one answer to "is the microphone open", not two. Pressing `m` in the
+terminal and clicking the same button in the window run the same function.
+
+### What the window actually is
+
+Not a browser tab. The page opens in one of these, in order:
+
+| shell | what it is |
+|---|---|
+| `webview` | WebKitGTK through the system PyGObject — frameless, stays above other windows, paints in a quarter of a second |
+| `browser` | Chrome or Chromium in `--app` mode with a profile of its own, so it is a window and not a tab in the browser you are using |
+| `none` | print the address and open nothing — for a second screen, or a machine with no desktop |
+
+A frameless window has no title bar and no resize grips, so the page lends it
+both: drag the HUD's own bar to move the window, drag any edge or corner to
+resize it, double-click the bar to maximise, and the `✕` at its right closes
+the HUD — as does `q`, and `Escape`. Where you put it and how big you made it
+are written down when it closes and used again next time, so it only opens in
+the middle of the screen once.
+
+The layout is sized in `em` off one number that follows the window, so a bigger
+window is a bigger HUD rather than the same HUD with more background around it.
+Three columns hold down to the smallest window the shell will make — 720×520,
+adjustable with `hud.min_width` and `hud.min_height` — and stack into one
+column below that, which only a browser can reach.
+
+`auto` tries them in that order. Pin one with `hud.shell` in the config, or for
+one run:
+
+```bash
+claude-voice hud --shell browser
+claude-voice hud --url          # print the address, open nothing
+```
+
+The webview needs two distro packages and nothing from PyPI:
+
+```bash
+sudo apt install python3-gi gir1.2-webkit2-4.1
+```
+
+Without them it falls back to the browser window on its own, which needs
+nothing at all. Either way the install stays at two dependencies: the server is
+the standard library, the page is three files off disk, and there is no CDN, no
+bundler and no node.
+
+**The window is still the application.** The page holds an event stream open,
+and that stream is what counts as an open window: while it is up the hooks
+speak, and when you close the window the server notices the stream drop, shuts
+itself down, and takes the microphone, the heartbeat and any queued audio with
+it — exactly what closing the terminal HUD does.
+
+Two environment settings the launcher applies, and why, since both are the
+difference between a window and a bug report. `GDK_BACKEND=x11`: GNOME's
+Wayland compositor refuses "keep above" to every toolkit there is, and under
+XWayland it works. `WEBKIT_DISABLE_DMABUF_RENDERER=1`: WebKitGTK's newer
+renderer paints a blank white window on NVIDIA and on several compositors.
+
+It is locked down for a page only you can reach, because the buttons open a
+microphone and redirect the voice, and any page in any browser can aim a
+navigation at a loopback port. Actions are POST only, behind a `Host`
+allowlist, a per-run token in a custom header — which a form submission and a
+top-level navigation cannot set — and `Sec-Fetch-Site`, which page script
+cannot forge. No CORS header is ever sent.
+
 ### Without the CLI
 
 The CLI is a thin dispatcher; nothing requires it. Every module is also a
@@ -289,18 +415,19 @@ script, and runs directly under an interpreter that has `piper-tts` in it —
 which the installed tool's own interpreter does:
 
 ```bash
-uv tool run --from claude-voice python -m claude_voice.hud
+uv tool run --from claude-voice python -m claude_voice.hudweb
 ```
 
 Running from a clone works the same way, and is the shorter path when you are
 changing something:
 
 ```bash
-uv run --extra stt python claude_voice/hud.py
+uv run --extra stt python claude_voice/hudweb.py
 ```
 
 The subcommands are the same dispatch table either way; `claude-voice hud` and
-running `hud.py` directly reach the same code.
+running `hudweb.py` directly reach the same code. `hud.py` is the terminal
+surface, and reaches the same core.
 
 ### Keys in the HUD
 
@@ -314,7 +441,7 @@ running `hud.py` directly reach the same code.
 | `t` | switch which Claude session receives dictation — the voice follows it |
 | `h` | history: show/hide the spoken log beside the reactor |
 | `x` | close an orphaned microphone capture (emergency) |
-| `q` | quit the HUD (the voice keeps working) |
+| `q` | quit — and since the HUD is the application, the last window closing stops the voice, the microphone and the heartbeat with it |
 
 ### History: what was actually said
 
@@ -323,7 +450,7 @@ tells you it just said *something*, and is useless the moment the next line
 replaces it. Press `h` to open the log as a panel down the left:
 
 ```
-                        B O R R A   B O T
+                          C L A U D E
                              VOICE ON
   m: turn OFF and silence · d: dictate · c: conversation · h: hide history · q: quit
                           │
@@ -718,12 +845,14 @@ It caps itself, or `claude-voice silence` ends it now.
 
 | | |
 |---|---|
-| OS | Linux with PipeWire (PulseAudio works for playback) |
+| OS | Linux with PipeWire (PulseAudio works for playback). macOS and Windows are not supported yet |
+| Runtime | Claude Code. Other agent runtimes are planned |
 | Python | none of your own — `uv` provisions 3.11+ (`tomllib`) |
 | System | `aplay`, and for input `arecord` + `pw-record` |
 | TTS | [Piper](https://github.com/OHF-Voice/piper1-gpl) — local, neural, CPU |
 | STT | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) — local, CPU |
 | Turn-taking | [smart-turn-v3](https://huggingface.co/pipecat-ai/smart-turn-v3) |
+| Window | WebKitGTK via the system PyGObject for the frameless HUD; falls back to a Chromium app window, which needs nothing installed |
 | Optional | `tmux` for dictation; an Anthropic credential for contextual acknowledgements |
 
 The contextual acknowledgement — a one-line "Checking the disk space" spoken
@@ -756,13 +885,18 @@ claude_voice/
   ack.py                the instant acknowledgement
   audioq.py             one sound at a time, in order
   thinking.py           the heartbeat, subagent detection, pane -> session
-  hud.py                the status window
+  hudcore.py            what the HUD knows; nothing about how it is drawn
+  hud.py                the status window, in the terminal
+  hudweb.py             the same window, served to a browser engine
+  hudshell.py           the frameless window it opens in
+  web/                  the page: one html, one css, one js, no build step
   mic.py                who holds the microphone; the watchdog timer
   spokenlog.py          the log of what was said out loud, both sides
   dictate.py            push-to-talk, and delivery into tmux
   listen.py             conversation mode: VAD + turn detection
   pron.py               pronunciation workbench
   presets/              language packs that ship
+docs/                   the screenshots in this file
 skills/                 a Claude Code skill for fixing pronunciation
 
 ~/.config/claude-voice/ everything you edit: config, your own presets, state

@@ -274,6 +274,39 @@ def check_input() -> None:
             pass
 
 
+def check_window() -> None:
+    """Which window `hud --web` would get, and what it would cost to do better.
+
+    A note, never a failure: the terminal HUD needs none of this, and the
+    browser fallback needs nothing installed either. What this answers is the
+    question you would otherwise answer by opening it and squinting -- whether
+    you are getting the frameless webview or a window with a title bar.
+    """
+    sys.path.insert(0, str(HERE))
+    try:
+        import hudshell
+    except Exception as e:
+        return report(WARN, "web HUD", f"unavailable ({e})")
+
+    want = str(CFG.get("hud.shell", "auto") or "auto")
+    exe = hudshell._python_with_gi()
+    browser = next((b for b in hudshell.BROWSERS if shutil.which(b)), "")
+
+    if exe:
+        report(OK, "web HUD window", f"webview, WebKitGTK via {exe}")
+    elif browser:
+        report(WARN, "web HUD window", f"{browser} app window — a title bar, and "
+               "about three times the memory",
+               "sudo apt install python3-gi gir1.2-webkit2-4.1")
+    else:
+        report(WARN, "web HUD window", "none — the address is printed instead",
+               "sudo apt install python3-gi gir1.2-webkit2-4.1")
+
+    if want != "auto" and want not in hudshell.SHELLS:
+        report(BAD, "hud.shell", f"{want!r} is not a shell",
+               f"set hud.shell to one of: auto, {', '.join(hudshell.SHELLS)}")
+
+
 def _importable(name: str) -> bool:
     import importlib.util
     try:
@@ -292,6 +325,7 @@ def main() -> int:
     check_state()
     print()
     check_input()
+    check_window()
 
     print()
     if _failed:

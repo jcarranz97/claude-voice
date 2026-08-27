@@ -202,6 +202,22 @@ DEFAULTS = {
         "history_empty": "nothing spoken yet",
         "history_you": "you",
         "history_said": "said",
+        # The microphone badge under the reactor, while conversation mode is
+        # on. The big state word says what I am doing; this says whether the
+        # ear is open, which is a different question and the one you ask
+        # before you start talking.
+        "mic_ready": "ready to listen",
+        "mic_hearing": "hearing you",
+        "mic_deaf": "nothing is listening",
+        # The web HUD (`hud --web`) and the window it opens in.
+        #   auto     webview if PyGObject is there, else a browser app window
+        #   webview  WebKitGTK, frameless -- the one that looks like the design
+        #   browser  Chrome or Chromium in --app mode, its own profile
+        #   none     print the address and open nothing
+        "shell": "auto",
+        "on_top": True,        # keep the window above the rest; needs XWayland
+        "decorated": False,    # a title bar would be a second, worse one
+        "devtools": False,     # right-click -> Inspect, in the webview
     },
 }
 

@@ -1,0 +1,132 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>claude-voice</title>
+<link rel="stylesheet" href="/static/hud.css">
+<body>
+<div class="grid" hidden>
+
+  <!-- The bar is also the title bar: dragging it moves the window and
+       double-clicking it maximises, because a frameless window has nothing
+       else to grab. The controls opt out of that with .no-drag. -->
+  <header class="bar" id="bar">
+    <div class="lhs">
+      <span class="dot" id="dot"></span>
+      <span class="brand" id="brand">—</span>
+      <span class="mode" id="mode">standing by</span>
+    </div>
+    <div class="mid">
+      <div class="clock" id="clock">--:--</div>
+      <div class="date" id="date"></div>
+    </div>
+    <div class="rhs">
+      <span class="badge" id="badge">VOICE OFF</span>
+      <button class="win no-drag" id="close" title="close the HUD (q, or Escape)">✕</button>
+    </div>
+  </header>
+
+  <!-- Left: what the machine is doing, then what was said out loud. The
+       history is the panel that was already here; the stats are new, and
+       they sit above it because they never change height. -->
+  <section class="panel left">
+    <div class="block">
+      <h2>// system</h2>
+      <div class="meter"><label>cpu</label><div class="track"><i id="cpu-bar"></i></div><b id="cpu-val">0%</b></div>
+      <div class="meter"><label>ram</label><div class="track"><i id="mem-bar"></i></div><b id="mem-val">0%</b></div>
+      <div class="meter"><label>disk</label><div class="track"><i id="disk-bar"></i></div><b id="disk-val">0%</b></div>
+      <!-- Hidden outright when there is no readable card: three zeros look
+           like a measurement, and would be the wrong one. -->
+      <div class="meter" id="gpu-row" hidden><label>gpu</label><div class="track"><i id="gpu-bar"></i></div><b id="gpu-val">0%</b></div>
+      <div class="meter" id="vram-row" hidden><label>vram</label><div class="track"><i id="vram-bar"></i></div><b id="vram-val">0%</b></div>
+      <p class="card" id="gpu-name" hidden></p>
+      <div class="tiles">
+        <div class="tile"><b id="mem-abs">—</b><span>memory</span></div>
+        <div class="tile"><b id="disk-abs">—</b><span>free</span></div>
+        <div class="tile" id="vram-tile" hidden><b id="vram-abs">—</b><span>vram</span></div>
+        <div class="tile"><b id="load-abs">—</b><span>load</span></div>
+      </div>
+    </div>
+
+    <div class="block grow">
+      <h2 id="history-title">// history</h2>
+      <div class="log" id="history"><p class="empty" id="history-empty">nothing spoken yet</p></div>
+    </div>
+  </section>
+
+  <!-- Centre: the reactor, exactly the thing the terminal HUD drew, with the
+       glyph rings replaced by a shape that can actually be smooth. -->
+  <main class="core">
+    <svg id="reactor" viewBox="-160 -160 320 320" aria-hidden="true">
+      <defs>
+        <filter id="glow" x="-80%" y="-80%" width="260%" height="260%">
+          <feGaussianBlur stdDeviation="6" result="a"/>
+          <feGaussianBlur stdDeviation="16" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="a"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <radialGradient id="fill">
+          <stop offset="0%" stop-color="currentColor" stop-opacity=".55"/>
+          <stop offset="65%" stop-color="currentColor" stop-opacity=".18"/>
+          <stop offset="100%" stop-color="currentColor" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+      <circle class="halo" r="120"/>
+      <circle class="halo" r="96"/>
+      <!-- Only while conversation mode is armed. A dashed ring turning
+           slowly around everything else: the ear being open is not a state
+           of mine, so it does not take the reactor's own colour. -->
+      <circle class="armed" id="armed" r="138"/>
+      <circle id="core-fill" r="52" fill="url(#fill)"/>
+      <!-- One per subagent, built as they appear. -->
+      <g id="satellites"></g>
+      <path id="blob" filter="url(#glow)"/>
+    </svg>
+    <!-- Whether the ear is open, which is a different question from what I
+         am doing, and the one you ask before you start talking. -->
+    <div class="mic" id="mic" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="9" y="2" width="6" height="11" rx="3"/>
+        <path d="M5 11a7 7 0 0 0 14 0"/>
+        <path d="M12 18v3"/>
+        <path class="slash" d="M4 3l16 18"/>
+      </svg>
+      <span id="mic-word"></span>
+    </div>
+    <div class="state" id="state">standing by</div>
+    <canvas id="wave" width="600" height="48"></canvas>
+    <div class="said" id="said"></div>
+  </main>
+
+  <!-- Right: everything that can be wrong, and who is doing the work. -->
+  <section class="panel right">
+    <div class="block">
+      <h2>// session</h2>
+      <!-- Two settings, and they agree most of the time: `t` moves both. So
+           they collapse into one row when they name the same pane, and split
+           only when the difference is the thing worth seeing. -->
+      <dl class="kv">
+        <dt id="k-io-label">dictation</dt><dd id="k-io">—</dd>
+        <dt id="k-voice-label" hidden>voice</dt><dd id="k-voice" hidden></dd>
+        <dt>language</dt><dd id="k-lang">—</dd>
+        <dt>microphone</dt><dd id="k-mic">closed</dd>
+      </dl>
+    </div>
+    <div class="block grow">
+      <h2>// agents</h2>
+      <ul class="agents" id="agents"><li class="empty">none running</li></ul>
+    </div>
+    <div class="alerts" id="alerts"></div>
+  </section>
+
+  <footer class="keys">
+    <div class="ticker" id="ticker"></div>
+    <div class="row" id="keys"></div>
+  </footer>
+</div>
+
+<!-- Resize grips. A frameless window has no edges to grab, so the page
+     lends it eight -- built only when there is a shell listening, since the
+     browser fallback has a real title bar and resizes itself. -->
+<div class="grips" id="grips" hidden></div>
+
+<div class="boot" id="boot">connecting…</div>
+<script src="/static/hud.js" data-token="__TOKEN__"></script>

@@ -1,0 +1,347 @@
+/* The HUD, in a window that can draw curves.
+
+   Two colours, and the split is the whole design. --accent is the instrument
+   panel: borders, headings, meters, the grid behind everything. It never
+   changes, because a window whose chrome dims when nothing is happening reads
+   as a window that is broken.
+
+   --hue is the STATE -- thinking, speaking, listening, agents, off -- and it
+   is spent only where state belongs: the reactor, the word under it, the
+   badge. The terminal HUD carried the same six meanings in six curses colour
+   pairs, and drew its frame in none of them. */
+
+:root {
+  --bg: #04120c;
+  --grid: rgba(0, 255, 140, .045);
+  --ink: #7ef7bb;
+  --dim: rgba(126, 247, 187, .45);
+  --faint: rgba(126, 247, 187, .18);
+  --accent: #00ff88;
+  --hue: #00ff88;
+  --warn: #ffb300;
+  --panel: rgba(0, 40, 24, .28);
+  --mono: "JetBrains Mono", "Fira Code", "DejaVu Sans Mono", ui-monospace, monospace;
+}
+
+/* State colours, named after what they mean rather than what they look
+   like -- the same reason the config names the labels. */
+body[data-state="thinking"]  { --hue: #22e0ff; }
+body[data-state="agents"]    { --hue: #5b8cff; }
+body[data-state="speaking"]  { --hue: #ffb300; }
+body[data-state="listening"] { --hue: #ff5bd0; }
+body[data-state="stranded"]  { --hue: #ff7043; }
+body[data-state="ready"]     { --hue: #00ff88; }
+body[data-state="idle"]      { --hue: #00ff88; }
+body[data-state="voice_off"] { --hue: #6f8f84; }
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* Any rule that sets `display` outranks the browser's own [hidden], so a
+   flex row or a grid row asked to hide stays on screen. Everything hidden
+   here is hidden because it would otherwise be a lie -- a microphone badge
+   with the ear shut, GPU meters on a machine with no readable card -- so
+   this is stated once and forcefully. */
+[hidden] { display: none !important; }
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  /* Everything is sized in em off this one number, so making the window
+     bigger makes the HUD bigger rather than adding background. Clamped at
+     both ends: below the floor the panels stop being readable, above the
+     ceiling it turns into a poster. */
+  font: clamp(11px, 0.62vw + 5px, 17px)/1.5 var(--mono);
+  height: 100vh;
+  overflow: hidden;
+  letter-spacing: .04em;
+  /* The grid behind everything, and a vignette so the corners fall away. */
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px),
+    radial-gradient(ellipse at 50% 45%, rgba(0, 255, 140, .05), transparent 65%);
+  background-size: 34px 34px, 34px 34px, 100% 100%;
+}
+
+/* --- the window's own edges -------------------------------------------- */
+
+.grips i {
+  position: fixed; z-index: 50;
+  /* Thin enough to sit outside every panel's padding, thick enough to hit. */
+  --t: 6px; --c: 14px;
+}
+.grips i.n  { top: 0; left: var(--c); right: var(--c); height: var(--t); cursor: ns-resize; }
+.grips i.s  { bottom: 0; left: var(--c); right: var(--c); height: var(--t); cursor: ns-resize; }
+.grips i.w  { left: 0; top: var(--c); bottom: var(--c); width: var(--t); cursor: ew-resize; }
+.grips i.e  { right: 0; top: var(--c); bottom: var(--c); width: var(--t); cursor: ew-resize; }
+.grips i.nw { top: 0; left: 0; width: var(--c); height: var(--c); cursor: nwse-resize; }
+.grips i.ne { top: 0; right: 0; width: var(--c); height: var(--c); cursor: nesw-resize; }
+.grips i.sw { bottom: 0; left: 0; width: var(--c); height: var(--c); cursor: nesw-resize; }
+.grips i.se { bottom: 0; right: 0; width: var(--c); height: var(--c); cursor: nwse-resize; }
+
+.boot {
+  position: fixed; inset: 0;
+  display: grid; place-items: center;
+  color: var(--dim); letter-spacing: .3em; text-transform: uppercase;
+}
+
+.grid {
+  display: grid;
+  /* The floors are what the window can be shrunk to, so they are set from
+     the smallest window the shell allows rather than from what looks roomy.
+     Three columns hold all the way down; stacking is for a window narrower
+     than the shell will make one, which is a browser, not the HUD. */
+  grid-template-columns: minmax(196px, 25%) minmax(230px, 1fr) minmax(186px, 21%);
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas: "bar bar bar" "left core right" "foot foot foot";
+  gap: .9em;
+  padding: .8em 1.1em .7em;
+  height: 100vh;
+}
+
+/* --- the bar ---------------------------------------------------------- */
+
+.bar {
+  grid-area: bar;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  border: 1px solid var(--faint);
+  border-radius: 3px;
+  padding: .6em 1.2em;
+  background: var(--panel);
+}
+.bar .rhs { text-align: right; display: flex; align-items: center;
+            justify-content: flex-end; gap: 12px; }
+/* The bar is the window's drag handle, so nothing in it selects. */
+.bar { user-select: none; cursor: default; }
+.brand { color: var(--accent); font-weight: 700; letter-spacing: .22em; white-space: pre; }
+.mode { color: var(--dim); margin-left: 12px; text-transform: uppercase; font-size: .85em; }
+.dot {
+  display: inline-block; width: .62em; height: .62em; border-radius: 50%;
+  background: var(--hue); box-shadow: 0 0 12px var(--hue); margin-right: 10px;
+  vertical-align: 1px;
+}
+.mid { text-align: center; }
+.clock { font-size: 2em; font-weight: 700; letter-spacing: .16em; color: var(--ink); }
+.date { font-size: .77em; color: var(--dim); letter-spacing: .3em; text-transform: uppercase; }
+
+.badge {
+  border: 1px solid var(--hue); color: var(--hue);
+  padding: .3em .9em; border-radius: 2px; font-size: .85em; letter-spacing: .18em;
+}
+.badge.on { background: var(--hue); color: #04120c; font-weight: 700; }
+
+/* The one control a frameless window cannot do without. Sized like the
+   badge beside it rather than like a browser's close button: this closes
+   the application, not a tab. */
+.win {
+  padding: .25em .7em; font-size: .92em; line-height: 1.1;
+  border-color: var(--faint); color: var(--dim);
+}
+.win:hover { color: var(--warn); border-color: var(--warn); }
+
+/* --- panels ----------------------------------------------------------- */
+
+.panel {
+  display: flex; flex-direction: column; gap: .9em;
+  /* Both needed. min-height lets the grid track shrink below its content;
+     overflow decides what happens when it does -- clipped, rather than
+     spilling over the footer, which is what a window dragged smaller than
+     the layout can hold used to do. */
+  min-height: 0; overflow: hidden;
+}
+.left { grid-area: left; }
+.right { grid-area: right; }
+
+.block {
+  border: 1px solid var(--faint);
+  border-radius: 3px;
+  background: var(--panel);
+  padding: .9em 1em;
+  min-height: 0; overflow: hidden;
+  /* The bracket corners of the reference, drawn rather than imaged. */
+  position: relative;
+}
+.block::before, .block::after {
+  content: ""; position: absolute; width: 12px; height: 12px;
+  border: 1px solid var(--accent); opacity: .8;
+}
+.block::before { top: -1px; left: -1px; border-width: 1px 0 0 1px; }
+.block::after { bottom: -1px; right: -1px; border-width: 0 1px 1px 0; }
+.block.grow { flex: 1; display: flex; flex-direction: column; }
+
+h2 {
+  font-size: .85em; font-weight: 700; letter-spacing: .24em;
+  color: var(--accent); text-transform: uppercase; margin-bottom: .8em;
+}
+
+/* --- meters ----------------------------------------------------------- */
+
+.meter { display: grid; grid-template-columns: 3.4em 1fr 3.2em; align-items: center;
+         gap: .6em; margin: .4em 0; }
+.meter label { font-size: .85em; color: var(--dim); text-transform: uppercase; }
+.meter b { font-size: .85em; text-align: right; font-weight: 400; }
+.track { height: .55em; background: rgba(126, 247, 187, .10); border-radius: 1px; overflow: hidden; }
+.track i {
+  display: block; height: 100%; width: 0;
+  background: var(--accent); box-shadow: 0 0 8px var(--accent);
+  transition: width .5s ease;
+}
+.track i.hot { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
+
+/* auto-fit rather than a fixed three: the fourth tile appears only on a
+   machine with a readable graphics card, and should wrap, not squeeze. */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(6.2em, 1fr));
+         gap: .45em; margin-top: .9em; }
+.tile { border: 1px solid var(--faint); border-radius: 2px; padding: .6em .3em; text-align: center; }
+.tile b { display: block; font-size: 1em; color: var(--ink); }
+.tile span { font-size: .7em; color: var(--dim); letter-spacing: .16em; text-transform: uppercase; }
+
+/* The board's own name, under the meters that describe it. */
+.card { font-size: .77em; color: var(--dim); letter-spacing: .1em; margin-top: 6px;
+        text-transform: uppercase; overflow: hidden; text-overflow: ellipsis;
+        white-space: nowrap; }
+.card::before { content: "◦ "; color: var(--accent); }
+
+/* --- the spoken log --------------------------------------------------- */
+
+/* Bottom-aligned, so a short log sits where the next line will appear
+   rather than floating at the top of an empty panel. */
+.log { flex: 1; overflow-y: auto; display: flex; flex-direction: column;
+       justify-content: flex-end; scrollbar-width: thin;
+       scrollbar-color: var(--faint) transparent; }
+.log .line { flex: none; display: grid; grid-template-columns: 3.4em 2.6em 1fr;
+             gap: .45em; margin: .3em 0; align-items: baseline; }
+.log time { font-size: .77em; color: var(--faint); }
+.log .who { font-size: .77em; color: var(--dim); text-transform: uppercase; text-align: right; }
+.log .text { color: var(--dim); overflow-wrap: anywhere; }
+.log .in .text { color: #ff9ede; }        /* you */
+.log .out .text { color: var(--ink); }    /* said */
+.empty { color: var(--faint); font-style: italic; }
+
+/* --- the reactor ------------------------------------------------------ */
+
+.core {
+  grid-area: core;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-height: 0; position: relative;
+}
+#reactor { width: min(52vh, 100%); aspect-ratio: 1; color: var(--hue); overflow: visible; }
+#blob { fill: none; stroke: var(--hue); stroke-width: 3; stroke-linejoin: round; }
+.halo { fill: none; stroke: var(--hue); stroke-opacity: .13; }
+#core-fill { transition: r .4s ease; }
+
+/* A subagent, drawn as a small reactor in orbit. The same shape as the
+   one in the middle, thinner and dimmer, because that is the relationship:
+   the same work, handed out. They only exist while agents do. */
+.sat { fill: none; stroke: var(--hue); stroke-width: 1.6;
+       stroke-linejoin: round; stroke-opacity: .8; }
+
+/* --- the ear ---------------------------------------------------------- */
+
+.armed { display: none; }
+body[data-mic] .armed {
+  display: block; fill: none;
+  stroke: var(--mic); stroke-opacity: .55;
+  stroke-width: 1.5; stroke-dasharray: 3 11; stroke-linecap: round;
+  /* The circle is centred on the user-space origin, so it rotates about it.
+     `center` would resolve against the SVG viewport rather than the shape,
+     which throws the ring clean off the side of the window. */
+  transform-origin: 0 0;
+  animation: turn 24s linear infinite;
+}
+@keyframes turn { to { transform: rotate(360deg); } }
+
+/* Its own colour, not the reactor's: the microphone being open is not a
+   state of mine, and the two must not be mistaken for each other. */
+body { --mic: #ff5bd0; }
+body[data-mic="deaf"] { --mic: var(--warn); }
+
+.mic {
+  margin-top: 16px;
+  display: flex; align-items: center; gap: 9px;
+  color: var(--mic); font-size: .85em; letter-spacing: .22em;
+  text-transform: uppercase;
+}
+.mic svg {
+  width: 1.25em; height: 1.25em; fill: none; stroke: currentColor;
+  stroke-width: 1.8; stroke-linecap: round;
+}
+.mic .slash { display: none; }
+body[data-mic="deaf"] .mic .slash { display: block; }
+/* Armed and quiet breathes; actually hearing you does not -- it is lit. */
+body[data-mic="ready"] .mic { animation: breathe 2.6s ease-in-out infinite; }
+body[data-mic="hearing"] .mic { text-shadow: 0 0 14px var(--mic); }
+body[data-mic="hearing"] .mic svg { filter: drop-shadow(0 0 6px var(--mic)); }
+@keyframes breathe { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
+
+.state {
+  margin-top: .9em; font-size: 1.15em; font-weight: 700;
+  letter-spacing: .5em; text-transform: uppercase; color: var(--hue);
+  text-shadow: 0 0 18px var(--hue);
+}
+#wave { width: min(420px, 80%); height: 40px; opacity: .8; margin-top: 8px; }
+.said { margin-top: 6px; color: var(--dim); font-style: italic; text-align: center; max-width: 70%; min-height: 1.5em; }
+
+/* --- session panel ---------------------------------------------------- */
+
+.kv { display: grid; grid-template-columns: auto 1fr; gap: .4em .8em; font-size: .92em; }
+.kv dt { color: var(--dim); text-transform: uppercase; font-size: .77em; letter-spacing: .14em; padding-top: 2px; }
+.kv dd { overflow-wrap: anywhere; }
+
+.agents { list-style: none; flex: 1; overflow-y: auto; font-size: .92em; }
+.agents li { color: var(--dim); margin: 4px 0; }
+.agents li::before { content: "› "; color: var(--accent); }
+.agents li.empty::before { content: ""; }
+
+.alerts:empty { display: none; }
+.alert {
+  border: 1px solid var(--warn); color: var(--warn);
+  background: rgba(255, 179, 0, .09);
+  padding: .55em .8em; border-radius: 2px; font-size: .85em; margin-top: .6em;
+}
+.alert::before { content: "⚠ "; }
+.alert.calm { border-color: var(--faint); color: var(--dim); background: none; }
+.alert.calm::before { content: "◦ "; }
+
+/* --- the footer ------------------------------------------------------- */
+
+.keys { grid-area: foot; display: flex; flex-direction: column; gap: .6em; }
+.ticker {
+  height: 16px; overflow: hidden; white-space: nowrap;
+  color: var(--accent); opacity: .38; font-size: .77em; letter-spacing: .18em;
+}
+.row { display: flex; gap: .6em; flex-wrap: wrap; }
+button {
+  font: inherit; font-size: .85em; letter-spacing: .12em;
+  background: none; color: var(--dim);
+  border: 1px solid var(--faint); border-radius: 2px;
+  padding: .55em 1em; cursor: pointer; text-transform: uppercase;
+  transition: color .15s, border-color .15s, background .15s;
+}
+button:hover { color: var(--accent); border-color: var(--accent); }
+button.live { color: #04120c; background: var(--hue); border-color: var(--hue); font-weight: 700; }
+button kbd { font: inherit; color: var(--accent); margin-right: 7px; opacity: .9; }
+button.live kbd { color: #04120c; }
+
+/* The transient line: a refusal, or what a key just did. Louder than the
+   footer, and only for as long as it takes to read. */
+.flash {
+  position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%);
+  padding: .7em 1.5em; border-radius: 2px; font-size: .92em; letter-spacing: .1em;
+  border: 1px solid var(--accent); color: var(--accent); background: #04120c;
+  animation: rise .25s ease;
+}
+.flash.bad { border-color: var(--warn); color: var(--warn); }
+@keyframes rise { from { opacity: 0; transform: translate(-50%, 8px); } }
+
+/* Narrower than the shell's own minimum: a browser window, or a phone
+   looking at --url. One column, and the reactor gets a floor of its own so
+   it does not collapse into a line or leave a void. */
+@media (max-width: 680px) {
+  .grid { grid-template-columns: 1fr; grid-template-rows: auto auto auto auto auto;
+          grid-template-areas: "bar" "core" "left" "right" "foot"; height: auto; }
+  body { overflow-y: auto; height: auto; }
+  .core { min-height: 46vh; }
+  .block.grow { max-height: 50vh; }
+}
