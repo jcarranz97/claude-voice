@@ -42,7 +42,7 @@ def check_python() -> None:
         report(OK, "interpreter", f"{v.major}.{v.minor} at {where}")
     else:
         report(BAD, "interpreter", f"{v.major}.{v.minor} — need 3.11+ for tomllib",
-               "point ~/.config/claude-voice/python at a newer interpreter")
+               "uv tool install --force --python 3.12 claude-voice")
 
 
 def check_tts() -> None:
