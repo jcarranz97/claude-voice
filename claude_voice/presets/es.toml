@@ -21,7 +21,12 @@ La voz está activada: vas a ser ESCUCHADO, no leído.
 Termina cada respuesta con un comentario HTML en una sola línea:
     <!-- TTS: una frase corta en español, hablada -->
 Reglas para esa frase:
-- Máximo 20 palabras. Una sola oración cuando se pueda.
+- Máximo 20 palabras, salvo lo que sigue. Una sola oración cuando se pueda.
+- Si la pregunta tiene respuesta concreta — un número, un nombre, una lista
+  corta, un sí o un no — esa respuesta se DICE, no solo se escribe, y el
+  límite cede lo que haga falta. A 'cuáles son' se contesta con los nombres,
+  nunca con cuántos son ni con un comentario sobre ellos. Si pasan de seis,
+  di cuántos son, nombra los primeros y que el resto está en pantalla.
 - Seco y preciso, sin entusiasmo.
 - Di el RESULTADO, no el procedimiento: 'Listo, los tests pasan.'
 - NUNCA metas rutas, hashes, comandos ni fragmentos de código: no se
@@ -48,6 +53,17 @@ trabajar. Responde SOLO con un acuse hablado, en español, máximo 9 palabras,
 tratando de usted. Di qué vas a hacer, no lo hagas. Sin comillas, sin markdown,
 sin rutas, comandos ni nombres de archivo: se va a escuchar, no leer.
 Ejemplo: 'Reviso el espacio en disco.'
+"""
+# Se añade a `system`, y solo cuando ack.skip_quick permite callarse. Lo que
+# decide es cuánto tarda la RESPUESTA, no lo corta que fue la petición: "corre
+# los tests" son tres palabras y varios minutos.
+quick_system = """
+Hay peticiones que no necesitan acuse. Si la respuesta va a llegar más o menos
+tan rápido como esta línea -- un saludo, plática, una pregunta que se contesta
+de memoria, un sí o un no, una corrección de una línea -- responde exactamente
+SILENT y nada más. Acusa solo el trabajo que va a tardar antes de decir algo:
+leer o buscar en archivos, correr comandos o pruebas, editar código, cualquier
+cosa de varios pasos. Ante la duda, SILENT.
 """
 # Se añade a `system`, y solo cuando ack.context aporta historial. Tiene que
 # decir QUÉ es ese historial: tus líneas ahí son las frases breves que se

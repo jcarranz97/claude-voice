@@ -3,11 +3,10 @@
 #
 #   ./install.sh                 English, default voice
 #   ./install.sh --preset es     Spanish (es_MX)
-#   ./install.sh --no-stt        skip speech-to-text (smaller install, no mic)
 #
-# Nothing here is required. `uv tool install "claude-voice[stt]"` gets you the
-# program; this script exists to also fetch a voice and warm the caches, which
-# is the difference between installed and ready.
+# Nothing here is required. `uv tool install claude-voice` gets you the whole
+# program, ear included; this script exists to also fetch a voice and warm the
+# caches, which is the difference between installed and ready.
 #
 # It does NOT install system packages. It checks for them and names the ones
 # you are missing, with the command for your distribution -- running `sudo` on
@@ -22,11 +21,13 @@ VOICES="$HOME/.local/share/piper-voices"
 CONFIG_DIR="${CLAUDE_VOICE_HOME:-$HOME/.config/claude-voice}"
 
 PRESET="en"
-WITH_STT=1
 while [ $# -gt 0 ]; do
   case "$1" in
     --preset) PRESET="$2"; shift 2 ;;
-    --no-stt) WITH_STT=0; shift ;;
+    # --no-stt used to install without the ear. There is no such install any
+    # more: an environment that had it and an environment that did not looked
+    # identical until the microphone was needed.
+    --no-stt) echo "note: --no-stt is gone; speech-to-text always installs" >&2; shift ;;
     *) echo "unknown flag: $1" >&2; exit 2 ;;
   esac
 done
@@ -40,10 +41,8 @@ say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 say "Checking system tools"
 missing=()
 command -v aplay >/dev/null || missing+=("aplay")
-if [ "$WITH_STT" = 1 ]; then
-  command -v pw-record >/dev/null || missing+=("pw-record")
-  command -v arecord   >/dev/null || missing+=("arecord")
-fi
+command -v pw-record >/dev/null || missing+=("pw-record")
+command -v arecord   >/dev/null || missing+=("arecord")
 if [ ${#missing[@]} -gt 0 ]; then
   echo "  missing: ${missing[*]}"
   echo "  Debian/Ubuntu:  sudo apt install alsa-utils pipewire-bin"
@@ -87,13 +86,8 @@ fi
 
 # --- the package -------------------------------------------------------------
 say "Installing claude-voice"
-if [ "$WITH_STT" = 1 ]; then
-  echo "  with speech-to-text (faster-whisper and onnxruntime — this one is big)"
-  uv tool install --force --refresh "$HERE[stt]"
-else
-  echo "  text-to-speech only"
-  uv tool install --force --refresh "$HERE"
-fi
+echo "  voice and ear (faster-whisper and onnxruntime — this one is big)"
+uv tool install --force --refresh "$HERE"
 
 # --- the voice model ---------------------------------------------------------
 MODEL_URL_BASE="https://huggingface.co/rhasspy/piper-voices/resolve/main"

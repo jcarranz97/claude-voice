@@ -26,6 +26,18 @@ prompt alone, which is what this did before, and ack.timeout stays the backstop
 either way. --dry-run prints the line and what it cost instead of speaking it,
 which is how to compare the two.
 
+The same call also decides whether to speak at all. "Hello, how are you" is
+answered in the time an acknowledgement of it takes to play, so acknowledging
+it means hearing two voices about one nothing -- the hook's and then the
+answer's. Asked for it (ack.skip_quick), the model replies SILENT for anything
+it could simply answer, and nothing is played: not the line, not the cached
+phrase. The acknowledgement is for the turn that would otherwise open with a
+minute of silence, and that is the only turn that now gets one.
+
+A failure is not a decline. If the model errors or times out the cached phrase
+still plays, because the reason it exists -- an unexplained silence is worse
+than a vague line -- holds exactly when we could not ask.
+
 Set ack.contextual = false to skip the model entirely and always use the cache.
 """
 
@@ -50,6 +62,15 @@ BASE = _config.BASE
 # how long you held the key. History is here for the gist of the turn, so a
 # monologue contributes its opening and no more.
 MAX_LINE = 300
+
+# What the model says when the prompt does not need acknowledging. It has to be
+# distinguishable from a failure -- an empty string -- because the two want
+# opposite things: a failure falls back to the cached phrase, a decline plays
+# nothing. The word is the one the TTS instruction already uses for the same
+# idea, and the Spanish for it is accepted because a preset writing its own
+# instruction in Spanish will get it back in Spanish sooner or later.
+SILENT = "SILENT"
+_SILENT_WORDS = {"silent", "silencio"}
 
 
 def _mod(name: str):
@@ -143,7 +164,12 @@ def history(prompt: str, session: str) -> list:
 
 
 def contextual(prompt: str, session: str = "") -> str:
-    """An acknowledgement related to what was asked. Empty string on failure."""
+    """An acknowledgement related to what was asked.
+
+    SILENT if the prompt is one the answer will beat, and nothing should be
+    said at all. Empty string on failure, which is a different thing: that
+    falls back to the cached phrase, this plays nothing.
+    """
     if not CFG.get("ack.contextual", True):
         return ""
     try:
@@ -159,6 +185,11 @@ def contextual(prompt: str, session: str = "") -> str:
             messages[-1]["content"] = (messages.pop(-2)["content"] + "\n"
                                        + messages[-1]["content"])
         system = CFG.get("ack.system", "") or ""
+        if CFG.get("ack.skip_quick", True):
+            # Appended before the history note, so the last thing said is
+            # still how to read the messages that follow.
+            quick = (CFG.get("ack.quick_system", "") or "").strip()
+            system = f"{system.strip()}\n\n{quick}".strip() if quick else system
         if past:
             # What that history IS has to be said, or the spoken lines read as
             # full answers and the mis-transcriptions read as intended.
@@ -172,6 +203,8 @@ def contextual(prompt: str, session: str = "") -> str:
         )
         text = "".join(b.text for b in r.content if b.type == "text").strip()
         text = text.strip('"“” ').replace("\n", " ")
+        if _bare(text) in _SILENT_WORDS:
+            return SILENT
         # A long acknowledgement stops being an acknowledgement.
         if not text or len(text.split()) > max_words + 4:
             return ""
@@ -226,7 +259,11 @@ def main() -> int:
         start = time.perf_counter()
         text = contextual(prompt, session) if prompt else ""
         ms = (time.perf_counter() - start) * 1000
-        print(f'  {text or "(nothing said -- the cached phrase would play)"}')
+        if text == SILENT:
+            said = "(silent -- the answer beats an acknowledgement of it)"
+        else:
+            said = text or "(nothing said -- the cached phrase would play)"
+        print(f"  {said}")
         print(f"  {ms:.0f} ms, {turns} turns of history"
               + (f", session {session[:8]}" if session
                  else " -- no conversation to read"))
@@ -236,6 +273,8 @@ def main() -> int:
 
     wav = None
     text = contextual(prompt, session) if prompt else ""
+    if text == SILENT:
+        return 0                     # asked and answered: say nothing at all
     if text:
         speak = _mod("speak")
         cand = Path(tempfile.gettempdir()) / f"cv-ack-ctx-{abs(hash(text)) % 10**8}.wav"
