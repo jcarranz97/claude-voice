@@ -55,7 +55,6 @@ except ModuleNotFoundError:          # Python 3.10 and older
     tomllib = None
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parent
 
 # Everything mutable lives here: state, logs, queue, cached acks, tuned values.
 # Overridable so several profiles can coexist on one machine.
@@ -67,7 +66,12 @@ CONFIG = BASE / "config.toml"
 # `hud-history`, for the same reason those are -- state a keystroke can write
 # without a tool ever rewriting the file the user hand-edits.
 PRESET_FILE = BASE / "preset"
-PRESETS = REPO / "presets"
+# Language packs ship inside the package; anything hand-written lives in the
+# config directory and shadows a bundled pack of the same name. The install is
+# then replaceable without taking someone's own languages with it -- the same
+# rule the HUD faces and themes follow: what ships is an example, yours wins.
+BUNDLED_PRESETS = HERE / "presets"
+USER_PRESETS = BASE / "presets"
 
 # A complete, working configuration. If the user never writes a config file,
 # these values run -- in English, with a voice install.sh downloads by default.
@@ -327,12 +331,25 @@ class Config:
         return self._d
 
 
+def preset_path(name: str) -> Path:
+    """Where a language pack lives. Yours shadows the one that ships."""
+    mine = USER_PRESETS / f"{name}.toml"
+    return mine if mine.exists() else BUNDLED_PRESETS / f"{name}.toml"
+
+
 def presets() -> list:
-    """Every language pack on disk, in a stable order -- the cycle `l` walks."""
-    try:
-        return sorted(p.stem for p in PRESETS.glob("*.toml"))
-    except OSError:
-        return []
+    """Every language pack on disk, in a stable order -- the cycle `l` walks.
+
+    Both directories, deduplicated by name: a pack shadowing a bundled one is
+    the same language, not a second entry in the cycle.
+    """
+    names = set()
+    for d in (BUNDLED_PRESETS, USER_PRESETS):
+        try:
+            names.update(p.stem for p in d.glob("*.toml"))
+        except OSError:
+            pass
+    return sorted(names)
 
 
 def configured_preset() -> str:
@@ -354,7 +371,7 @@ def active_preset() -> tuple:
         switched = PRESET_FILE.read_text().strip()
     except (OSError, ValueError):
         switched = ""
-    if switched and (PRESETS / f"{switched}.toml").exists():
+    if switched and preset_path(switched).exists():
         return switched, "switch"
     name = configured_preset()
     return name, "config" if CONFIG.exists() else "default"
@@ -366,7 +383,7 @@ def _compose(preset_name: str, user: dict) -> "Config":
     # layer that gets stepped over when the language changes.
     per_preset = dict((user.get("preset") or {}).get(preset_name, {}) or {})
     user = {k: v for k, v in user.items() if k != "preset"}
-    pack = _read(PRESETS / f"{preset_name}.toml") if preset_name else {}
+    pack = _read(preset_path(preset_name)) if preset_name else {}
 
     data = _merge({}, DEFAULTS)
     if preset_name and preset_name != configured_preset():

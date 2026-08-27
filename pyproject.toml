@@ -1,0 +1,55 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "claude-voice"
+version = "0.1.0"
+description = "A local voice, an ear and a HUD for Claude Code. No cloud speech services."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Juan Carranza" }]
+keywords = ["tts", "stt", "piper", "whisper", "claude-code", "voice"]
+# tomllib, which the config layering is built on.
+requires-python = ">=3.11"
+
+classifiers = [
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+
+# Speaking is the whole point, so Piper is not optional. anthropic is here
+# rather than in an extra because the acknowledgement and the end-of-turn
+# question are part of the voice, not part of the ear.
+dependencies = [
+    "piper-tts>=1.7.0",
+    "anthropic>=0.40",
+]
+
+[project.optional-dependencies]
+# The ear. Most of the install, and useless without a microphone -- which is
+# why `install.sh --no-stt` existed before this was expressible as an extra.
+stt = [
+    "faster-whisper>=1.1",
+    "onnxruntime>=1.17",
+    "huggingface_hub>=0.24",
+    "numpy>=1.26",
+]
+
+[project.urls]
+Homepage = "https://github.com/jcarranz97/claude-voice"
+Issues = "https://github.com/jcarranz97/claude-voice/issues"
+
+[project.scripts]
+claude-voice = "claude_voice.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["claude_voice"]
+
+[tool.hatch.build.targets.sdist]
+include = ["claude_voice", "README.md", "LICENSE", "install.sh", "skills"]

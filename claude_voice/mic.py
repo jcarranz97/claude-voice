@@ -25,6 +25,7 @@ HUD and outside any session, and it survives all of them.
 
 import json
 import subprocess
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -443,6 +444,20 @@ def report() -> int:
 UNIT = "claude-voice-mic"
 
 
+def _exec_start() -> str:
+    """What the timer should run.
+
+    The console script, when there is one -- it survives an upgrade, where a
+    path into the environment that generated this unit may not. A watchdog
+    that stopped running is the worst kind of broken: it looks exactly like
+    good news. Falling back to this file keeps a checkout working.
+    """
+    cli = shutil.which("claude-voice")
+    if cli:
+        return f"{cli} mic --once"
+    return f"{sys.executable} {Path(__file__).resolve()} --once"
+
+
 def _units() -> tuple:
     """The service and timer, generated rather than shipped as files.
 
@@ -470,7 +485,7 @@ Type=oneshot
 # tick after a boot -- and a watchdog whose notifications go nowhere is worse
 # than no watchdog, because it looks like good news.
 Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus
-ExecStart={sys.executable} {Path(__file__).resolve()} --once
+ExecStart={_exec_start()}
 """
     timer = f"""[Unit]
 Description=claude-voice: check every {every}s for a microphone left open

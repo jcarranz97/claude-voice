@@ -124,8 +124,13 @@ def _hook_files() -> list:
 
 
 def check_hooks() -> None:
-    wanted = {"UserPromptSubmit": "voice.py", "Stop": "speak.py",
-              "MessageDisplay": "narrate.py", "SessionStart": "thinking.py"}
+    # Two shapes count as installed: the console script, which carries no
+    # paths and survives a reinstall, and the older form naming a module file
+    # directly. Both work; only the second can rot when a checkout moves.
+    wanted = {"UserPromptSubmit": ("voice.py", "user-prompt-submit"),
+              "Stop": ("speak.py", "stop"),
+              "MessageDisplay": ("narrate.py", "message-display"),
+              "SessionStart": ("thinking.py", "session-start")}
     # What is lost when one of the two soft ones is missing. Neither stops the
     # voice, so neither is worth a red line -- but "not installed" alone tells
     # nobody whether it matters.
@@ -142,8 +147,10 @@ def check_hooks() -> None:
             for g in groups:
                 for h in g.get("hooks", []):
                     cmd = h.get("command", "")
-                    for ev, script in wanted.items():
-                        if ev == event and script in cmd:
+                    for ev, (script, slug) in wanted.items():
+                        if ev != event:
+                            continue
+                        if script in cmd or f"hook {slug}" in cmd:
                             found[ev] = (cmd, label)
 
     if not found:
@@ -151,7 +158,7 @@ def check_hooks() -> None:
                "claude-voice hooks   (then paste into ~/.claude/settings.json)")
         return
 
-    for ev, script in wanted.items():
+    for ev, (script, slug) in wanted.items():
         if ev not in found:
             why = soft.get(ev)
             report(WARN if why else BAD, f"hook {ev}",
@@ -159,16 +166,19 @@ def check_hooks() -> None:
                    "claude-voice hooks")
             continue
         cmd, label = found[ev]
-        # The path in the hook is absolute and frozen at install time, so a
-        # moved checkout is the single most common way this breaks.
+        # A path frozen at install time is the single most common way this
+        # breaks, so say so specifically rather than reporting it missing.
         target = next((tok for tok in cmd.split()
                        if tok.endswith(".py")), "")
         if target and not Path(target).exists():
             report(BAD, f"hook {ev}", f"points at a missing file: {target}",
                    "claude-voice hooks   (the checkout moved)")
+        elif target:
+            report(WARN, f"hook {ev}",
+                   f"{Path(target).name} by path  [{label} settings]",
+                   "claude-voice hooks   (the path-free form survives moves)")
         else:
-            report(OK, f"hook {ev}",
-                   f"{Path(target).name if target else cmd[:40]}  [{label} settings]")
+            report(OK, f"hook {ev}", f"claude-voice hook {slug}  [{label} settings]")
 
 
 def check_state() -> None:
