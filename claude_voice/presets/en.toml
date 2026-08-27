@@ -23,7 +23,12 @@ Voice output is ON: the user will HEAR this response, not read it.
 End every response with a single-line HTML comment:
     <!-- TTS: one short spoken sentence -->
 Rules for that sentence:
-- 20 words maximum. One sentence where possible.
+- 20 words maximum, except as below. One sentence where possible.
+- If the question has a concrete answer — a number, a name, a short list, a
+  yes or no — that answer is SPOKEN, not merely written, and the limit gives
+  way by as much as it takes. "Which ones?" is answered with the names,
+  never with how many there are or a remark about them. Past six, say how
+  many, name the first few, and that the rest is on screen.
 - Dry and precise. No enthusiasm, no filler.
 - State the RESULT, not the procedure: "Done, the tests pass."
 - NEVER include paths, hashes, commands or code: they are unintelligible
@@ -52,6 +57,17 @@ to START working. Reply with ONLY a spoken acknowledgement, in English, at most
 9 words. Say what you are about to do, do not do it. No quotes, no markdown, no
 paths, commands or filenames: this will be heard, not read.
 Example: "Checking the disk space."
+"""
+# Added to `system`, and only when ack.skip_quick lets the call decline. The
+# test is how long the ANSWER takes, not how short the request was: "run the
+# tests" is four words and several minutes.
+quick_system = """
+Some requests do not need acknowledging. If the answer will arrive about as
+fast as this line would -- a greeting, small talk, a question answered from
+memory, a yes or no, a one-line correction -- reply with exactly SILENT and
+nothing else. Acknowledge only work that will take a while before anything is
+said back: reading or searching files, running commands or tests, editing code,
+anything with several steps in it. When in doubt, SILENT.
 """
 # Added to `system`, and only when ack.context gave the call some history. It
 # has to say what that history IS: the assistant lines in it are the short

@@ -110,6 +110,15 @@ on, a hook injects an instruction telling the model to end each response with
 marker, no sound. The model writes for the ear on purpose — result, not
 procedure; "the config file", not the path.
 
+**A summary of an answer is not an answer.** Writing for the ear pulls towards
+the gist, and the gist is wrong when the question had an exact answer in it.
+Ask which services failed to start and the screen lists three names while the
+voice says "three, one more than yesterday" — true, and useless to somebody who
+asked *which*. So the instruction overrides its own word limit for a concrete
+answer: a number, a name, a short list, a yes or no gets said out loud, at
+whatever length that takes. Past six items it says how many, names the first
+few, and hands the rest to the screen — the one thing a screen is better at.
+
 **The switch controls both ends, which is what makes it cheap.** While the
 voice is off the hook injects nothing, so the model never writes the marker and
 you spend no tokens on spoken summaries nobody will hear. Turning it on is what
@@ -128,6 +137,17 @@ dictation got wrong was repeated with total confidence, because there was
 nothing to notice it against. It now reads the last `ack.context` turns of the
 spoken log first, which is enough to name the actual work and to quietly read
 "bump" where the microphone heard "pump".
+
+**And it decides whether to speak at all.** Say hello and the answer arrives in
+about the time an acknowledgement of it takes to play, so you were told twice
+that nothing was happening. The same call now answers `SILENT` for anything it
+could simply answer — a greeting, a yes or no, a question with no work behind
+it — and nothing plays: not the line, not the cached phrase. What still gets an
+acknowledgement is the turn that would otherwise open with a minute of silence,
+which is the turn it was written for. The test is how long the *answer* takes,
+not how short the request was: "run the tests" is three words and several
+minutes. A failed call is not a decline — if the model times out the cached
+phrase plays as before. `ack.skip_quick = false` acknowledges every prompt.
 
 **Per session, except what is genuinely shared.** You will have several
 sessions open, and a machine can be running a bot on the same hooks. What a

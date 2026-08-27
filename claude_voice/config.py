@@ -126,9 +126,16 @@ DEFAULTS = {
         # exactly the old behaviour -- and every turn is tokens sent, in the
         # one call that has to beat the answer to the speaker.
         "context": 6,
+        # Let the call decline to speak. A greeting or a one-line question is
+        # answered before an acknowledgement of it would finish playing, so
+        # acknowledging it means being talked at twice about nothing. With
+        # this on, the model answers SILENT for that and nothing is played --
+        # not even the cached phrase. False acknowledges every prompt.
+        "skip_quick": True,
         "phrases": [],             # blank -> from the preset
         "system": "",              # blank -> from the preset
         "context_system": "",      # blank -> from the preset; used only with context
+        "quick_system": "",        # blank -> from the preset; used only with skip_quick
     },
     "stt": {
         "enabled": True,
