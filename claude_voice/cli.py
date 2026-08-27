@@ -20,7 +20,7 @@ USAGE = """claude-voice — local voice, ear and HUD for Claude Code
 
   The HUD is the application: while one is open Claude Code speaks through
   the hooks, and while none is, nothing of ours runs at all -- no voice, no
-  microphone, no heartbeat. Start it in a spare terminal: claude-voice hud
+  microphone, no heartbeat. Open one and leave it up: claude-voice hud
 
 Switch
   claude-voice on                 start speaking (off is the default)
@@ -37,6 +37,9 @@ Switch
 
 Watch
   claude-voice hud                the status window
+  claude-voice hud --terminal     ... in the terminal instead, for a box
+                                  with no desktop
+  claude-voice hud --url          ... print the address, open no window
   claude-voice history [n]        the last n spoken lines of this conversation
   claude-voice history [n] --all  ... of every session on this machine
   claude-voice sessions           what each open session is doing right now
@@ -74,7 +77,6 @@ Your own language packs live in ~/.config/claude-voice/presets/
 
 # subcommand -> (module, arguments to put in front of the user's own)
 ROUTES = {
-    "hud":         ("hud.py", []),
     "history":     ("spokenlog.py", []),
     "say":         ("speak.py", []),
     # Always dry: an acknowledgement belongs to a prompt, and there is no
@@ -170,6 +172,21 @@ def main() -> int:
             return 2
         module, prefix = HOOKS[event]
         _exec(module, [*prefix, *rest[1:]])
+
+    # Same HUD, two surfaces. Both read hudcore, so they cannot disagree
+    # about what is on screen -- only about how it is drawn.
+    #
+    # The window is the default because it is the better one: curves instead
+    # of ring glyphs, panels that size themselves, and a layout that is not
+    # eleven columns wide because the font is. The terminal one stays for the
+    # machine with no desktop, the ssh session, and the spare pane -- which is
+    # what --terminal is for. --web is still accepted, so an alias written
+    # before this still lands where it meant to.
+    if cmd == "hud":
+        tty = {"--terminal", "--tty", "--curses"}
+        if tty & set(rest):
+            _exec("hud.py", [a for a in rest if a not in tty])
+        _exec("hudweb.py", [a for a in rest if a != "--web"])
 
     if cmd in ROUTES:
         module, prefix = ROUTES[cmd]

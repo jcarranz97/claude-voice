@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
-"""The HUD -- an arc-reactor style status window.
+"""The HUD -- an arc-reactor style status window, drawn in a terminal.
 
-Open it in a spare terminal and leave it running:
+    claude-voice hud --terminal
 
-    claude-voice hud
+This is the surface for a machine with no desktop, an ssh session, or a spare
+pane you already have open. `claude-voice hud` with no flag opens the other
+one: a frameless window (hudweb.py) drawing the same state with curves instead
+of ring glyphs, which is the better window wherever there is a screen to put
+it on.
+
+Both read hudcore.py, and every key below runs the shared action there, so the
+two cannot disagree about what is on screen or about what a key did.
 
 It reads the state file the hooks write. It does not talk to Claude directly:
 it only watches. Closing it breaks nothing.
@@ -39,46 +46,29 @@ window on the machine interleaved by the clock.
 """
 
 import curses
-import json
-import os
-import signal
-import subprocess
-import sys
 import math
-import textwrap
+import signal
+import sys
 import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import config as _config                              # noqa: E402
-import focus as _focus                                # noqa: E402
 import presence as _presence                          # noqa: E402
-import lang as _lang                                  # noqa: E402
-# Every microphone question -- who has it, whether anyone is actually
-# being recorded, and how to close a capture of ours that was left
-# behind -- is answered in one place, because the watchdog on the
-# systemd timer has to give the same answers this window does.
-from mic import (our_captures, mic_open, mic_speaking,      # noqa: E402,F401
-                 mic_held, daemon_alive, sweep_orphans, listen_stranded)
+# What the HUD knows lives in hudcore, so that this window and the web one
+# cannot disagree about it. What is left in here is drawing.
+import hudcore as core                                # noqa: E402
+from hudcore import (L, agents_live, conversation_alive,   # noqa: E402,F401
+                     daemon_alive, dictate_blocked, dictate_target,
+                     focus_here, focus_state, history_rows, listen_stranded,
+                     mic_held, mic_open, mic_speaking, panel_open, position,
+                     read_state, set_panel_open, sweep_orphans)
 
-try:
-    import spokenlog as _spokenlog                     # noqa: E402
-except Exception:                                      # an empty pane, not a crash
-    _spokenlog = None
-
-CFG = _config.load()
-BASE = _config.BASE
-# The SPEAKER's state: global, because there is one pair of speakers. What
-# each session is doing lives in turn.py, one file per session.
-STATE = BASE / "state.json"
-ENABLED = BASE / "enabled"
-# Whether the history panel was open when you last had a HUD up. A marker
-# file, the same way the voice switch is one: the HUD keeps no other state.
-PANEL_OPEN = BASE / "hud-history"
+BASE = core.BASE
+ENABLED = core.ENABLED
 
 FPS = 20.0
-IDLE_AFTER = 900          # after 15 min of nothing, treat it as asleep
+IDLE_AFTER = core.IDLE_AFTER
 
 # The history panel shares the window with the reactor. When there is no
 # honest way to show both, it takes the window instead.
@@ -94,294 +84,6 @@ CYAN, AMBER, GREEN, WHITE, MAGENTA, BLUE = 1, 2, 3, 4, 5, 6
 # Concentric rings of the reactor. Radii in character cells; terminals have
 # cells about 2x taller than wide, so X is stretched when drawing.
 RINGS = [(3.0, "·"), (5.0, "○"), (7.0, "◦")]
-
-TITLE = (CFG.get("hud.title", "") or CFG.name).strip()
-# Letterspaced, the way the status labels are.
-TITLE = " ".join(TITLE.upper())
-
-
-def L(key: str, fallback: str) -> str:
-    return CFG.get(f"hud.{key}", fallback) or fallback
-
-
-def reload_cfg() -> None:
-    """Pick up a language switch without being reopened.
-
-    CFG and TITLE are resolved once at import, which is right for every other
-    module here -- they are short-lived processes -- and wrong for the one
-    window that stays open across a switch. The modules imported above keep
-    their own copies, but nothing they answer (which microphone, where the
-    panel sits) is a language question.
-    """
-    global CFG, TITLE
-    CFG = _config.load(reload=True)
-    TITLE = " ".join(((CFG.get("hud.title", "") or CFG.name).strip()).upper())
-
-
-_lang_cache = {"preset": None, "name": "", "label": ""}
-
-
-def next_language() -> tuple:
-    """(preset, what that language calls itself) for the one `l` switches to.
-
-    Cached against the active preset: the legend is redrawn twenty times a
-    second and the answer is two TOML files off disk.
-    """
-    if _lang_cache["preset"] != CFG.preset:
-        nxt = _lang.following(CFG.preset)
-        _lang_cache.update(preset=CFG.preset, name=nxt,
-                           label=_lang.label(nxt) if nxt else "")
-    return _lang_cache["name"], _lang_cache["label"]
-
-
-_target_cache = {"t": 0.0, "pane": {}}
-
-
-def dictate_target_info() -> dict:
-    """The target pane as-is: id, path and title. Re-read every 2 s because it
-    queries tmux, and the HUD redraws far more often than that."""
-    if time.time() - _target_cache["t"] < 2.0:
-        return _target_cache["pane"]
-    try:
-        out = subprocess.run(
-            [sys.executable, str(HERE / "dictate.py"), "--target"],
-            capture_output=True, text=True, timeout=3).stdout
-        _target_cache["pane"] = json.loads(out.strip() or "{}")
-    except Exception:
-        _target_cache["pane"] = {}
-    _target_cache["t"] = time.time()
-    return _target_cache["pane"]
-
-
-def dictate_target() -> str:
-    """How that session is shown on screen."""
-    p = dictate_target_info()
-    if not p.get("ok"):
-        return ""
-    return f'{p.get("dir", "")} · {p.get("title", "")}'.strip(" ·")
-
-
-_focus_cache = {"t": 0.0, "val": ("", ""), "pane": ""}
-
-
-def focus_state(fresh: bool = False) -> tuple:
-    """(state, label) for the focused pane, cached like every tmux question.
-
-    state is "" when nothing is focused, "live" when the focused pane still has
-    a claude in it, and "gone" when it does not. The last one is why this asks
-    tmux at all rather than reading the focus file: a focus pointing at a
-    window that has been closed means the voice is silent EVERYWHERE, and a HUD
-    that shows that as ordinary quiet is a HUD that lies.
-    """
-    if fresh:
-        _focus_cache["t"] = 0.0
-    if time.time() - _focus_cache["t"] < 2.0:
-        return _focus_cache["val"]
-    pane = _focus.pane()
-    _focus_cache["pane"] = pane
-    if not pane:
-        _focus_cache.update(t=time.time(), val=("", ""))
-        return _focus_cache["val"]
-    try:
-        panes = _mod("dictate").claude_panes()
-    except Exception:
-        panes = []
-    p = next((q for q in panes if q.get("pane_id") == pane), None)
-    live = f'{p["dir"]} · {p["title"]}'.strip(" ·") if p else ""
-    _focus_cache.update(t=time.time(),
-                        val=("live", live) if p else ("gone", _focus.label() or pane))
-    return _focus_cache["val"]
-
-
-def focus_here() -> bool:
-    """Is the focused pane the one dictation is aimed at? They are moved
-    together, so a no means somebody pointed one of them somewhere else.
-
-    Through the cache, not the file: this is asked on every frame, and the HUD
-    draws twenty of those a second.
-    """
-    focus_state()
-    pane = _focus_cache["pane"]
-    return bool(pane) and dictate_target_info().get("pane_id") == pane
-
-
-def dictate_blocked(fresh: bool = False) -> str:
-    """Why nothing can be dictated, or "" when something can.
-
-    Drawn as a WARNING rather than as a missing line: an absent footer reads
-    as ordinary chrome, and "nobody is listening" is the one thing the HUD
-    exists to make obvious before you start talking.
-    """
-    if fresh:
-        # A key press is worth one tmux query: refusing because of a
-        # two-second-old cache, right after the session was opened, would be
-        # the same lie in the other direction.
-        _target_cache["t"] = 0.0
-    p = dictate_target_info()
-    if p.get("ok"):
-        return ""
-    return p.get("why") or "no Claude Code session"
-
-
-_mods = {}
-
-
-def _mod(name: str):
-    """Load a sibling module once and keep it. read_state() runs on every
-    frame, and re-executing a module twenty times a second is pure waste."""
-    if name not in _mods:
-        import importlib.util
-        spec = importlib.util.spec_from_file_location(name, HERE / f"{name}.py")
-        m = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(m)
-        _mods[name] = m
-    return _mods[name]
-
-
-def _thinking():
-    """The heartbeat module, which is where agent detection lives."""
-    return _mod("thinking")
-
-
-_session_cache = {"t": 0.0, "key": None, "sid": "", "cwd": ""}
-
-
-def target_session() -> tuple:
-    """(uuid, directory) of the session the HUD is watching -- the same one
-    dictation goes to, the one `t` switches.
-
-    Without this the HUD announced ANY window's agents, so switching to a quiet
-    session still claimed there were agents running.
-    """
-    tgt = dictate_target_info()
-    key = (tgt.get("path"), tgt.get("title"), tgt.get("pane_id"))
-    if key == _session_cache["key"] and time.time() - _session_cache["t"] < 20:
-        return _session_cache["sid"], _session_cache["cwd"]
-    sid = ""
-    if key[0]:
-        try:
-            sid = _thinking().session_for(key[0], key[1] or "", key[2] or "")
-        except Exception:
-            sid = ""
-    _session_cache.update({"t": time.time(), "key": key, "sid": sid,
-                           "cwd": key[0] or ""})
-    return sid, key[0] or ""
-
-
-_agents_cache = {"t": 0.0, "list": []}
-
-
-def agents_live() -> list:
-    """Subagents working right now IN THE VISIBLE SESSION, with descriptions.
-
-    Cached: the HUD redraws 20 times a second and sweeping the disk at that
-    rate would be absurd.
-    """
-    if time.time() - _agents_cache["t"] < 1.5:
-        return _agents_cache["list"]
-    try:
-        sid, cwd = target_session()
-        _agents_cache["list"] = _thinking().agents_live(sid, cwd)
-    except Exception:
-        _agents_cache["list"] = []
-    _agents_cache["t"] = time.time()
-    return _agents_cache["list"]
-
-
-_hist_sid = {"t": 0.0, "key": None, "sid": ""}
-
-
-def history_session() -> str:
-    """Which conversation the panel is showing.
-
-    The pane's session when its title names one, and spokenlog.follow() for
-    when it does not -- the same policy `claude-voice history` follows, so the
-    two never disagree about whose history you are reading.
-    """
-    sid, cwd = target_session()
-    if sid:
-        return sid
-    if time.time() - _hist_sid["t"] < 2.0 and cwd == _hist_sid["key"]:
-        return _hist_sid["sid"]              # the panel asks 20 times a second
-    try:
-        sid = _spokenlog.follow("", cwd)
-    except Exception:
-        sid = ""
-    _hist_sid.update(t=time.time(), key=cwd, sid=sid)
-    return sid
-
-
-_hist_cache = {"mtime": -1.0, "w": -1, "sid": None, "rows": []}
-
-
-def history_rows(width: int) -> list:
-    """The spoken log wrapped to the panel: (text, side, continuation) rows.
-
-    The log of the session being watched -- the one `t` switches, the one
-    dictation reaches -- as resolved by history_session(). Empty when that
-    session has said nothing yet, which is the honest answer: a panel that
-    borrows another conversation to look busy is worse than a blank one.
-
-    Cached on the log's mtime, the width and the session. The HUD redraws 20
-    times a second and the file only changes when something is actually said,
-    so re-reading per frame would be pure waste.
-    """
-    if _spokenlog is None or width < 20:
-        return []
-    try:
-        sid = history_session()
-        mt = _spokenlog.mtime(sid)
-    except Exception:
-        return []
-    if (mt == _hist_cache["mtime"] and width == _hist_cache["w"]
-            and sid == _hist_cache["sid"]):
-        return _hist_cache["rows"]
-
-    try:
-        entries = _spokenlog.tail(int(CFG.get("history.show", 200) or 200), sid)
-    except Exception:
-        entries = []
-
-    you, said = L("history_you", "you"), L("history_said", "said")
-    pad = max(len(you), len(said))
-    rows = []
-    for e in entries:
-        mine = e["side"] == "in"
-        when = time.strftime("%H:%M", time.localtime(e["t"])) if e["t"] else "     "
-        # Who said it is carried by the label, the arrow and the colour: one
-        # of the three surviving a narrow terminal or a mono theme is enough.
-        head = f'{when}  {(you if mine else said):>{pad}} {"›" if mine else "‹"} '
-        body = textwrap.wrap(e["text"], max(8, width - len(head))) or [""]
-        rows.append((head + body[0], e["side"], False))
-        for cont in body[1:]:
-            rows.append((" " * len(head) + cont, e["side"], True))
-    _hist_cache.update(mtime=mt, w=width, sid=sid, rows=rows)
-    return rows
-
-
-def panel_open() -> bool:
-    try:
-        return PANEL_OPEN.exists()
-    except Exception:
-        return False
-
-
-def set_panel_open(on: bool) -> None:
-    """Remember the panel across restarts. Never worth an exception."""
-    try:
-        if on:
-            PANEL_OPEN.parent.mkdir(parents=True, exist_ok=True)
-            PANEL_OPEN.touch()
-        else:
-            PANEL_OPEN.unlink(missing_ok=True)
-    except Exception:
-        pass
-
-
-def position() -> str:
-    """Where the panel sits: left, right or bottom. Anything else reads left."""
-    pos = str(CFG.get("history.position", "left") or "left").strip().lower()
-    return pos if pos in ("left", "right", "bottom") else "left"
 
 
 def layout(h: int, w: int, history: bool) -> tuple:
@@ -487,46 +189,6 @@ def draw_history(win, top, bottom, x0, w, scroll, said_color, mine_color) -> int
     return scroll
 
 
-def read_state() -> dict:
-    """What the session on screen is doing, with the speaker laid over it.
-
-    Two questions, two files. What a SESSION is doing is per session (turn.py),
-    because three windows and a bot can all be busy at once and only one of
-    them is the one being watched. What the SPEAKER is doing is global -- there
-    is one pair of them -- so it wins while it is playing, but only when the
-    line belongs to the session on screen.
-
-    Before this they shared one state.json, and whichever session finished
-    first wrote "ready" over everyone: the reactor went calm while the window
-    in front of you was still working.
-    """
-    turn = _mod("turn")
-    sid, _ = target_session()
-    try:
-        # Unknown session (no tmux, no pane title yet): fall back to the
-        # liveliest one, which is the guess the HUD made before any of this.
-        d = turn.read(sid) if sid else turn.newest()
-    except Exception:
-        d = {"state": "idle", "text": "", "until": 0, "ts": 0, "session": ""}
-
-    try:
-        sp = json.loads(STATE.read_text())
-    except Exception:
-        return d
-    # "speaking" expires on its own: the audio is over whether or not anyone
-    # said so. Past that, the session's own state is the honest answer.
-    if sp.get("state") != "speaking":
-        return d
-    if sp.get("until", 0) and time.time() > sp["until"]:
-        return d
-    owner = sp.get("session", "")
-    # No owner recorded (the CLI, or a queue item from before this change):
-    # show it rather than swallow it. Silence would be the worse error.
-    if owner and sid and owner != sid:
-        return d
-    return sp
-
-
 def draw_reactor(win, cy, cx, t, state, color, band=None):
     """Rings that breathe, spin or pulse depending on state.
 
@@ -624,54 +286,6 @@ def centered(win, y, text, w, attr=0, x0=0):
         pass
 
 
-LISTEN_PID = BASE / "listen.pid"
-
-
-def conversation_alive() -> bool:
-    """Is the continuous listening daemon running? A pidfile is not an answer:
-    a session that died leaves one behind, and nothing would ever start again."""
-    try:
-        os.kill(int(LISTEN_PID.read_text().strip()), 0)
-        return True
-    except Exception:
-        LISTEN_PID.unlink(missing_ok=True)
-        return False
-
-
-def conversation_stop() -> None:
-    """Stop it, and make sure the microphone actually closed."""
-    try:
-        # The whole group: pw-record is its child.
-        os.killpg(int(LISTEN_PID.read_text().strip()), signal.SIGTERM)
-    except Exception:
-        pass
-    LISTEN_PID.unlink(missing_ok=True)
-    # Verify, do not assume: if the mic is still open after the signal, an
-    # orphan was left and has to be swept.
-    for _ in range(12):
-        time.sleep(0.15)
-        # fresh=True: the one-second cache is what makes the HUD cheap, and
-        # exactly what must not be trusted here.
-        if not mic_open(fresh=True):
-            break
-    else:
-        sweep_orphans()
-
-
-def conversation_start() -> None:
-    _run("listen.py", detach=True)
-
-
-def _run(script: str, *args, detach: bool = False) -> None:
-    cmd = [sys.executable, str(HERE / script), *args]
-    if detach:
-        subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
-                         stderr=subprocess.DEVNULL, start_new_session=True)
-    else:
-        subprocess.run(cmd, stdout=subprocess.DEVNULL,
-                       stderr=subprocess.DEVNULL, check=False)
-
-
 def main(stdscr):
     curses.curs_set(0)
     stdscr.nodelay(True)
@@ -718,96 +332,21 @@ def main(stdscr):
                 hist_scroll = 0
             hist_scroll = max(0, hist_scroll)
         if ch == ord("x"):
-            sweep_orphans()
-        if ch == ord("c"):
-            # Conversation mode: toggle the continuous listening daemon.
-            alive = conversation_alive()
-            # Starting is refused; stopping never is, or a daemon left over
-            # from a session that has since closed could not be killed here.
-            blocked_now = "" if alive else dictate_blocked(fresh=True)
-            if blocked_now:
-                refused_at = time.time()
-                refused_why = f"{blocked_now} — nothing to dictate to"
-            elif alive:
-                conversation_stop()
-            else:
-                conversation_start()
-        if ch == ord("l"):
-            # Language: the next preset in the cycle, relabelled in place.
-            listening = conversation_alive()
-            ok, msg = _lang.switch_next()
+            core.act("sweep")
+        # The rest of the keys are the shared actions, so that a key here and
+        # a click in the web HUD run the same code rather than two copies of
+        # it that drift. A refusal is shown, never swallowed: the answer to
+        # "I pressed d and nothing happened" has to be on screen.
+        action = {ord("c"): "conversation", ord("l"): "language",
+                  ord("t"): "session", ord("f"): "focus",
+                  ord("d"): "dictate", ord("m"): "voice",
+                  ord(" "): "voice"}.get(ch)
+        if action:
+            ok, msg = core.act(action)
             if not ok:
                 refused_at, refused_why = time.time(), msg
-            else:
-                reload_cfg()
+            elif msg:
                 notice_at, notice = time.time(), f"· {msg} ·"
-                # Everything else reads the config per invocation and follows
-                # on its own. This daemon read its Whisper language when it
-                # started, so it is the one thing a switch has to restart.
-                if listening:
-                    conversation_stop()
-                    conversation_start()
-        if ch == ord("t"):
-            _run("dictate.py", "--next")
-            # Refresh now, not in 2 s: the first thing you look at after
-            # switching session is whether it has agents, and a HUD that lags
-            # reads as a HUD that lies.
-            _target_cache["t"] = 0.0
-            _agents_cache["t"] = 0.0
-            if _focus.pane():
-                # The voice follows the session you switched to. Leaving it
-                # behind would mean typing into one window while another one
-                # answers out loud, which is two settings pretending to be one.
-                tgt = dictate_target_info()
-                if tgt.get("pane_id"):
-                    _focus.set_pane(tgt["pane_id"], dictate_target())
-                    _run("voice.py", "silence")
-                    focus_state(fresh=True)
-        if ch == ord("f"):
-            # Focus: only the session dictation points at gets to speak.
-            if _focus.pane():
-                _focus.clear()
-                focus_state(fresh=True)
-                notice_at, notice = time.time(), "· every session speaks ·"
-            else:
-                # One tmux query is worth it: focusing the session named by a
-                # two-second-old cache is how the voice ends up in the window
-                # you just switched away from.
-                _target_cache["t"] = 0.0
-                tgt = dictate_target_info()
-                if not tgt.get("pane_id"):
-                    refused_at = time.time()
-                    refused_why = (dictate_blocked(fresh=True)
-                                   or "no session to focus")
-                else:
-                    _focus.set_pane(tgt["pane_id"], dictate_target())
-                    # The other windows may be mid-sentence right now, and
-                    # "only this one" should not have to wait out a paragraph.
-                    _run("voice.py", "silence")
-                    focus_state(fresh=True)
-                    notice_at, notice = time.time(), "· this session only ·"
-        if ch == ord("d"):
-            # Dictation: record / stop and deliver. Runs detached because
-            # transcription takes ~1 s and the HUD must keep animating.
-            # A recording already under way is always allowed to stop: the
-            # refusal is about opening the microphone, not closing it.
-            blocked_now = ("" if (BASE / "dictate.pid").exists()
-                           else dictate_blocked(fresh=True))
-            if blocked_now:
-                refused_at = time.time()
-                refused_why = f"{blocked_now} — nothing to dictate to"
-            else:
-                _run("dictate.py", "--toggle", detach=True)
-        if ch in (ord("m"), ord(" ")):
-            if ENABLED.exists():
-                # Turning it off means SHUT UP NOW, not just "don't speak
-                # again". If it is droning mid-answer, this is the key.
-                ENABLED.unlink(missing_ok=True)
-                _run("voice.py", "silence")
-                notice_at, notice = time.time(), "· voice off, silence ·"
-            else:
-                ENABLED.parent.mkdir(parents=True, exist_ok=True)
-                ENABLED.touch()
 
         d = read_state()
         st = d.get("state", "idle")
@@ -876,7 +415,7 @@ def main(stdscr):
             label, color = (L("voice_off", "V O I C E   O F F"), WHITE)
             st = "idle"
 
-        centered(stdscr, 1, TITLE, w, curses.color_pair(color) | curses.A_BOLD)
+        centered(stdscr, 1, core.TITLE, w, curses.color_pair(color) | curses.A_BOLD)
 
         # The key's label says what it WILL DO, not what it is called.
         fstate, flabel = focus_state()
@@ -892,7 +431,7 @@ def main(stdscr):
         # Named after what it WILL DO, like the others: the language you get
         # by pressing it, written in that language. Hidden when there is no
         # other language with a voice on disk -- a key that can only refuse.
-        other, other_label = next_language()
+        other, other_label = core.next_language()
 
         def legend(voice_label: str, focus_label: str, sep: str) -> str:
             # The two silencing keys sit together, in scope order: m takes the
@@ -900,7 +439,7 @@ def main(stdscr):
             # Apart, f read as a view control and got pressed as one.
             row = [f"m: {voice_label}", f"f: {focus_label}",
                    "d: dictate", "c: conversation", "t: session"]
-            if other and other != CFG.preset:
+            if other and other != core.CFG.preset:
                 row.append(f"l: {other_label}")
             row += [f"h: {'hide history' if history else 'history'}", "q: quit"]
             return sep.join(row)
@@ -1052,11 +591,11 @@ def shutdown() -> None:
         return
     try:
         if conversation_alive():
-            conversation_stop()
+            core.conversation_stop()
     except Exception:
         pass
     try:
-        _run("voice.py", "silence")     # waited on: we are on the way out
+        core.run("voice.py", "silence")     # waited on: we are on the way out
     except Exception:
         pass
     try:

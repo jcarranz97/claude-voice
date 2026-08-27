@@ -9,6 +9,10 @@
 # program; this script exists to also fetch a voice and warm the caches, which
 # is the difference between installed and ready.
 #
+# It does NOT install system packages. It checks for them and names the ones
+# you are missing, with the command for your distribution -- running `sudo` on
+# somebody else's behalf is not a thing a setup script should do.
+#
 # It does NOT edit ~/.claude/settings.json. Hooks are yours to install:
 # run `claude-voice hooks` afterwards and paste the snippet it prints.
 set -euo pipefail
@@ -35,19 +39,37 @@ say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 # Python is deliberately not among these: uv brings its own.
 say "Checking system tools"
 missing=()
-command -v aplay >/dev/null || missing+=("alsa-utils (aplay)")
+command -v aplay >/dev/null || missing+=("aplay")
 if [ "$WITH_STT" = 1 ]; then
-  command -v pw-record >/dev/null || missing+=("pipewire-utils (pw-record)")
-  command -v arecord   >/dev/null || missing+=("alsa-utils (arecord)")
+  command -v pw-record >/dev/null || missing+=("pw-record")
+  command -v arecord   >/dev/null || missing+=("arecord")
 fi
 if [ ${#missing[@]} -gt 0 ]; then
   echo "  missing: ${missing[*]}"
-  echo "  Debian/Ubuntu:  sudo apt install alsa-utils pipewire-audio-client-libraries"
+  echo "  Debian/Ubuntu:  sudo apt install alsa-utils pipewire-bin"
   echo "  Fedora:         sudo dnf install alsa-utils pipewire-utils"
   echo "  Arch:           sudo pacman -S alsa-utils pipewire"
   exit 1
 fi
 echo "  ok"
+
+# Not fatal, either of them. Dictation without tmux and the frameless window
+# without WebKitGTK both have a working fallback -- but a silent downgrade is
+# how you end up wondering why the HUD has a title bar, or why `d` refuses.
+command -v tmux >/dev/null || cat <<'EOF'
+  note: no tmux — dictation has nowhere to deliver text, so `d` and `c` will
+        refuse. The voice works without it.
+        Debian/Ubuntu: sudo apt install tmux
+EOF
+if ! python3 -c "import gi; gi.require_version('Gtk','3.0'); gi.require_version('WebKit2','4.1'); from gi.repository import Gtk, WebKit2" 2>/dev/null; then
+  cat <<'EOF'
+  note: no WebKitGTK for Python — the HUD will open in a Chromium app window
+        instead of a frameless one. Renders the same, keeps a title bar.
+        Debian/Ubuntu: sudo apt install python3-gi gir1.2-webkit2-4.1
+        Fedora:        sudo dnf install python3-gobject webkit2gtk4.1
+        Arch:          sudo pacman -S python-gobject webkit2gtk-4.1
+EOF
+fi
 
 # --- uv ----------------------------------------------------------------------
 say "Checking uv"
@@ -141,7 +163,7 @@ cat <<EOF
      time, and \`claude-voice doctor\` names the one you are missing.
 
   2. Turn the voice on:   claude-voice on
-  3. Watch it work:       claude-voice hud   (in a spare terminal)
+  3. Watch it work:       claude-voice hud
 
   A second language, later, without reinstalling anything:
       claude-voice lang --fetch es    # download its voice and cache its acks
