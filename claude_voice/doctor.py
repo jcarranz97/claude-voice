@@ -186,6 +186,18 @@ def check_state() -> None:
     report(OK if on else WARN, "switch", "ON" if on else "off",
            "" if on else "claude-voice on")
 
+    # A focus is invisible from every window except the one holding it, so a
+    # session that has gone quiet for no apparent reason is exactly the thing
+    # somebody runs doctor about.
+    try:
+        import focus as _focus
+        held = _focus.pane()
+        if held:
+            report(OK, "focus", f"{_focus.label() or held} — only that pane speaks",
+                   "claude-voice focus --clear   (to give every session its voice back)")
+    except Exception:
+        pass
+
     # Per preset: the cache is indexed by position, so one directory shared
     # between languages says one phrase and logs another.
     ack_dir = BASE / "acks" / CFG.preset

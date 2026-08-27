@@ -4,7 +4,9 @@
   voice.py on        turn the voice on (every session)
   voice.py off       turn it off
   voice.py           show status
-  voice.py solo      mute just THIS session (uses $CLAUDE_SESSION_ID)
+  voice.py mute      mute just THIS session (uses $CLAUDE_SESSION_ID)
+  voice.py focus     only THIS session speaks; the other windows go quiet
+  voice.py focus --clear   give every session its voice back
   voice.py silence   cut all sound right now -- the panic button
 
   voice.py --hook-context   internal: UserPromptSubmit
@@ -28,6 +30,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import config as _config                              # noqa: E402
+import focus as _focus                                # noqa: E402
 
 CFG = _config.load()
 BASE = _config.BASE
@@ -244,9 +247,14 @@ def session_mute(session_id: str) -> Path:
 
 
 def enabled(session_id: str = "") -> bool:
+    """The same three questions speak.py asks, in the same order: the switch,
+    this session's mute, and the focus -- which silences every session except
+    the one pane it names."""
     if not STATE.exists():
         return False
-    return not session_mute(session_id).exists()
+    if session_mute(session_id).exists():
+        return False
+    return _focus.allows(session_id)
 
 
 def main() -> int:
@@ -315,16 +323,49 @@ def main() -> int:
         STATE.unlink(missing_ok=True)
         n = silence_all()          # off means shut up NOW, same as in the HUD
         print(f"  voice off{f' ({n} cut)' if n else ''}")
-    elif arg == "solo":
+    elif arg in ("mute", "solo"):
+        # `solo` is what this was called first, and it meant the opposite of
+        # what the word means everywhere else. Kept working, not advertised.
         session_mute(sid).touch()
         print(f"  muted in this session only ({sid[:8] or 'default'})")
+    elif arg == "focus":
+        if any(a in ("--clear", "--off", "off") for a in sys.argv[2:]):
+            _focus.clear()
+            print("  focus cleared — every session speaks again")
+            return 0
+        pane = _focus.here()
+        if not pane:
+            # Nothing durable to hang it on: the session uuid changes when the
+            # window is restarted, which is the one thing focus must survive.
+            print("  no tmux pane here — focus needs tmux, like dictation does")
+            return 1
+        name = ""
+        try:
+            name = _mod("dictate").aim_at_pane_id(pane)
+        except Exception:
+            pass
+        if not name:
+            # Refused rather than granted, because a focus on a pane with no
+            # conversation in it is silence EVERYWHERE, and the pane it was
+            # typed in is the last place anyone would look for the cause. Same
+            # rule dictation already follows about panes it does not recognise.
+            print(f"  no claude running in this pane ({pane})")
+            print("  run it inside the session you want to hear, or press f in the HUD")
+            return 1
+        _focus.set_pane(pane, name)
+        # The other windows may be mid-sentence right now, and "only this one
+        # speaks" is not a thing you want to wait a turn for.
+        n = silence_all()
+        print(f"  focus: this session only ({name}){f' — {n} cut' if n else ''}")
     else:
         on = STATE.exists()
         muted = session_mute(sid).exists()
+        speaks = on and not muted and _focus.allows(sid)
         print(f"  global  : {'ON' if on else 'off'}")
         print(f"  session : {'muted' if muted else 'normal'}")
-        print(f"  effect  : {'SPEAKS' if on and not muted else 'silent'}")
-        print("\n  voice on | voice off | voice solo | voice silence")
+        print(f"  focus   : {_focus.describe(sid)}")
+        print(f"  effect  : {'SPEAKS' if speaks else 'silent'}")
+        print("\n  voice on | voice off | voice mute | voice focus | voice silence")
     return 0
 
 

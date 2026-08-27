@@ -52,6 +52,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import config as _config                              # noqa: E402
+import focus as _focus                                # noqa: E402
 import lang as _lang                                  # noqa: E402
 # Every microphone question -- who has it, whether anyone is actually
 # being recorded, and how to close a capture of ours that was left
@@ -157,6 +158,50 @@ def dictate_target() -> str:
     if not p.get("ok"):
         return ""
     return f'{p.get("dir", "")} · {p.get("title", "")}'.strip(" ·")
+
+
+_focus_cache = {"t": 0.0, "val": ("", ""), "pane": ""}
+
+
+def focus_state(fresh: bool = False) -> tuple:
+    """(state, label) for the focused pane, cached like every tmux question.
+
+    state is "" when nothing is focused, "live" when the focused pane still has
+    a claude in it, and "gone" when it does not. The last one is why this asks
+    tmux at all rather than reading the focus file: a focus pointing at a
+    window that has been closed means the voice is silent EVERYWHERE, and a HUD
+    that shows that as ordinary quiet is a HUD that lies.
+    """
+    if fresh:
+        _focus_cache["t"] = 0.0
+    if time.time() - _focus_cache["t"] < 2.0:
+        return _focus_cache["val"]
+    pane = _focus.pane()
+    _focus_cache["pane"] = pane
+    if not pane:
+        _focus_cache.update(t=time.time(), val=("", ""))
+        return _focus_cache["val"]
+    try:
+        panes = _mod("dictate").claude_panes()
+    except Exception:
+        panes = []
+    p = next((q for q in panes if q.get("pane_id") == pane), None)
+    live = f'{p["dir"]} · {p["title"]}'.strip(" ·") if p else ""
+    _focus_cache.update(t=time.time(),
+                        val=("live", live) if p else ("gone", _focus.label() or pane))
+    return _focus_cache["val"]
+
+
+def focus_here() -> bool:
+    """Is the focused pane the one dictation is aimed at? They are moved
+    together, so a no means somebody pointed one of them somewhere else.
+
+    Through the cache, not the file: this is asked on every frame, and the HUD
+    draws twenty of those a second.
+    """
+    focus_state()
+    pane = _focus_cache["pane"]
+    return bool(pane) and dictate_target_info().get("pane_id") == pane
 
 
 def dictate_blocked(fresh: bool = False) -> str:
@@ -708,6 +753,38 @@ def main(stdscr):
             # reads as a HUD that lies.
             _target_cache["t"] = 0.0
             _agents_cache["t"] = 0.0
+            if _focus.pane():
+                # The voice follows the session you switched to. Leaving it
+                # behind would mean typing into one window while another one
+                # answers out loud, which is two settings pretending to be one.
+                tgt = dictate_target_info()
+                if tgt.get("pane_id"):
+                    _focus.set_pane(tgt["pane_id"], dictate_target())
+                    _run("voice.py", "silence")
+                    focus_state(fresh=True)
+        if ch == ord("f"):
+            # Focus: only the session dictation points at gets to speak.
+            if _focus.pane():
+                _focus.clear()
+                focus_state(fresh=True)
+                notice_at, notice = time.time(), "· every session speaks ·"
+            else:
+                # One tmux query is worth it: focusing the session named by a
+                # two-second-old cache is how the voice ends up in the window
+                # you just switched away from.
+                _target_cache["t"] = 0.0
+                tgt = dictate_target_info()
+                if not tgt.get("pane_id"):
+                    refused_at = time.time()
+                    refused_why = (dictate_blocked(fresh=True)
+                                   or "no session to focus")
+                else:
+                    _focus.set_pane(tgt["pane_id"], dictate_target())
+                    # The other windows may be mid-sentence right now, and
+                    # "only this one" should not have to wait out a paragraph.
+                    _run("voice.py", "silence")
+                    focus_state(fresh=True)
+                    notice_at, notice = time.time(), "· this session only ·"
         if ch == ord("d"):
             # Dictation: record / stop and deliver. Runs detached because
             # transcription takes ~1 s and the HUD must keep animating.
@@ -801,7 +878,13 @@ def main(stdscr):
         centered(stdscr, 1, TITLE, w, curses.color_pair(color) | curses.A_BOLD)
 
         # The key's label says what it WILL DO, not what it is called.
+        fstate, flabel = focus_state()
         badge = "  VOICE ON  " if on else "  VOICE OFF  "
+        if on and fstate:
+            # The switch alone stops being the whole truth once a pane owns
+            # the voice: ON everywhere and ON in one window look the same
+            # from every other window, and that is the confusing case.
+            badge = "  VOICE ON · ONE SESSION  "
         centered(stdscr, 2, badge, w,
                  curses.color_pair(GREEN if on else WHITE) |
                  (curses.A_BOLD | curses.A_REVERSE if on else curses.A_DIM))
@@ -812,7 +895,8 @@ def main(stdscr):
 
         def legend(voice_label: str, sep: str) -> str:
             row = [f"m: {voice_label}", "d: dictate", "c: conversation",
-                   "t: session"]
+                   "t: session",
+                   f"f: {'all sessions' if fstate else 'only this'}"]
             if other and other != CFG.preset:
                 row.append(f"l: {other_label}")
             row += [f"h: {'hide history' if history else 'history'}", "q: quit"]
@@ -913,9 +997,22 @@ def main(stdscr):
 
         tgt = dictate_target()
         blocked = dictate_blocked()
-        if tgt:
-            centered(stdscr, foot_y, f"dictation → {tgt}"[:cw - 4], cw,
-                     curses.color_pair(MAGENTA) | curses.A_DIM, x0)
+        if fstate == "gone":
+            # Nothing speaks anywhere until this is cleared or moved, and no
+            # other line on screen would say why.
+            centered(stdscr, foot_y,
+                     f"⚠ voice held by {flabel} — that pane is gone, press f"[:cw - 4],
+                     cw, curses.color_pair(AMBER) | curses.A_BOLD, x0)
+        elif fstate and not focus_here():
+            # Talking into one window while another answers. Only reachable by
+            # aiming dictation from somewhere else, but worth naming when it is.
+            centered(stdscr, foot_y,
+                     f"⚠ voice → {flabel} · dictation → {tgt or '—'}"[:cw - 4],
+                     cw, curses.color_pair(AMBER) | curses.A_BOLD, x0)
+        elif tgt:
+            centered(stdscr, foot_y,
+                     f"{'voice + dictation' if fstate else 'dictation'} → {tgt}"[:cw - 4],
+                     cw, curses.color_pair(MAGENTA) | curses.A_DIM, x0)
         elif blocked:
             centered(stdscr, foot_y,
                      f"⚠ {blocked} — dictation disabled"[:cw - 4], cw,

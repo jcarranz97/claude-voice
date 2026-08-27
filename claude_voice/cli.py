@@ -24,9 +24,11 @@ USAGE = """claude-voice — local voice, ear and HUD for Claude Code
 Switch
   claude-voice on                 start speaking (off is the default)
   claude-voice off                stop, and silence anything playing now
-  claude-voice solo               mute just this session
+  claude-voice focus              only this session speaks, the rest go quiet
+  claude-voice focus --clear      give every session its voice back
+  claude-voice mute               mute just this session
   claude-voice silence            panic button: cut all sound now
-  claude-voice status             is it on? is this session muted?
+  claude-voice status             is it on? which session does it speak in?
   claude-voice lang               which language speaks, and what else is here
   claude-voice lang es            switch to that language pack
   claude-voice lang --next        cycle to the next one, like l in the HUD
@@ -149,7 +151,7 @@ def main() -> int:
 
     if cmd == "status":
         _exec("voice.py", rest)
-    if cmd in ("on", "off", "solo", "silence"):
+    if cmd in ("on", "off", "focus", "mute", "solo", "silence"):
         _exec("voice.py", [cmd, *rest])
 
     if cmd == "hooks":
