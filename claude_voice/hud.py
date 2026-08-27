@@ -289,6 +289,43 @@ def draw_bars(win, y, cx, t, state, color, w, x0=0, level=0.0):
             pass
 
 
+def draw_repo(win, y, w, r) -> None:
+    """Branch, pull request and checks, on one line.
+
+    The window on a desktop has a panel for this; a terminal has one row, so
+    it is one row: everything after the branch appears only once it exists,
+    and the checks -- the reason anyone looks -- get the colour and the only
+    bold on the line.
+    """
+    if not r or not r.get("branch"):
+        return
+    left = f'{r.get("name", "")} · {r["branch"]}'.strip(" ·")
+    if r.get("detached"):
+        left += " (detached)"
+    pr = r.get("pr")
+    if pr:
+        left += f'  ·  #{pr["number"]} {"draft" if pr["draft"] and pr["state"] == "open" else pr["state"]}'
+    c = (pr or {}).get("checks", {})
+    tail, attr = "", curses.A_DIM
+    if c.get("state") == "passing":
+        tail = f'  ✓ {c["pass"]} passing'
+    elif c.get("state") == "running":
+        tail = f'  ● {c["running"]} running'
+    elif c.get("state") == "failing":
+        tail = f'  ✗ {c["fail"]} failing'
+        if c.get("failing"):
+            tail += f' — {", ".join(c["failing"])}'
+        attr = curses.A_BOLD
+    line = (left + tail)[:max(0, w - 2)]
+    x = max(0, (w - len(line)) // 2)
+    colour = {"passing": GREEN, "running": AMBER,
+              "failing": AMBER}.get(c.get("state"), WHITE)
+    try:
+        win.addstr(y, x, line, curses.color_pair(colour) | attr)
+    except curses.error:
+        pass
+
+
 def centered(win, y, text, w, attr=0, x0=0):
     """Centre text in the column band [x0, x0 + w). w is the band, not the screen."""
     x = max(0, (w - len(text)) // 2)
@@ -434,6 +471,16 @@ def main(stdscr):
             label, color = (L("voice_off", "V O I C E   O F F"), WHITE)
             st = "idle"
 
+        # The top row, above the title: what this session is working on. It is
+        # the one thing on screen that is about the repository rather than
+        # about the voice, so it sits outside the frame the rest of it uses,
+        # and it is drawn only when there is a repository to name -- and only
+        # when the config wants the block at all, in which case nothing is
+        # read and nobody is asked.
+        show = core.panels()
+        if show["repo"]:
+            draw_repo(stdscr, 0, w, core.repo_now())
+
         centered(stdscr, 1, core.TITLE, w, curses.color_pair(color) | curses.A_BOLD)
 
         # The key's label says what it WILL DO, not what it is called.
@@ -516,8 +563,10 @@ def main(stdscr):
         draw_bars(stdscr, min(foot_y - 1, cy + 9), cx, t, st, color,
                   x0 + cw, x0, level)
 
-        if agents:
-            # What they are doing, not just how many.
+        if agents and show["agents"]:
+            # What they are doing, not just how many. The reactor still says
+            # AGENTS with this off: that is the state of the work, not a
+            # panel, and the switch is about the list underneath.
             top = max(cy + 11, foot_y - 1 - min(3, len(agents)))
             for i, desc in enumerate(agents[:3]):
                 if top + i >= foot_y:

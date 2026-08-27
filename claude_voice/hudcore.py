@@ -44,6 +44,10 @@ import lang as _lang                                  # noqa: E402
 # once: a reactor that pulses to a different number than the meter under it
 # is two instruments disagreeing about one room.
 import level as _level                                # noqa: E402
+# The branch the watched session is on, and what GitHub thinks of it. Asked
+# here rather than in either window for the usual reason, and because the
+# answer costs a network call: two windows must not mean two of them.
+import repo as _repo                                  # noqa: E402
 # Every microphone question -- who has it, whether anyone is actually
 # being recorded, and how to close a capture of ours that was left
 # behind -- is answered in one place, because the watchdog on the
@@ -767,6 +771,7 @@ def snapshot() -> dict:
     for one frame would be a dozen chances to show a half-updated window.
     """
     st, said, agents, stranded = display_state()
+    show = panels()
     fstate, flabel = focus_state()
     other, other_label = next_language()
     tgt = dictate_target_info()
@@ -795,7 +800,12 @@ def snapshot() -> dict:
                      "next": other, "next_label": other_label},
         "session": {"id": tgt.get("session", "") or target_session()[0],
                     "dir": tgt.get("dir", ""), "title": tgt.get("title", "")},
+        # The pane's real path, not the pretty name beside it: `dir` is a
+        # basename for a label, and a basename resolves against whatever
+        # directory this process happens to be in.
+        "repo": _repo.info(tgt.get("path", "")) if show["repo"] else {},
         "level": level_shape(),
+        "panels": show,
         "system": system_stats(),
         "history": history_entries(),
         "labels": {k: L(k, k) for k in
@@ -817,6 +827,34 @@ def level_now(d: dict = None) -> float:
     if d.get("state") == "speaking" and d.get("env"):
         return _level.at(d["env"], d.get("t0", 0), d.get("step", _level.STEP))
     return _level.live()
+
+
+# Which blocks the window draws at all. Everything is on by default, because
+# a HUD that hides half of itself until you find a config file is a HUD that
+# looks broken -- but not everyone works in pull requests, and a panel about
+# subagents is noise to somebody who has never launched one. Off is off: the
+# question behind a hidden panel is not asked either, so switching the repo
+# block off also stops the branch being read and GitHub being called.
+PANELS = {"system": True, "repo": True, "session": True, "agents": True}
+
+
+def panels() -> dict:
+    """{name: shown}, one entry per block, straight from the config.
+
+    Both windows read this, and the terminal one honours the entries it has
+    something to draw for. A name it does not draw is not an error: the
+    config is a description of the HUD, not of one of its two surfaces.
+    """
+    return {k: bool(CFG.get(f"hud.panels.{k}", v)) for k, v in PANELS.items()}
+
+
+def repo_now() -> dict:
+    """The branch and pull request of the session being watched.
+
+    Both windows ask this; the caching is inside repo.py, where the two
+    different costs -- a file read and a network call -- are kept apart.
+    """
+    return _repo.info(dictate_target_info().get("path", ""))
 
 
 def ear_level() -> tuple:

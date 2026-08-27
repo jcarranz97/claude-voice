@@ -150,6 +150,35 @@ function meter(id, pct) {
   $(`${id}-val`).textContent = `${Math.round(pct)}%`;
 }
 
+/* Which blocks this window draws. Everything is on unless the config says
+ * otherwise: not everyone works in pull requests, and a panel about subagents
+ * is noise to somebody who has never launched one. A column with nothing left
+ * in it goes too -- an empty rail down the side of the window is worse than
+ * the panel it used to hold. */
+function blocks(s) {
+  const p = s.panels || {};
+  const on = (k) => p[k] !== false;
+  $("system-block").hidden = !on("system");
+  $("session-block").hidden = !on("session");
+  $("agents-block").hidden = !on("agents");
+  // The repo block hides itself when there is no repository to name, so this
+  // only has to answer the other question: whether it is wanted at all.
+  if (!on("repo")) $("repo-block").hidden = true;
+  return on;
+}
+
+/* The right column, once everything that could fill it has been drawn.
+ *
+ * Alerts live there and are not a panel: an open microphone with no owner is
+ * worth a rail of its own whatever the config says about blocks. So this is
+ * asked after alerts() has run and answered from what is actually in the box
+ * -- there is no alert list in the state to count, they are worked out here. */
+function column(on) {
+  document.querySelector(".panel.right").hidden =
+    !on("session") && !on("agents") && !on("repo")
+    && !$("alerts").childElementCount;
+}
+
 function render(s) {
   document.body.dataset.state = s.state;
   $("brand").textContent = s.title;
@@ -186,6 +215,8 @@ function render(s) {
   $("history-title").textContent = `// ${deSpace(s.labels.history)}`;
   history(s);
 
+  const on = blocks(s);
+  if (on("repo")) repo(s);
   session(s);
   $("k-lang").textContent = s.language.name || s.language.preset;
   $("k-mic").textContent = s.mic.speaking ? "recording you"
@@ -204,8 +235,56 @@ function render(s) {
 
   ear(s);
   alerts(s);
+  column(on);
   keys(s);
   ticker(s);
+}
+
+/* What the watched session is working on.
+ *
+ * The branch is nearly free and always right; the pull request and its checks
+ * come from `gh` on a slow clock, so this row can be a second behind and,
+ * when the network is down, several minutes behind. That is the correct
+ * trade: the alternative is a window that stalls on somebody else's CI.
+ *
+ * Nothing here says "unknown" or "loading". A row that has no answer is not
+ * drawn -- an empty pull request row on a branch that has never been pushed
+ * reads as a failure to find one, and there is nothing to find. */
+function repo(s) {
+  const r = s.repo || {};
+  $("repo-block").hidden = !r.branch;
+  if (!r.branch) return;
+  // Two rows, not one: a repository name and a branch name on the same line
+  // wrap into three in a panel this narrow, and the wrap lands mid-word.
+  $("k-repo").textContent = r.name || "—";
+  $("k-branch").textContent = r.branch + (r.detached ? " (detached)" : "");
+
+  const pr = r.pr;
+  for (const id of ["k-pr-label", "k-pr"]) $(id).hidden = !pr;
+  for (const id of ["k-checks-label", "k-checks"]) $(id).hidden = !pr;
+  if (!pr) return;
+
+  $("k-pr-num").textContent =
+    `#${pr.number} · ${pr.draft && pr.state === "open" ? "draft" : pr.state}`;
+  $("k-pr-title").textContent = pr.title || "";
+
+  // Counts read better as a sentence than as a table, and the failing names
+  // are the only thing here that saves a trip to the browser.
+  const c = pr.checks || {};
+  const box = $("k-checks");
+  box.dataset.check = c.state || "none";
+  const bits = [];
+  if (c.running) bits.push(`${c.running} running`);
+  if (c.fail) bits.push(`${c.fail} failing`);
+  if (c.pass) bits.push(`${c.pass} passing`);
+  box.textContent = { passing: "✓ ", failing: "✗ ", running: "● " }[c.state] || "";
+  box.append(bits.join(" · ") || "none yet");
+  if (c.failing?.length) {
+    const names = document.createElement("span");
+    names.className = "chk-names";
+    names.textContent = c.failing.join(", ");
+    box.appendChild(names);
+  }
 }
 
 /* Where your voice goes in, and where sound comes out.
