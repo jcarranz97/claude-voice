@@ -8,3 +8,4 @@ venv/
 config.toml
 dist/
 *.egg-info/
+uv.lock
