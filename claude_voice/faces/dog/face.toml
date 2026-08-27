@@ -1,0 +1,13 @@
+name = "dog"
+fps = 6
+label_row = 11
+min_width = 34
+min_height = 12
+
+[colors]
+thinking = "cyan"
+speaking = "yellow"
+listening = "magenta"
+idle = "yellow"          # a face gets to have a colour of its own
+ready = "green"
+agents = "blue"

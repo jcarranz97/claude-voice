@@ -1,0 +1,13 @@
+name = "cat"
+fps = 6
+label_row = 10           # under the face: its middle is a nose
+min_width = 32
+min_height = 11
+
+[colors]
+thinking = "cyan"
+speaking = "yellow"
+listening = "magenta"
+idle = "white"
+ready = "green"
+agents = "blue"

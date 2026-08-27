@@ -112,6 +112,36 @@ def check_config() -> None:
                    f"{cfg.language}: no voice downloaded for it",
                    f"claude-voice lang --fetch {other}")
 
+    check_face()
+
+
+def check_face() -> None:
+    """The HUD's figure. A face falls back to the reactor rather than taking
+    the window down, which is right -- and is also exactly why a typo in the
+    name would otherwise never be noticed."""
+    want = str(CFG.get("hud.face", "reactor") or "reactor").strip()
+    try:
+        import faces as _faces
+    except Exception as e:
+        report(WARN, "hud face", f"cannot be checked here: {e}")
+        return
+    if want not in _faces.options():
+        report(WARN, "hud face", f"no face called {want}; the HUD draws the reactor",
+               f"claude-voice faces   (installed: {', '.join(_faces.options())})")
+        return
+    face = _faces.load(want)
+    if face.name != want and want != _faces.DEFAULT:
+        report(WARN, "hud face", f"{want} could not be read; the HUD draws the reactor",
+               f"claude-voice faces {want} --dump")
+        return
+    if isinstance(face, _faces.Reactor):
+        report(OK, "hud face", "reactor — drawn from radii, fits any window")
+    else:
+        n = sum(face.states().values())
+        report(OK, "hud face",
+               f"{want} ({_faces.origin_of(want)}) — {n} frames, "
+               f"needs {face.min_width}x{face.min_height}")
+
 
 def _hook_files() -> list:
     """(path, label) for every settings file that could carry hooks."""

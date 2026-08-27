@@ -37,6 +37,8 @@ Switch
 
 Watch
   claude-voice hud                the status window
+  claude-voice faces              which HUD faces are installed
+  claude-voice faces <name>       watch one animate, without opening a HUD
   claude-voice history [n]        the last n spoken lines of this conversation
   claude-voice history [n] --all  ... of every session on this machine
   claude-voice sessions           what each open session is doing right now
@@ -70,6 +72,7 @@ Setup
 
 Config lives in ~/.config/claude-voice/config.toml
 Your own language packs live in ~/.config/claude-voice/presets/
+Your own HUD faces live in ~/.config/claude-voice/faces/
 """
 
 # subcommand -> (module, arguments to put in front of the user's own)
@@ -87,6 +90,7 @@ ROUTES = {
     "queue":       ("audioq.py", []),
     "config":      ("config.py", []),
     "lang":        ("lang.py", []),
+    "faces":       ("faces.py", []),
     "build-acks":  ("voice.py", ["--build-acks"]),
     "build-ticks": ("thinking.py", ["--build"]),
     "agents":      ("thinking.py", ["--agents"]),

@@ -1,0 +1,14 @@
+name = "crab"
+fps = 6
+label_row = 9
+min_width = 30
+min_height = 10
+bars = false
+
+[colors]
+thinking = "yellow"
+speaking = "red"
+listening = "magenta"
+idle = "red"
+ready = "green"
+agents = "blue"

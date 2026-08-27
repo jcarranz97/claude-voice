@@ -312,9 +312,67 @@ running `hud.py` directly reach the same code.
 | `d` | dictate: record, transcribe, send |
 | `c` | conversation mode: continuous listening |
 | `t` | switch which Claude session receives dictation — the voice follows it |
-| `h` | history: show/hide the spoken log beside the reactor |
+| `h` | history: show/hide the spoken log beside the face |
 | `x` | close an orphaned microphone capture (emergency) |
 | `q` | quit the HUD (the voice keeps working) |
+
+### The face in the middle
+
+The arc reactor is a taste. It happens to be this project's taste, and it stays the default — with no configuration you get exactly what you always got. But it is a taste, and someone who leaves a HUD open all day should not have to patch `hud.py` to have their own.
+
+A **face** is a directory of plain text frames. Three ship besides the reactor:
+
+```bash
+claude-voice faces           # what is installed
+claude-voice faces cat       # watch it animate, without opening a HUD
+```
+
+```toml
+[hud]
+face = "cat"                 # reactor (default), cat, dog, crab, or your own
+```
+
+The reactor is not a picture, it is a behaviour, and the behaviour carries the meaning — thinking spins, speaking pushes energy outward, listening draws it in, idle breathes. So a face is frames, not one still per state: a picture that changes only colour is a colour scheme, not a status display. Yours goes in `~/.config/claude-voice/faces/<name>/`:
+
+```
+~/.config/claude-voice/faces/owl/
+  face.toml
+  idle/       frame-01.txt  frame-02.txt
+  thinking/   frame-01.txt … frame-06.txt
+  speaking/   …
+  listening/  …
+  agents/     …            (optional; falls back to thinking, then to idle)
+```
+
+```toml
+# face.toml
+name = "owl"
+fps = 6
+label_row = 10          # which row of the art the state word is drawn on
+min_width = 32          # below this the HUD draws the reactor instead
+min_height = 11         # the art plus the row the word goes on
+bars = true             # false suppresses the VU meter under the face
+
+[colors]
+thinking = "cyan"
+speaking = "yellow"
+listening = "magenta"
+idle = "white"
+ready = "green"
+agents = "blue"
+```
+
+Frames play in filename order, so pad the numbers: `frame-10` sorts before `frame-2`. Repeat a frame to hold it — that is how the cat blinks once every three seconds at a single frame rate. Colours are names only, mapped to the eight terminal colours, so a face stays readable in somebody else's theme.
+
+Three things are worth knowing before you draw one:
+
+**Size.** The rings are drawn from radii, so they fit whatever window you give them. Fixed art cannot. A face declares the smallest band it can be drawn in, and below that the HUD falls back to the reactor rather than showing your art with its head cut off.
+
+**Where the word goes.** The reactor's middle is empty by construction, which is why `T H I N K I N G` is drawn straight through it. A cat's middle is a nose. `label_row` may point past the last row of the art, which puts the word underneath — usually the right answer.
+
+**The bars are not yours.** The VU meter under the figure is a meter: it thrashes while speaking and lies nearly flat otherwise. A face can suppress it with `bars = false` — the crab does, because it already has legs moving down there — but it cannot replace it. Two meters disagreeing about the same thing is worse than one.
+
+A face with only an `idle/` directory is a valid face; every other state falls back to it. Frames are read and measured once, at startup, because the HUD repaints twenty times a second and must never touch the disk to do it.
 
 ### History: what was actually said
 
@@ -538,6 +596,7 @@ timeout = 3.0                     # past this, the cached phrase plays instead
 
 [hud]
 required = true                   # no window open, nothing of ours runs at all
+face = "reactor"                  # reactor, cat, dog, crab, or one of your own
 
 [history]
 enabled = true                    # the spoken log behind the HUD's h panel
@@ -762,10 +821,13 @@ claude_voice/
   dictate.py            push-to-talk, and delivery into tmux
   listen.py             conversation mode: VAD + turn detection
   pron.py               pronunciation workbench
+  faces.py              the figure in the middle: the reactor, or your art
   presets/              language packs that ship
+  faces/                HUD faces that ship: cat, dog, crab
 skills/                 a Claude Code skill for fixing pronunciation
 
-~/.config/claude-voice/ everything you edit: config, your own presets, state
+~/.config/claude-voice/ everything you edit: config, your own presets and
+                        faces, state
 
 ```
 

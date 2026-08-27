@@ -73,6 +73,7 @@ PRESET_FILE = BASE / "preset"
 BUNDLED_PRESETS = HERE / "presets"
 USER_PRESETS = BASE / "presets"
 
+
 # A complete, working configuration. If the user never writes a config file,
 # these values run -- in English, with a voice install.sh downloads by default.
 DEFAULTS = {
@@ -189,6 +190,11 @@ DEFAULTS = {
         # the right setting for a machine you never sit in front of, and the
         # wrong one for a laptop with a microphone.
         "required": True,
+        # The figure in the middle, and the colours it uses. "reactor" is the
+        # bundled default and is drawn parametrically, so it fits any window;
+        # anything else is a directory of text frames, bundled or in
+        # BASE/"faces". See faces.py, or: claude-voice faces
+        "face": "reactor",
         # Spaced out on purpose: the HUD letterspaces them as a title.
         "title": "",               # blank -> general.name
         "thinking": "T H I N K I N G",
@@ -338,6 +344,18 @@ class Config:
         return self._d
 
 
+def _faces_installed() -> list:
+    """Face names on disk, for `claude-voice config`. Imported lazily and
+    never fatally: config.py is imported by every hook, and faces.py imports
+    curses and this one back."""
+    try:
+        sys.path.insert(0, str(HERE))
+        import faces
+        return faces.options()
+    except Exception:
+        return []
+
+
 def preset_path(name: str) -> Path:
     """Where a language pack lives. Yours shadows the one that ships."""
     mine = USER_PRESETS / f"{name}.toml"
@@ -457,6 +475,10 @@ def show() -> None:
           f"max {cfg.get('narrate.max_per_turn')} per turn")
     print(f"  dictation   : {cfg.get('stt.model')} / {cfg.get('stt.language')} "
           f"on {cfg.get('stt.device')}")
+    face = str(cfg.get("hud.face", "reactor") or "reactor")
+    installed = [f for f in _faces_installed() if f != face]
+    print(f"  hud face    : {face}"
+          + (f"; also installed: {', '.join(installed)}" if installed else ""))
     print(f"  history     : {'on' if cfg.get('history.enabled', True) else 'off'} "
           f"({cfg.get('history.position')}), "
           f"last {cfg.get('history.cap')} spoken lines per session, "

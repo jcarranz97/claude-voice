@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The HUD -- an arc-reactor style status window.
+"""The HUD -- an arc-reactor style status window, unless you say otherwise.
 
 Open it in a spare terminal and leave it running:
 
@@ -30,6 +30,12 @@ The labels on this window come from the preset, so l has to reload the config
 and recompute them in place -- quitting and reopening the HUD is not an
 acceptable answer to a keystroke.
 
+The figure in the middle is not decided here either: hud.face names it and
+faces.py draws it. The reactor is the default and the fallback, and it is the
+only one drawn parametrically -- everything else is text frames off disk, so a
+window too small for the art gets the rings back rather than a picture with its
+head cut off.
+
 The history panel reads the spoken log (spokenlog.py), which is written where
 sound is produced rather than parsed out of the transcript: narration and
 acknowledgements never reach the transcript, and a dictated line is
@@ -52,6 +58,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import config as _config                              # noqa: E402
+import faces as _faces                                # noqa: E402
 import focus as _focus                                # noqa: E402
 import presence as _presence                          # noqa: E402
 import lang as _lang                                  # noqa: E402
@@ -80,20 +87,29 @@ PANEL_OPEN = BASE / "hud-history"
 FPS = 20.0
 IDLE_AFTER = 900          # after 15 min of nothing, treat it as asleep
 
-# The history panel shares the window with the reactor. When there is no
-# honest way to show both, it takes the window instead.
-SPLIT_MIN_W = 74          # narrower than this, no room beside the reactor
+# The history panel shares the window with the face. When there is no honest
+# way to show both, it takes the window instead.
+SPLIT_MIN_W = 74          # narrower than this, no room beside the face
 PANEL_MIN_W = 34
 PANEL_MAX_W = 60
 PANEL_MIN_H = 6           # shorter than this, a bottom strip is not worth it
 BODY_TOP = 4              # the title and key legend span the window above it
-REACTOR_ROWS = 19         # rings (15), the bars under them, the target line
 
-CYAN, AMBER, GREEN, WHITE, MAGENTA, BLUE = 1, 2, 3, 4, 5, 6
+CYAN, AMBER, GREEN, WHITE, MAGENTA, BLUE, RED, BLACK = 1, 2, 3, 4, 5, 6, 7, 8
 
-# Concentric rings of the reactor. Radii in character cells; terminals have
-# cells about 2x taller than wide, so X is stretched when drawing.
-RINGS = [(3.0, "·"), (5.0, "○"), (7.0, "◦")]
+# The figure in the middle: the reactor unless the config names another. It
+# is drawn, not decided, here -- see faces.py. Loaded once, because a face is
+# frames off disk and this window redraws twenty times a second.
+FACE = _faces.load()
+# The reactor is also the fallback for a window too small for a fixed-art
+# face, so it is kept whichever face is configured.
+REACTOR = _faces.Reactor()
+
+
+def pair(color: str) -> int:
+    """A colour NAME, as a face declares it, to the curses pair drawing it."""
+    return 1 + _faces.COLORS.index(color) if color in _faces.COLORS else WHITE
+
 
 TITLE = (CFG.get("hud.title", "") or CFG.name).strip()
 # Letterspaced, the way the status labels are.
@@ -113,9 +129,13 @@ def reload_cfg() -> None:
     their own copies, but nothing they answer (which microphone, where the
     panel sits) is a language question.
     """
-    global CFG, TITLE
+    global CFG, TITLE, FACE
     CFG = _config.load(reload=True)
     TITLE = " ".join(((CFG.get("hud.title", "") or CFG.name).strip()).upper())
+    # A face is not a language, but the config file it is named in is the one
+    # that was just re-read, and reloading it here is what makes editing
+    # `face =` and pressing l enough to see the change.
+    FACE = _faces.load()
 
 
 _lang_cache = {"preset": None, "name": "", "label": ""}
@@ -385,12 +405,12 @@ def position() -> str:
 
 
 def layout(h: int, w: int, history: bool) -> tuple:
-    """Where the panel and the reactor go, as (top, bottom, x0, width) bands.
+    """Where the panel and the face go, as (top, bottom, x0, width) bands.
 
-    Returns (panel, reactor, divider). The panel is a panel, not a mode: the
-    reactor keeps animating beside or above it. Only when the window cannot
-    hold both is `reactor` None, and the caller falls back to the panel alone.
-    The divider is ("v", column) or ("h", row), or None.
+    Returns (panel, stage, divider). The panel is a panel, not a mode: the
+    face keeps animating beside or above it. Only when the window cannot hold
+    both is `stage` None, and the caller falls back to the panel alone. The
+    divider is ("v", column) or ("h", row), or None.
     """
     body = (BODY_TOP, h - 1, 0, w)
     if not history:
@@ -398,9 +418,9 @@ def layout(h: int, w: int, history: bool) -> tuple:
 
     pos = position()
     if pos == "bottom":
-        # The strip takes what is left once the reactor has its rows and the
+        # The strip takes what is left once the face has its rows and the
         # divider has its one.
-        ph = min(max(PANEL_MIN_H, h // 3), h - BODY_TOP - REACTOR_ROWS - 1)
+        ph = min(max(PANEL_MIN_H, h // 3), h - BODY_TOP - FACE.rows() - 1)
         if ph >= PANEL_MIN_H:
             top = h - ph
             return (top, h - 1, 0, w), (BODY_TOP, top - 2, 0, w), ("h", top - 1)
@@ -527,69 +547,6 @@ def read_state() -> dict:
     return sp
 
 
-def draw_reactor(win, cy, cx, t, state, color, band=None):
-    """Rings that breathe, spin or pulse depending on state.
-
-    Clipped to the band (top, bottom, x0, width) so a ring never bleeds into
-    the history panel, whichever edge it is on.
-    """
-    h, w = win.getmaxyx()
-    y0, y1, x0, x1 = (0, h - 1, 0, w) if band is None else (
-        band[0], band[1] + 1, band[2], min(band[2] + band[3], w))
-    for radius, glyph in RINGS:
-        if state == "thinking":
-            # arcs spinning at a different speed per ring
-            speed = 2.2 + radius * 0.18
-            head = (t * speed) % (2 * math.pi)
-            arc = 1.5
-            steps = int(radius * 9)
-            for i in range(steps):
-                a = 2 * math.pi * i / steps
-                delta = (a - head) % (2 * math.pi)
-                if delta > arc:
-                    continue
-                bright = 1.0 - delta / arc
-                _plot(win, cy, cx, radius, a, glyph, color,
-                      curses.A_BOLD if bright > 0.55 else curses.A_DIM, y0, y1, x0, x1)
-        elif state == "listening":
-            # Wave travelling INWARD: speaking sends energy out, listening
-            # draws it in. Same shape inverted, and legible at a glance.
-            phase = 1.0 - ((t * 2.6) % 1.0)
-            near = abs((radius / 7.0) - phase) < 0.30
-            steps = int(radius * 9)
-            for i in range(steps):
-                a = 2 * math.pi * i / steps
-                _plot(win, cy, cx, radius, a, glyph, color,
-                      curses.A_BOLD if near else curses.A_DIM, y0, y1, x0, x1)
-        elif state == "speaking":
-            # radial pulse outward, like a voice wave
-            phase = (t * 3.4) % 1.0
-            near = abs((radius / 7.0) - phase) < 0.28
-            steps = int(radius * 9)
-            for i in range(steps):
-                a = 2 * math.pi * i / steps
-                _plot(win, cy, cx, radius, a, glyph, color,
-                      curses.A_BOLD if near else curses.A_DIM, y0, y1, x0, x1)
-        else:
-            # slow breathing
-            breath = (math.sin(t * 0.9) + 1) / 2
-            steps = int(radius * 7)
-            for i in range(steps):
-                a = 2 * math.pi * i / steps
-                _plot(win, cy, cx, radius, a, glyph, color,
-                      curses.A_BOLD if breath > 0.75 else curses.A_DIM, y0, y1, x0, x1)
-
-
-def _plot(win, cy, cx, r, angle, glyph, color, attr, y0, y1, x0, x1):
-    y = int(round(cy + math.sin(angle) * r))
-    x = int(round(cx + math.cos(angle) * r * 2))   # x2: cells are not square
-    if y0 <= y < y1 and x0 <= x < x1 - 1:
-        try:
-            win.addstr(y, x, glyph, curses.color_pair(color) | attr)
-        except curses.error:
-            pass
-
-
 def draw_bars(win, y, cx, t, state, color, w, x0=0):
     """VU-style bars. They thrash while speaking, nearly flat otherwise."""
     n = 21
@@ -600,7 +557,7 @@ def draw_bars(win, y, cx, t, state, color, w, x0=0):
         elif state == "listening":
             # slower and shallower than speaking: this is input, not output
             v = abs(math.sin(t * 4.5 + i * 0.9)) * 0.75
-        elif state == "thinking":
+        elif state in ("thinking", "agents"):
             v = abs(math.sin(t * 2.2 + i * 0.55)) * 0.45
         else:
             v = 0.06
@@ -676,9 +633,12 @@ def main(stdscr):
     curses.curs_set(0)
     stdscr.nodelay(True)
     curses.use_default_colors()
+    # Eight, in faces.COLORS order, so a face naming a colour and the pair
+    # that draws it cannot drift apart.
     for i, fg in enumerate((curses.COLOR_CYAN, curses.COLOR_YELLOW,
                             curses.COLOR_GREEN, curses.COLOR_WHITE,
-                            curses.COLOR_MAGENTA, curses.COLOR_BLUE), start=1):
+                            curses.COLOR_MAGENTA, curses.COLOR_BLUE,
+                            curses.COLOR_RED, curses.COLOR_BLACK), start=1):
         curses.init_pair(i, fg, -1)
 
     t0 = time.time()
@@ -827,13 +787,16 @@ def main(stdscr):
         if stranded:
             st = "stranded"
 
-        label, color = {
-            "thinking":  (L("thinking", "T H I N K I N G"), CYAN),
-            "speaking":  (L("speaking", "S P E A K I N G"), AMBER),
-            "listening": (L("listening", "L I S T E N I N G"), MAGENTA),
-            "stranded":  (L("stranded", "N O T   L I S T E N I N G"), AMBER),
-            "ready":     (L("ready", "R E A D Y"), GREEN),
-        }.get(st, (L("idle", "S T A N D I N G   B Y"), WHITE))
+        # The word comes from the preset, the colour from the face. Both are
+        # someone else's taste by design, and neither is decided here.
+        label = {
+            "thinking":  L("thinking", "T H I N K I N G"),
+            "speaking":  L("speaking", "S P E A K I N G"),
+            "listening": L("listening", "L I S T E N I N G"),
+            "stranded":  L("stranded", "N O T   L I S T E N I N G"),
+            "ready":     L("ready", "R E A D Y"),
+        }.get(st, L("idle", "S T A N D I N G   B Y"))
+        color = pair(FACE.color(st))
 
         # Thinking and waiting on agents look the same from inside, but they
         # are not the same thing: if agents are out, the wait has an owner and
@@ -843,8 +806,11 @@ def main(stdscr):
         agents = agents_live()
         if agents and st not in ("speaking", "listening", "stranded"):
             label = L("agents", "A G E N T S") + (f"   x{len(agents)}" if len(agents) > 1 else "")
-            color = BLUE
-            st = "thinking"          # spin the reactor, do not breathe
+            color = pair(FACE.color("agents"))
+            # A state of its own, not thinking wearing a different colour: a
+            # face that wants to draw a long owned wait differently can, and
+            # one that does not falls back to thinking rather than to idle.
+            st = "agents"
 
         t = time.time() - t0
         h, w = stdscr.getmaxyx()
@@ -856,8 +822,8 @@ def main(stdscr):
             time.sleep(1 / FPS)
             continue
 
-        panel, reactor, divider = layout(h, w, history)
-        if reactor is None:
+        panel, stage, divider = layout(h, w, history)
+        if stage is None:
             # No room to share: the panel takes the window, as a view.
             centered(stdscr, 1, L("history", "H I S T O R Y"), w,
                      curses.color_pair(WHITE) | curses.A_BOLD)
@@ -873,7 +839,7 @@ def main(stdscr):
         if not on and st not in ("listening", "stranded") and not agents:
             # With the voice off, saying so is more useful than animating a
             # state. But listening still shows: it does not depend on my voice.
-            label, color = (L("voice_off", "V O I C E   O F F"), WHITE)
+            label, color = L("voice_off", "V O I C E   O F F"), WHITE
             st = "idle"
 
         centered(stdscr, 1, TITLE, w, curses.color_pair(color) | curses.A_BOLD)
@@ -932,12 +898,12 @@ def main(stdscr):
 
         if panel:
             # Below the legend, which spans the window: the panel is beside or
-            # under the reactor, never instead of it.
+            # under the face, never instead of it.
             hist_scroll = draw_panel(stdscr, panel, divider[0] == "h",
                                      hist_scroll)
             draw_divider(stdscr, divider, h, w)
 
-        rtop, rbot, x0, cw = reactor
+        rtop, rbot, x0, cw = stage
         strip = bool(panel) and divider[0] == "h"
         # Under a bottom strip the rows are tight, so the notice moves onto the
         # divider -- a labelled rule reads better than a plain one -- and the
@@ -946,21 +912,27 @@ def main(stdscr):
         foot_y = rbot if strip else rbot - 3
         cy = (rtop + rbot) // 2 - 1
         cx = x0 + cw // 2
-        draw_reactor(stdscr, cy, cx, t, st, color, reactor)
-        # Centred on the reactor's own axis, not on the band: rounding the two
+        # Fixed art cannot shrink the way the rings do, so a band too small
+        # for the chosen face gets the reactor instead of a face with its head
+        # cut off. Nothing else in the window changes.
+        face = FACE if FACE.fits(stage) else REACTOR
+        label_y, bars_y = face.draw(stdscr, cy, cx, t, st, color, stage)
+        # Centred on the face's own axis, not on the band: rounding the two
         # separately leaves the label half a cell off and a ring glyph peeking
-        # out of its last letter.
+        # out of its last letter. The row is the face's answer -- the reactor's
+        # middle is empty by construction, a cat's is a nose.
         try:
-            stdscr.addstr(cy, max(x0, cx - len(label) // 2), label[:cw - 1],
+            stdscr.addstr(label_y, max(x0, cx - len(label) // 2), label[:cw - 1],
                           curses.color_pair(color) | curses.A_BOLD)
         except curses.error:
             pass
-        draw_bars(stdscr, min(foot_y - 1, cy + 9), cx, t, st, color,
-                  x0 + cw, x0)
+        if face.bars:
+            draw_bars(stdscr, min(foot_y - 1, bars_y), cx, t, st, color,
+                      x0 + cw, x0)
 
         if agents:
             # What they are doing, not just how many.
-            top = max(cy + 11, foot_y - 1 - min(3, len(agents)))
+            top = max(bars_y + 2, foot_y - 1 - min(3, len(agents)))
             for i, desc in enumerate(agents[:3]):
                 if top + i >= foot_y:
                     break
