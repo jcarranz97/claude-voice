@@ -97,7 +97,21 @@ silence, asks a small model whether the phrase *sounds finished*.
 
 ## Install
 
-Needs Linux with PipeWire or PulseAudio, and Python 3.11+.
+Needs Linux with PipeWire or PulseAudio. Python is not a prerequisite —
+[uv](https://docs.astral.sh/uv/) brings its own.
+
+```bash
+uv tool install "claude-voice[stt]"   # the voice and the ear
+uv tool install claude-voice          # the voice alone, no microphone
+```
+
+That is the whole program. It is an application on your machine, not a
+checkout: nothing is left pointing at a source tree, and you can use it in any
+directory.
+
+It does not arrive with a voice, though, and a voice is what makes it useful.
+The script fetches one, writes a starter config and warms the caches — and
+installs `uv` first if you do not have it:
 
 ```bash
 git clone https://github.com/jcarranz97/claude-voice
@@ -110,9 +124,7 @@ cd claude-voice
 One language is enough to start; a second one is two files, later, with no
 reinstall: `claude-voice lang --fetch es`.
 
-That builds a virtualenv, downloads a Piper voice, writes a config file, and
-puts `claude-voice` on your PATH. It does **not** touch your Claude settings —
-hooks are yours to install:
+It does **not** touch your Claude settings — hooks are yours to install:
 
 ```bash
 claude-voice hooks           # prints the snippet
@@ -131,12 +143,17 @@ Updating an existing install? Print the snippet again and compare — it gains h
 <details>
 <summary>What the hooks do</summary>
 
-| Hook | Script | What it does |
+| Hook | Command | What it does |
 |---|---|---|
-| `SessionStart` | `thinking.py --bind` | Notes which tmux pane the conversation is in, before it has said anything |
-| `UserPromptSubmit` | `voice.py --hook-context` | Injects the TTS instruction, plays an acknowledgement, starts the heartbeat |
-| `MessageDisplay` | `narrate.py` | Speaks progress between tool calls (optional) |
-| `Stop` | `speak.py` | Speaks the `<!-- TTS: -->` line, stops the heartbeat |
+| `SessionStart` | `claude-voice hook session-start` | Notes which tmux pane the conversation is in, before it has said anything |
+| `UserPromptSubmit` | `claude-voice hook user-prompt-submit` | Injects the TTS instruction, plays an acknowledgement, starts the heartbeat |
+| `MessageDisplay` | `claude-voice hook message-display` | Speaks progress between tool calls (optional) |
+| `Stop` | `claude-voice hook stop` | Speaks the `<!-- TTS: -->` line, stops the heartbeat |
+
+The commands carry no paths, so reinstalling or upgrading does not break them.
+Older installs wrote an interpreter and a script path into each one; those
+still work, and `claude-voice doctor` will point them out rather than wait for
+the day a moved checkout makes them go quiet.
 
 Drop the `MessageDisplay` entry if you only want the final line spoken.
 
@@ -218,24 +235,23 @@ you, so moving or updating the checkout cannot leave you running a stale copy.
 
 ### Without the CLI
 
-The CLI is a thin dispatcher; nothing requires it. Any module runs directly, as
-long as you use an interpreter that has `piper-tts` installed:
+The CLI is a thin dispatcher; nothing requires it. Every module is also a
+script, and runs directly under an interpreter that has `piper-tts` in it —
+which the installed tool's own interpreter does:
 
 ```bash
-/path/to/venv/bin/python /path/to/claude-voice/claude_voice/hud.py
-/path/to/venv/bin/python /path/to/claude-voice/claude_voice/voice.py on
+uv tool run --from claude-voice python -m claude_voice.hud
 ```
 
-This is also exactly what the hooks do — they call `voice.py`, `narrate.py` and
-`speak.py` by absolute path, which is why `claude-voice hooks` prints the paths
-already filled in for your machine.
-
-Already have a virtualenv with `piper-tts` in it? Point the CLI at it instead
-of installing a second one:
+Running from a clone works the same way, and is the shorter path when you are
+changing something:
 
 ```bash
-echo /path/to/your/venv/bin/python > ~/.config/claude-voice/python
+uv run --extra stt python claude_voice/hud.py
 ```
+
+The subcommands are the same dispatch table either way; `claude-voice hud` and
+running `hud.py` directly reach the same code.
 
 ### Keys in the HUD
 
@@ -412,7 +428,7 @@ having it at all.
 ## Configuration
 
 Everything lives in `~/.config/claude-voice/config.toml`. Values fall back, key
-by key, to `presets/<lang>.toml`, then to built-in defaults — so a config that
+by key, to the language pack for `<lang>`, then to built-in defaults — so a config that
 sets one value does not wipe out the rest.
 
 ```toml
@@ -452,7 +468,11 @@ moved. Use names.
 A preset carries everything that changes with language: which voice speaks,
 which acknowledgements are cached, how the model is told to phrase the spoken
 line, the dictation glossary, the HUD labels, and the pronunciation tables.
-`presets/en.toml` and `presets/es.toml` ship; copy one to add your own.
+English and Spanish ship inside the package. Your own go in
+`~/.config/claude-voice/presets/`, and one named after a bundled pack shadows
+it — so the way to adjust `es` slightly is to copy it there, edit it, and keep
+the name. Nothing inside the install needs patching, and an upgrade cannot
+overwrite what you wrote.
 
 The **instruction** — the text injected into every prompt — is a config value,
 not a constant. The register belongs to you, not to the tool. Make it terse,
@@ -607,7 +627,7 @@ It caps itself, or `claude-voice silence` ends it now.
 | | |
 |---|---|
 | OS | Linux with PipeWire (PulseAudio works for playback) |
-| Python | 3.11+ (`tomllib`) |
+| Python | none of your own — `uv` provisions 3.11+ (`tomllib`) |
 | System | `aplay`, and for input `arecord` + `pw-record` |
 | TTS | [Piper](https://github.com/OHF-Voice/piper1-gpl) — local, neural, CPU |
 | STT | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) — local, CPU |
@@ -631,8 +651,8 @@ own connection, since a late acknowledgement is worse than a vague one.
 ## Layout
 
 ```
-bin/claude-voice        the only entry point you need
 claude_voice/
+  cli.py                the only entry point you need
   config.py             layered configuration
   lang.py               the language switch: preset in, preset out
   voice.py              the switch; the UserPromptSubmit hook
@@ -647,8 +667,11 @@ claude_voice/
   dictate.py            push-to-talk, and delivery into tmux
   listen.py             conversation mode: VAD + turn detection
   pron.py               pronunciation workbench
-presets/                language packs
+  presets/              language packs that ship
 skills/                 a Claude Code skill for fixing pronunciation
+
+~/.config/claude-voice/ everything you edit: config, your own presets, state
+
 ```
 
 ## License
