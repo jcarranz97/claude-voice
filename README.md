@@ -141,8 +141,39 @@ silence, asks a small model whether the phrase *sounds finished*.
 
 ## 📦 Install
 
-Needs Linux with PipeWire or PulseAudio. Python is not a prerequisite —
-[uv](https://docs.astral.sh/uv/) brings its own.
+### 1. System packages
+
+Nothing here is installed for you — these are your package manager's, and a
+script that runs `sudo` on your behalf is not a thing this project does.
+`install.sh` checks for them and tells you which are missing.
+
+Python is **not** among them: [uv](https://docs.astral.sh/uv/) brings its own.
+
+```bash
+# Debian / Ubuntu
+sudo apt install alsa-utils pipewire-bin tmux python3-gi gir1.2-webkit2-4.1
+
+# Fedora
+sudo dnf install alsa-utils pipewire-utils tmux python3-gobject webkit2gtk4.1
+
+# Arch
+sudo pacman -S alsa-utils pipewire tmux python-gobject webkit2gtk-4.1
+```
+
+What each one is for, so you can leave out what you do not want:
+
+| Package | For | Needed? |
+|---|---|:---:|
+| `alsa-utils` | `aplay` to play, `arecord` to record | ✅ always |
+| `pipewire-bin` | `pw-record`, for conversation mode | ⚠️ the ear |
+| `tmux` | delivering dictated text into a running session | ⚠️ the ear |
+| `python3-gi` + `gir1.2-webkit2-4.1` | the frameless HUD window | ➖ optional |
+
+Without the last two the HUD falls back to a Chromium app window, which needs
+nothing installed and renders identically — it just keeps a title bar. Without
+`pipewire-bin` and `tmux` the voice still works; the microphone does not.
+
+### 2. The program
 
 ```bash
 uv tool install "claude-voice[stt]"   # the voice and the ear
@@ -153,9 +184,11 @@ That is the whole program. It is an application on your machine, not a
 checkout: nothing is left pointing at a source tree, and you can use it in any
 directory.
 
-It does not arrive with a voice, though, and a voice is what makes it useful.
-The script fetches one, writes a starter config and warms the caches — and
-installs `uv` first if you do not have it:
+### 3. A voice
+
+It does not arrive with one, and a voice is what makes it useful. The script
+fetches one, writes a starter config and warms the caches — and installs `uv`
+first if you do not have it:
 
 ```bash
 git clone https://github.com/jcarranz97/claude-voice
@@ -167,6 +200,8 @@ cd claude-voice
 
 One language is enough to start; a second one is two files, later, with no
 reinstall: `claude-voice lang --fetch es`.
+
+### 4. The hooks
 
 It does **not** touch your Claude settings — hooks are yours to install:
 
