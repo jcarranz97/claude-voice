@@ -40,6 +40,8 @@ Watch
   claude-voice history [n]        the last n spoken lines of this conversation
   claude-voice history [n] --all  ... of every session on this machine
   claude-voice sessions           what each open session is doing right now
+  claude-voice monitor            what has the microphone and speakers, anyone's
+  claude-voice monitor --watch    ... live, until you quit
   claude-voice mic                who is holding the microphone, and since when
   claude-voice mic --sweep        close a capture of ours that was left behind
   claude-voice mic --install      notify when anyone holds it open too long
@@ -90,6 +92,7 @@ ROUTES = {
     "agents":      ("thinking.py", ["--agents"]),
     "sessions":    ("turn.py", []),
     "mic":         ("mic.py", []),
+    "monitor":     ("monitor.py", []),
     "doctor":      ("doctor.py", []),
 }
 

@@ -206,6 +206,8 @@ claude-voice lang en                       # switch to it — the same thing l d
 claude-voice lang --fetch en               # download that language's voice first
 
 claude-voice hud                           # the status window, in a spare terminal
+claude-voice monitor                       # what has the microphone and speakers — anyone's
+claude-voice monitor --watch               # ... live, until you quit
 claude-voice history 20                    # the last 20 lines of this conversation
 claude-voice history 20 --all              # ... of every session on this machine
 claude-voice say "test one two"            # synthesize and play, ignoring the switch
@@ -425,6 +427,40 @@ Conversation mode also gates itself while the voice is speaking, so it does not
 transcribe its own output.
 
 ---
+
+### Seeing what is actually running
+
+"Nothing of ours runs while no window is open" is a claim, and a claim about a
+microphone is worth checking rather than believing:
+
+```bash
+claude-voice monitor --watch
+```
+
+It answers from the machine's side — what has a claim on the capture device and
+the speakers at this instant, ours or anybody's:
+
+```
+microphone
+  ● pw-record        claude-voice · conversation mode            4m
+  ● firefox          meet.google.com                            18m
+
+speakers
+  ● aplay            claude-voice · speaking                     0s
+
+claude-voice
+  ● hud.py           the window (1 open)                         9m
+  ● listen.py        conversation mode · microphone open         4m
+```
+
+A browser tab left in a call holds the microphone exactly as much as we would,
+so it is listed too, by its own name. Ours are marked as ours. Quit the HUD and
+watch the list empty: `pw-record` is the microphone itself, and it should be
+gone within about three seconds.
+
+Nothing here kills anything — it is a window, not a broom. `claude-voice mic
+--sweep` is what clears a capture of ours left behind, and other people's
+processes are theirs to close.
 
 ### The microphone watchdog
 
@@ -714,6 +750,7 @@ claude_voice/
   voice.py              the switch; the UserPromptSubmit hook
   focus.py              which pane owns the voice when several are open
   presence.py           is a window open; nothing of ours runs while none is
+  monitor.py            what holds the microphone and the speakers, anyone's
   speak.py              synthesis, phoneme mixing; the Stop hook
   narrate.py            mid-turn progress; the MessageDisplay hook
   ack.py                the instant acknowledgement
