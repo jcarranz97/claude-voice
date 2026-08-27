@@ -53,6 +53,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import config as _config                              # noqa: E402
 import focus as _focus                                # noqa: E402
+import presence as _presence                          # noqa: E402
 import lang as _lang                                  # noqa: E402
 # Every microphone question -- who has it, whether anyone is actually
 # being recorded, and how to close a capture of ours that was left
@@ -1033,8 +1034,54 @@ def main(stdscr):
         time.sleep(1 / FPS)
 
 
+def shutdown() -> None:
+    """Leave nothing of ours running.
+
+    The window IS the application: what it started, it takes with it. The
+    microphone first, because a capture with no window on screen is the one
+    that frightens people, then anything queued or playing, then the tick
+    loops and acknowledgements that live in other processes -- silence_all()
+    is the same sweep the panic button does, including the walk through /proc
+    for players whose pidfile was lost.
+
+    Skipped while another HUD is still up: two terminals are two windows, and
+    closing one of them is not closing the application.
+    """
+    _presence.leave()
+    if not _presence.last_one_out():
+        return
+    try:
+        if conversation_alive():
+            conversation_stop()
+    except Exception:
+        pass
+    try:
+        _run("voice.py", "silence")     # waited on: we are on the way out
+    except Exception:
+        pass
+    try:
+        sweep_orphans()
+    except Exception:
+        pass
+
+
+def _bye(signum, frame):
+    """A closed terminal sends SIGHUP and a killed one SIGTERM, and neither
+    runs a `finally` on its own -- which is how the microphone was left open
+    by the exact exit that most needed it closed."""
+    raise SystemExit(0)
+
+
 if __name__ == "__main__":
+    for _sig in (signal.SIGTERM, signal.SIGHUP):
+        try:
+            signal.signal(_sig, _bye)
+        except Exception:
+            pass
+    _presence.enter()
     try:
         curses.wrapper(main)
     except KeyboardInterrupt:
         pass
+    finally:
+        shutdown()

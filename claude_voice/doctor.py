@@ -182,6 +182,21 @@ def check_hooks() -> None:
 
 
 def check_state() -> None:
+    # First, because it outranks the switch: with no window open nothing of
+    # ours runs at all, and every other line here is then beside the point.
+    try:
+        import presence as _presence
+        n = len(_presence.windows())
+        if not _presence.required():
+            report(OK, "window", "not required — the voice runs on hooks alone")
+        elif n:
+            report(OK, "window", f"{n} HUD open")
+        else:
+            report(WARN, "window", "no HUD open — nothing speaks, nothing listens",
+                   "claude-voice hud")
+    except Exception:
+        pass
+
     on = (BASE / "enabled").exists()
     report(OK if on else WARN, "switch", "ON" if on else "off",
            "" if on else "claude-voice on")

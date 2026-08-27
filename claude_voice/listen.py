@@ -40,6 +40,7 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import config as _config                              # noqa: E402
+import presence as _presence                          # noqa: E402
 
 CFG = _config.load()
 BASE = _config.BASE
@@ -244,6 +245,14 @@ def run() -> None:
         # than per frame: it is a tmux query, not free.
         if time.time() >= next_check:
             next_check = time.time() + TARGET_CHECK_S
+            if not _presence.open_now():
+                # The window that started this is gone. Returning runs the
+                # cleanup in main() and closes capture(), which is what
+                # actually lets go of the microphone -- and it is asked here,
+                # on a clock, because the HUD that dies badly is precisely the
+                # one that never got to stop us on its way out.
+                log("no window open: stopping, microphone closed")
+                return
             ok, why = dictate.target_status()
             if ok and stranded:
                 log("session is back: listening again")
@@ -367,6 +376,11 @@ def main() -> int:
     # transcribed and thrown away: conversation mode would otherwise listen,
     # transcribe and discard indefinitely, looking exactly like a mode that is
     # working but never being answered.
+    if not _presence.open_now():
+        log("not starting: no window open")
+        print("  no HUD open: conversation disabled")
+        return 1
+
     ok, why = _mod("dictate").target_status()
     if not ok:
         log(f"not starting: {why}")

@@ -170,12 +170,26 @@ stumble:
 
 | | who starts it | where it lives |
 |---|---|---|
-| **The voice** (speaking, narration, tick) | Claude Code, via the hooks | nothing to launch — it runs inside your Claude session |
+| **The voice** (speaking, narration, tick) | Claude Code, via the hooks | inside your Claude session — but only while a HUD is open |
 | **The HUD** | **you** | a long-lived process in its own terminal |
 
-So there is no daemon to start for the voice. Install the hooks, run
-`claude-voice on`, and the next thing you say to Claude gets spoken back. The
-HUD is optional and purely a viewer — closing it breaks nothing.
+The HUD is the application. While one is open, the hooks speak; while none is,
+nothing of ours runs at all — nothing spoken, no acknowledgement, no heartbeat,
+no microphone held open, and no instruction added to your prompts, so a machine
+with no window open is not spending tokens on lines nobody will hear.
+
+Closing the window closes the rest of it: conversation mode is stopped, the
+microphone is released, anything queued or playing is cut. And because the exit
+that matters most is the one nobody gets to clean up after — a killed terminal,
+a machine losing power — the microphone daemon and the heartbeat also check for
+themselves, on the timer they already run on, and stop within seconds of the
+last window going away.
+
+Closing does not turn the voice **off**, it suspends it. Open a HUD again and it
+picks up where the switch left it, with no keys pressed.
+
+Install the hooks, run `claude-voice on`, open a HUD, and the next thing you say
+to Claude gets spoken back.
 
 ### Day to day
 
@@ -486,12 +500,20 @@ node = "alsa_input.usb-..."            # pw-record --list-targets
 context = 6                       # turns of spoken history the acknowledgement sees
 timeout = 3.0                     # past this, the cached phrase plays instead
 
+[hud]
+required = true                   # no window open, nothing of ours runs at all
+
 [history]
 enabled = true                    # the spoken log behind the HUD's h panel
 position = "left"                 # left, right or bottom of the HUD window
 cap = 400                         # lines kept per session; older ones trimmed
 keep_days = 7                     # a session silent this long is swept away
 ```
+
+`hud.required` is the one worth thinking about before changing. Set it to
+`false` and you get the older behaviour — the voice runs on the hooks alone and
+the HUD goes back to being a viewer, which is right for a machine you never sit
+in front of and wrong for a laptop with a microphone in it.
 
 ALSA card *numbers* reorder on reconnect. A setup pinned to `plughw:4,0`
 silently started recording from a webcam mic — digital silence — the day a card
@@ -691,6 +713,7 @@ claude_voice/
   lang.py               the language switch: preset in, preset out
   voice.py              the switch; the UserPromptSubmit hook
   focus.py              which pane owns the voice when several are open
+  presence.py           is a window open; nothing of ours runs while none is
   speak.py              synthesis, phoneme mixing; the Stop hook
   narrate.py            mid-turn progress; the MessageDisplay hook
   ack.py                the instant acknowledgement

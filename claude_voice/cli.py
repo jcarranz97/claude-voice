@@ -18,8 +18,9 @@ HERE = Path(__file__).resolve().parent
 
 USAGE = """claude-voice — local voice, ear and HUD for Claude Code
 
-  The voice itself needs nothing started: Claude Code runs it through hooks.
-  The HUD is the one thing you launch yourself, in a spare terminal.
+  The HUD is the application: while one is open Claude Code speaks through
+  the hooks, and while none is, nothing of ours runs at all -- no voice, no
+  microphone, no heartbeat. Start it in a spare terminal: claude-voice hud
 
 Switch
   claude-voice on                 start speaking (off is the default)

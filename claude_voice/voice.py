@@ -31,6 +31,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import config as _config                              # noqa: E402
 import focus as _focus                                # noqa: E402
+import presence as _presence                          # noqa: E402
 
 CFG = _config.load()
 BASE = _config.BASE
@@ -247,9 +248,16 @@ def session_mute(session_id: str) -> Path:
 
 
 def enabled(session_id: str = "") -> bool:
-    """The same three questions speak.py asks, in the same order: the switch,
-    this session's mute, and the focus -- which silences every session except
-    the one pane it names."""
+    """The same four questions speak.py asks, in the same order: an open HUD,
+    the switch, this session's mute, and the focus -- which silences every
+    session except the one pane it names.
+
+    The first one is what keeps a closed HUD from costing anything: this is
+    consulted before the acknowledgement is spawned, before the heartbeat
+    starts, and before the instruction is injected into the prompt.
+    """
+    if not _presence.open_now():
+        return False
     if not STATE.exists():
         return False
     if session_mute(session_id).exists():
@@ -319,6 +327,10 @@ def main() -> int:
         STATE.touch()
         session_mute(sid).unlink(missing_ok=True)
         print("  voice ON — it will speak at the end of every response")
+        if not _presence.open_now():
+            # Turning it on and hearing nothing is the one confusion this
+            # gate can cause, so it is answered at the moment it is caused.
+            print("  (no HUD open, so nothing runs yet: claude-voice hud)")
     elif arg == "off":
         STATE.unlink(missing_ok=True)
         n = silence_all()          # off means shut up NOW, same as in the HUD
@@ -360,7 +372,10 @@ def main() -> int:
     else:
         on = STATE.exists()
         muted = session_mute(sid).exists()
-        speaks = on and not muted and _focus.allows(sid)
+        speaks = on and not muted and _focus.allows(sid) and _presence.open_now()
+        n = len(_presence.windows())
+        print(f"  window  : {f'open ({n})' if n else 'closed — nothing runs'}"
+              + ("" if _presence.required() else "   (not required)"))
         print(f"  global  : {'ON' if on else 'off'}")
         print(f"  session : {'muted' if muted else 'normal'}")
         print(f"  focus   : {_focus.describe(sid)}")

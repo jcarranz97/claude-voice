@@ -182,6 +182,13 @@ DEFAULTS = {
         "keep_days": 7,            # a session silent this long is swept away
     },
     "hud": {
+        # The HUD is the application: with no window open, the hooks make no
+        # sound and start no process, and the microphone daemon and the
+        # heartbeat stop themselves. False restores the older behaviour, where
+        # the voice runs on hooks alone and the HUD only watches it -- which is
+        # the right setting for a machine you never sit in front of, and the
+        # wrong one for a laptop with a microphone.
+        "required": True,
         # Spaced out on purpose: the HUD letterspaces them as a title.
         "title": "",               # blank -> general.name
         "thinking": "T H I N K I N G",
