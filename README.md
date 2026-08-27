@@ -80,6 +80,22 @@ Linux only for now, and not by preference. The parts that are tied to it are the
 
 The voice attaches through Claude Code's hooks — `SessionStart`, `UserPromptSubmit`, `MessageDisplay` and `Stop` — and dictation delivers into a tmux pane running `claude`. Nothing below that layer is Claude Code's: the synthesis, the ear, the HUD and the state files are all runtime-agnostic already, so a second runtime is a matter of another way in, not another implementation.
 
+### Do I have to run Claude Code inside tmux?
+
+**Only if you want to talk to it.** The half that speaks does not care where Claude Code is running.
+
+| | Needs tmux? | |
+|---|:---:|---|
+| speaking, narration, the acknowledgement, the heartbeat | ❌ | works in any terminal |
+| the HUD — reactor, meters, history, agents | ❌ | but see below |
+| `d` dictate, `c` conversation mode | ✅ | text is delivered with `tmux send-keys` |
+| `f` focus — mute every session but one | ✅ | a focus is filed under a pane, not a session |
+| `t` switch which session receives dictation | ✅ | it lists the panes running `claude` |
+
+Delivery is the whole reason. There is no supported way to push text into an already-started interactive session, and `tmux send-keys` does it without special permissions and without stealing focus. So dictation needs the Claude Code session to be sitting in a pane it can type into.
+
+Outside tmux the HUD still works, with one honest degradation: it cannot tell *which* session it is looking at, so it shows the liveliest one. With a single session open that is the right answer anyway; with three, it will follow whichever spoke last rather than the one you are watching.
+
 ---
 
 ## 🧭 Why the design is the way it is
@@ -166,12 +182,13 @@ What each one is for, so you can leave out what you do not want:
 |---|---|:---:|
 | `alsa-utils` | `aplay` to play, `arecord` to record | ✅ always |
 | `pipewire-bin` | `pw-record`, for conversation mode | ⚠️ the ear |
-| `tmux` | delivering dictated text into a running session | ⚠️ the ear |
+| `tmux` | delivering dictated text into a running session — and Claude Code has to run inside it | ⚠️ the ear |
 | `python3-gi` + `gir1.2-webkit2-4.1` | the frameless HUD window | ➖ optional |
 
 Without the last two the HUD falls back to a Chromium app window, which needs
 nothing installed and renders identically — it just keeps a title bar. Without
-`pipewire-bin` and `tmux` the voice still works; the microphone does not.
+`pipewire-bin` and `tmux` the voice still works; the microphone does not — see
+[Do I have to run Claude Code inside tmux?](#do-i-have-to-run-claude-code-inside-tmux)
 
 ### 2. The program
 
@@ -889,7 +906,8 @@ It caps itself, or `claude-voice silence` ends it now.
 | 👂 STT | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) — local, CPU |
 | ⏱️ Turn-taking | [smart-turn-v3](https://huggingface.co/pipecat-ai/smart-turn-v3) |
 | 🖥️ Window | WebKitGTK via the system PyGObject for the frameless HUD; falls back to a Chromium app window, which needs nothing installed |
-| ➕ Optional | `tmux` for dictation; an Anthropic credential for contextual acknowledgements |
+| 🪟 tmux | only for the ear — dictation delivers into a pane, so Claude Code has to run inside one. The voice does not need it |
+| ➕ Optional | an Anthropic credential for contextual acknowledgements |
 
 The contextual acknowledgement — a one-line "Checking the disk space" spoken
 the instant you hit enter — costs one small model call per prompt, and that
