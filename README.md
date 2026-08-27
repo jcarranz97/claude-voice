@@ -213,15 +213,12 @@ nothing installed and renders identically — it just keeps a title bar. Without
 ### 2. The program
 
 ```bash
-uv tool install "claude-voice[stt]"   # the voice and the ear
-uv tool install claude-voice          # the voice alone, no microphone
+uv tool install claude-voice
 ```
 
-That is the whole program. It is an application on your machine, not a
-checkout: nothing is left pointing at a source tree, and you can use it in any
-directory. Installing from a checkout instead of PyPI changes nothing about
-that — it is still a copy, so [step 5](#5-installing-it-again-from-your-own-checkout)
-is how you replace it later.
+That is the whole program, voice and ear both. It is an application on your machine, not a checkout: nothing is left pointing at a source tree, and you can use it in any directory. Installing from a checkout instead of PyPI changes nothing about that — it is still a copy, so [step 5](#5-installing-it-again-from-your-own-checkout) is how you replace it later.
+
+**There is nothing behind a flag.** The ear used to be an `stt` extra, and `claude-voice[stt]` still works so that anything written down against it keeps working — it just installs what the bare name installs. The extra bought a smaller install and sold a failure worth more than the disk it saved: extras are not remembered across reinstalls, so one that forgot to name it took the microphone away silently, and the program went on speaking until the next time you pressed `c` and it said there was no module named faster_whisper.
 
 ### 3. A voice
 
@@ -234,7 +231,6 @@ git clone https://github.com/jcarranz97/claude-voice
 cd claude-voice
 ./install.sh                 # English
 ./install.sh --preset es     # Spanish (es_MX)
-./install.sh --no-stt        # text-to-speech only, no microphone
 ```
 
 One language is enough to start; a second one is two files, later, with no
@@ -284,13 +280,10 @@ Drop the `MessageDisplay` entry if you only want the final line spoken.
 `uv tool install` copies the code into the tool's own environment. It is not a link back to the source tree — that is the point of [The program](#2-the-program) above, and it is also the thing that catches you out the first time you edit the checkout and nothing changes. The installed program keeps running the code it was built from until you replace it, and replacing it takes both flags:
 
 ```bash
-uv tool install --force --refresh "$HOME/repos/claude-voice[stt]"   # wherever yours lives
-uv tool install --force --refresh "$HOME/repos/claude-voice"        # no microphone
+uv tool install --force --refresh "$HOME/repos/claude-voice"   # wherever yours lives
 ```
 
 `--refresh` is the one that matters and the one everybody leaves out. uv caches the wheel it built for a directory, so `--force` on its own reinstalls that cached wheel — your edits are not in it. What makes this worth a section of its own is that nothing complains: the command prints `Installed 1 executable: claude-voice` and exits zero, having installed the same code as before. Without `--force` you get the identical misleading success.
-
-The extra is not remembered either. Reinstall without `[stt]` and the microphone leaves with the old environment — the voice keeps working, dictation stops, and `claude-voice doctor` is where that shows up.
 
 **So which one is installed?** Not a question the version answers: it stays at whatever `pyproject.toml` says across every commit, so `uv tool list` prints the same number before and after. Compare the files.
 
@@ -884,7 +877,7 @@ for when it says everything is fine and you still hear nothing.
 - No line at all — the `Stop` hook is not installed or points at a bad path.
   Re-run `claude-voice hooks` and compare.
 
-**Edits to the checkout change nothing.** The install is a copy, not a link, and it keeps running the code it was built from. `uv tool install --force --refresh "$HOME/repos/claude-voice[stt]"` puts your working tree back in charge. Both flags: `--force` alone reinstalls uv's cached wheel and reports success while changing nothing. [Installing it again, from your own checkout](#5-installing-it-again-from-your-own-checkout) has the rest, including the one-line check for whether the two differ at all.
+**Edits to the checkout change nothing.** The install is a copy, not a link, and it keeps running the code it was built from. `uv tool install --force --refresh "$HOME/repos/claude-voice"` puts your working tree back in charge. Both flags: `--force` alone reinstalls uv's cached wheel and reports success while changing nothing. [Installing it again, from your own checkout](#5-installing-it-again-from-your-own-checkout) has the rest, including the one-line check for whether the two differ at all.
 
 **The HUD dies with `NameError` or `AttributeError`.** You are running a stale
 copy from an old path. This is what an alias frozen on `python .../hud.py`

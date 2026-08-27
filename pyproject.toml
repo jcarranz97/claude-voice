@@ -23,23 +23,30 @@ classifiers = [
     "Topic :: Multimedia :: Sound/Audio :: Speech",
 ]
 
-# Speaking is the whole point, so Piper is not optional. anthropic is here
-# rather than in an extra because the acknowledgement and the end-of-turn
-# question are part of the voice, not part of the ear.
+# Everything, always. Speaking is the whole point and the ear is half of what
+# this is for, so neither is behind a flag -- and anthropic is here rather than
+# in an extra because the acknowledgement and the end-of-turn question are part
+# of the voice.
+#
+# The ear used to be an `stt` extra. It cost more than it bought: an extra is
+# not remembered, so any reinstall that forgot to name it silently took the
+# microphone away and left a program that starts, speaks, and says there is no
+# module named faster_whisper the next time you press `c`. The install is big
+# now and it is the same size every time.
 dependencies = [
     "piper-tts>=1.7.0",
     "anthropic>=0.40",
-]
-
-[project.optional-dependencies]
-# The ear. Most of the install, and useless without a microphone -- which is
-# why `install.sh --no-stt` existed before this was expressible as an extra.
-stt = [
     "faster-whisper>=1.1",
     "onnxruntime>=1.17",
     "huggingface_hub>=0.24",
     "numpy>=1.26",
 ]
+
+[project.optional-dependencies]
+# Kept, and empty. `claude-voice[stt]` is written down in scripts, in shell
+# history and in older copies of the README; it now installs exactly what the
+# bare name does instead of failing.
+stt = []
 
 [project.urls]
 Homepage = "https://github.com/jcarranz97/claude-voice"
