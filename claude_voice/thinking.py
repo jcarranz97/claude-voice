@@ -59,6 +59,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import config as _config                              # noqa: E402
+import presence as _presence                          # noqa: E402
 
 CFG = _config.load()
 BASE = _config.BASE
@@ -420,6 +421,11 @@ def run(session: str = "") -> None:
         # not go mute halfway, and a dead session still shuts itself up.
         budget = elapsed if last_agent is None else time.time() - last_agent
         if budget > MAX_RUN or elapsed > AGENT_MAX_RUN:
+            break
+        # Checked every tick rather than once at the start: a HUD killed
+        # outright never gets to stop us, and a tick going on alone in an
+        # empty room for the rest of its two minutes is the whole complaint.
+        if not _presence.open_now():
             break
         # Do not step on the voice: if the queue is playing, skip this tick.
         # The tick is ambience; it does not deserve to queue.

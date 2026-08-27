@@ -18,15 +18,18 @@ HERE = Path(__file__).resolve().parent
 
 USAGE = """claude-voice — local voice, ear and HUD for Claude Code
 
-  The voice itself needs nothing started: Claude Code runs it through hooks.
-  The HUD is the one thing you launch yourself, in a spare terminal.
+  The HUD is the application: while one is open Claude Code speaks through
+  the hooks, and while none is, nothing of ours runs at all -- no voice, no
+  microphone, no heartbeat. Start it in a spare terminal: claude-voice hud
 
 Switch
   claude-voice on                 start speaking (off is the default)
   claude-voice off                stop, and silence anything playing now
-  claude-voice solo               mute just this session
+  claude-voice focus              only this session speaks, the rest go quiet
+  claude-voice focus --clear      give every session its voice back
+  claude-voice mute               mute just this session
   claude-voice silence            panic button: cut all sound now
-  claude-voice status             is it on? is this session muted?
+  claude-voice status             is it on? which session does it speak in?
   claude-voice lang               which language speaks, and what else is here
   claude-voice lang es            switch to that language pack
   claude-voice lang --next        cycle to the next one, like l in the HUD
@@ -37,6 +40,8 @@ Watch
   claude-voice history [n]        the last n spoken lines of this conversation
   claude-voice history [n] --all  ... of every session on this machine
   claude-voice sessions           what each open session is doing right now
+  claude-voice monitor            what has the microphone and speakers, anyone's
+  claude-voice monitor --watch    ... live, until you quit
   claude-voice mic                who is holding the microphone, and since when
   claude-voice mic --sweep        close a capture of ours that was left behind
   claude-voice mic --install      notify when anyone holds it open too long
@@ -87,6 +92,7 @@ ROUTES = {
     "agents":      ("thinking.py", ["--agents"]),
     "sessions":    ("turn.py", []),
     "mic":         ("mic.py", []),
+    "monitor":     ("monitor.py", []),
     "doctor":      ("doctor.py", []),
 }
 
@@ -149,7 +155,7 @@ def main() -> int:
 
     if cmd == "status":
         _exec("voice.py", rest)
-    if cmd in ("on", "off", "solo", "silence"):
+    if cmd in ("on", "off", "focus", "mute", "solo", "silence"):
         _exec("voice.py", [cmd, *rest])
 
     if cmd == "hooks":

@@ -35,6 +35,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import config as _config                              # noqa: E402
+import focus as _focus                                # noqa: E402
+import presence as _presence                          # noqa: E402
 
 CFG = _config.load()
 BASE = _config.BASE
@@ -103,10 +105,26 @@ def session_mute(session_id: str) -> Path:
 
 
 def enabled(session_id: str) -> bool:
-    """Off by default. `voice on` flips it; a per-session file mutes one window."""
+    """Off by default, and four things have to agree before a sound is made.
+
+    An open HUD comes first, and it is a different kind of question from the
+    others: the switch, the mute and the focus decide what you want to hear,
+    while this one decides whether anything of ours is running at all.
+
+    `voice on` flips the switch for the machine; a per-session file mutes one
+    window; a focus, when there is one, silences every window except the one
+    it names. The last is the answer to several sessions talking over each
+    other -- see focus.py for why it is filed under the pane.
+    """
+    if not _presence.open_now():
+        # Before the switch, because this one is not about what you want to
+        # hear: with no window open, nothing of ours runs at all.
+        return False
     if not (BASE / "enabled").exists():
         return False
-    return not session_mute(session_id).exists()
+    if session_mute(session_id).exists():
+        return False
+    return _focus.allows(session_id)
 
 
 def extract_spoken(text: str) -> str:

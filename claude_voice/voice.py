@@ -4,7 +4,9 @@
   voice.py on        turn the voice on (every session)
   voice.py off       turn it off
   voice.py           show status
-  voice.py solo      mute just THIS session (uses $CLAUDE_SESSION_ID)
+  voice.py mute      mute just THIS session (uses $CLAUDE_SESSION_ID)
+  voice.py focus     only THIS session speaks; the other windows go quiet
+  voice.py focus --clear   give every session its voice back
   voice.py silence   cut all sound right now -- the panic button
 
   voice.py --hook-context   internal: UserPromptSubmit
@@ -28,6 +30,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import config as _config                              # noqa: E402
+import focus as _focus                                # noqa: E402
+import presence as _presence                          # noqa: E402
 
 CFG = _config.load()
 BASE = _config.BASE
@@ -244,9 +248,21 @@ def session_mute(session_id: str) -> Path:
 
 
 def enabled(session_id: str = "") -> bool:
+    """The same four questions speak.py asks, in the same order: an open HUD,
+    the switch, this session's mute, and the focus -- which silences every
+    session except the one pane it names.
+
+    The first one is what keeps a closed HUD from costing anything: this is
+    consulted before the acknowledgement is spawned, before the heartbeat
+    starts, and before the instruction is injected into the prompt.
+    """
+    if not _presence.open_now():
+        return False
     if not STATE.exists():
         return False
-    return not session_mute(session_id).exists()
+    if session_mute(session_id).exists():
+        return False
+    return _focus.allows(session_id)
 
 
 def main() -> int:
@@ -311,20 +327,60 @@ def main() -> int:
         STATE.touch()
         session_mute(sid).unlink(missing_ok=True)
         print("  voice ON — it will speak at the end of every response")
+        if not _presence.open_now():
+            # Turning it on and hearing nothing is the one confusion this
+            # gate can cause, so it is answered at the moment it is caused.
+            print("  (no HUD open, so nothing runs yet: claude-voice hud)")
     elif arg == "off":
         STATE.unlink(missing_ok=True)
         n = silence_all()          # off means shut up NOW, same as in the HUD
         print(f"  voice off{f' ({n} cut)' if n else ''}")
-    elif arg == "solo":
+    elif arg in ("mute", "solo"):
+        # `solo` is what this was called first, and it meant the opposite of
+        # what the word means everywhere else. Kept working, not advertised.
         session_mute(sid).touch()
         print(f"  muted in this session only ({sid[:8] or 'default'})")
+    elif arg == "focus":
+        if any(a in ("--clear", "--off", "off") for a in sys.argv[2:]):
+            _focus.clear()
+            print("  focus cleared — every session speaks again")
+            return 0
+        pane = _focus.here()
+        if not pane:
+            # Nothing durable to hang it on: the session uuid changes when the
+            # window is restarted, which is the one thing focus must survive.
+            print("  no tmux pane here — focus needs tmux, like dictation does")
+            return 1
+        name = ""
+        try:
+            name = _mod("dictate").aim_at_pane_id(pane)
+        except Exception:
+            pass
+        if not name:
+            # Refused rather than granted, because a focus on a pane with no
+            # conversation in it is silence EVERYWHERE, and the pane it was
+            # typed in is the last place anyone would look for the cause. Same
+            # rule dictation already follows about panes it does not recognise.
+            print(f"  no claude running in this pane ({pane})")
+            print("  run it inside the session you want to hear, or press f in the HUD")
+            return 1
+        _focus.set_pane(pane, name)
+        # The other windows may be mid-sentence right now, and "only this one
+        # speaks" is not a thing you want to wait a turn for.
+        n = silence_all()
+        print(f"  focus: this session only ({name}){f' — {n} cut' if n else ''}")
     else:
         on = STATE.exists()
         muted = session_mute(sid).exists()
+        speaks = on and not muted and _focus.allows(sid) and _presence.open_now()
+        n = len(_presence.windows())
+        print(f"  window  : {f'open ({n})' if n else 'closed — nothing runs'}"
+              + ("" if _presence.required() else "   (not required)"))
         print(f"  global  : {'ON' if on else 'off'}")
         print(f"  session : {'muted' if muted else 'normal'}")
-        print(f"  effect  : {'SPEAKS' if on and not muted else 'silent'}")
-        print("\n  voice on | voice off | voice solo | voice silence")
+        print(f"  focus   : {_focus.describe(sid)}")
+        print(f"  effect  : {'SPEAKS' if speaks else 'silent'}")
+        print("\n  voice on | voice off | voice mute | voice focus | voice silence")
     return 0
 
 

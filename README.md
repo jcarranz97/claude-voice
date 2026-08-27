@@ -170,26 +170,44 @@ stumble:
 
 | | who starts it | where it lives |
 |---|---|---|
-| **The voice** (speaking, narration, tick) | Claude Code, via the hooks | nothing to launch — it runs inside your Claude session |
+| **The voice** (speaking, narration, tick) | Claude Code, via the hooks | inside your Claude session — but only while a HUD is open |
 | **The HUD** | **you** | a long-lived process in its own terminal |
 
-So there is no daemon to start for the voice. Install the hooks, run
-`claude-voice on`, and the next thing you say to Claude gets spoken back. The
-HUD is optional and purely a viewer — closing it breaks nothing.
+The HUD is the application. While one is open, the hooks speak; while none is,
+nothing of ours runs at all — nothing spoken, no acknowledgement, no heartbeat,
+no microphone held open, and no instruction added to your prompts, so a machine
+with no window open is not spending tokens on lines nobody will hear.
+
+Closing the window closes the rest of it: conversation mode is stopped, the
+microphone is released, anything queued or playing is cut. And because the exit
+that matters most is the one nobody gets to clean up after — a killed terminal,
+a machine losing power — the microphone daemon and the heartbeat also check for
+themselves, on the timer they already run on, and stop within seconds of the
+last window going away.
+
+Closing does not turn the voice **off**, it suspends it. Open a HUD again and it
+picks up where the switch left it, with no keys pressed.
+
+Install the hooks, run `claude-voice on`, open a HUD, and the next thing you say
+to Claude gets spoken back.
 
 ### Day to day
 
 ```bash
 claude-voice on                            # start speaking (off is the default)
 claude-voice off                           # stop, and silence anything playing now
-claude-voice solo                          # mute just this one session
+claude-voice focus                         # only this session speaks, the rest go quiet
+claude-voice focus --clear                 # give every session its voice back
+claude-voice mute                          # mute just this one session
 claude-voice silence                       # panic button: cut all sound now
-claude-voice status                        # is it on? is this session muted?
+claude-voice status                        # is it on? which session does it speak in?
 claude-voice lang                          # which language speaks, and what else is here
 claude-voice lang en                       # switch to it — the same thing l does in the HUD
 claude-voice lang --fetch en               # download that language's voice first
 
 claude-voice hud                           # the status window, in a spare terminal
+claude-voice monitor                       # what has the microphone and speakers — anyone's
+claude-voice monitor --watch               # ... live, until you quit
 claude-voice history 20                    # the last 20 lines of this conversation
 claude-voice history 20 --all              # ... of every session on this machine
 claude-voice say "test one two"            # synthesize and play, ignoring the switch
@@ -212,6 +230,37 @@ speech-to-text pieces as notes rather than failures:
 [ note ] switch — off
          fix: claude-voice on
 ```
+
+### One session at a time
+
+The switch is one file for the whole machine, which is the right grain until
+three windows are open and all three want to tell you what they just did.
+Turning the voice off to stop two of them stops the third as well.
+
+`f` in the HUD, or `claude-voice focus` inside a session, hands the voice to
+one pane. That session speaks; the others behave exactly as though the voice
+were off, without anything being turned off and without touching those windows
+at all. Pressing `f` again, or `claude-voice focus --clear`, gives everyone
+their voice back.
+
+Focus and dictation are moved together on purpose. `f` focuses the session
+dictation is already aimed at, `t` carries the focus along when it switches
+session, and `claude-voice focus` aims dictation at the pane it was run in — so
+the window you talk to and the window that answers out loud are one window, not
+two settings that happen to agree.
+
+It is filed under the tmux pane rather than the session id, which is what makes
+it survive: closing a conversation and starting another one in the same window
+keeps the voice where you put it, and so does quitting the HUD, and so does a
+reboot. A session id would not — a restarted session is a new one, and the
+focus would quietly fall off it, which is the moment every other window starts
+talking again.
+
+Two consequences worth knowing. A focus left on a pane you have since closed
+means nothing speaks anywhere; the HUD says so on its bottom line and `f`
+clears it. And because pane ids belong to a tmux server, a focus set under a
+server that has since been restarted is ignored rather than applied to whatever
+pane inherited the number.
 
 ### The HUD
 
@@ -257,11 +306,12 @@ running `hud.py` directly reach the same code.
 
 | key | |
 |---|---|
-| `m` / space | voice off / ON — off silences whatever is playing, instantly |
+| `m` / space | voice off / ON, for the whole machine — off silences whatever is playing, instantly |
+| `f` | mute every session except the one `t` points at, and unmute them again |
 | `l` | language: switch to the next preset, labelled in the language it gives you |
 | `d` | dictate: record, transcribe, send |
 | `c` | conversation mode: continuous listening |
-| `t` | switch which Claude session receives dictation |
+| `t` | switch which Claude session receives dictation — the voice follows it |
 | `h` | history: show/hide the spoken log beside the reactor |
 | `x` | close an orphaned microphone capture (emergency) |
 | `q` | quit the HUD (the voice keeps working) |
@@ -378,6 +428,40 @@ transcribe its own output.
 
 ---
 
+### Seeing what is actually running
+
+"Nothing of ours runs while no window is open" is a claim, and a claim about a
+microphone is worth checking rather than believing:
+
+```bash
+claude-voice monitor --watch
+```
+
+It answers from the machine's side — what has a claim on the capture device and
+the speakers at this instant, ours or anybody's:
+
+```
+microphone
+  ● pw-record        claude-voice · conversation mode            4m
+  ● firefox          meet.google.com                            18m
+
+speakers
+  ● aplay            claude-voice · speaking                     0s
+
+claude-voice
+  ● hud.py           the window (1 open)                         9m
+  ● listen.py        conversation mode · microphone open         4m
+```
+
+A browser tab left in a call holds the microphone exactly as much as we would,
+so it is listed too, by its own name. Ours are marked as ours. Quit the HUD and
+watch the list empty: `pw-record` is the microphone itself, and it should be
+gone within about three seconds.
+
+Nothing here kills anything — it is a window, not a broom. `claude-voice mic
+--sweep` is what clears a capture of ours left behind, and other people's
+processes are theirs to close.
+
 ### The microphone watchdog
 
 The HUD warns about a microphone left open, but only while the HUD is up, and
@@ -452,12 +536,20 @@ node = "alsa_input.usb-..."            # pw-record --list-targets
 context = 6                       # turns of spoken history the acknowledgement sees
 timeout = 3.0                     # past this, the cached phrase plays instead
 
+[hud]
+required = true                   # no window open, nothing of ours runs at all
+
 [history]
 enabled = true                    # the spoken log behind the HUD's h panel
 position = "left"                 # left, right or bottom of the HUD window
 cap = 400                         # lines kept per session; older ones trimmed
 keep_days = 7                     # a session silent this long is swept away
 ```
+
+`hud.required` is the one worth thinking about before changing. Set it to
+`false` and you get the older behaviour — the voice runs on the hooks alone and
+the HUD goes back to being a viewer, which is right for a machine you never sit
+in front of and wrong for a laptop with a microphone in it.
 
 ALSA card *numbers* reorder on reconnect. A setup pinned to `plughw:4,0`
 silently started recording from a webcam mic — digital silence — the day a card
@@ -656,6 +748,9 @@ claude_voice/
   config.py             layered configuration
   lang.py               the language switch: preset in, preset out
   voice.py              the switch; the UserPromptSubmit hook
+  focus.py              which pane owns the voice when several are open
+  presence.py           is a window open; nothing of ours runs while none is
+  monitor.py            what holds the microphone and the speakers, anyone's
   speak.py              synthesis, phoneme mixing; the Stop hook
   narrate.py            mid-turn progress; the MessageDisplay hook
   ack.py                the instant acknowledgement

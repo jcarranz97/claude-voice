@@ -167,6 +167,23 @@ def cycle() -> str:
     return describe(nxt)
 
 
+def aim_at_pane_id(pane_id: str) -> str:
+    """Point dictation at the pane with this `%12` id. Its description, or "".
+
+    The two ids are not interchangeable and both are needed. `pane.json` holds
+    `session:window.pane`, which is what `send-keys` takes; `%12` is what a
+    hook inside the pane knows itself by, and what a focus is filed under. This
+    is the crossing between them, so that focusing a session and dictating into
+    it stay one act rather than two settings that happen to agree.
+    """
+    p = next((q for q in claude_panes() if q.get("pane_id") == pane_id), None)
+    if not p:
+        return ""
+    BASE.mkdir(parents=True, exist_ok=True)
+    PANE_CFG.write_text(json.dumps({"pane": p["id"]}))
+    return f'{p["dir"]} · {p["title"]}'.strip(" ·")
+
+
 def target_session() -> str:
     """The session uuid behind the target pane, "" if it cannot be resolved.
 
