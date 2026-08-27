@@ -41,7 +41,7 @@ import config as _config                              # noqa: E402
 CFG = _config.load()
 
 BRANCH_TTL = 2.0        # a file read; the branch may change under us any time
-PR_TTL = 90.0          # settled: nobody is waiting on this number
+PR_TTL = 60.0           # settled: nobody is waiting on this number
 PR_BUSY_TTL = 12.0      # something is running: this IS what is being watched
 PR_GONE_TTL = 300.0     # no gh, or no GitHub remote: stop asking so often
 GH_TIMEOUT = 12.0       # it is a network call, and networks hang
@@ -195,6 +195,31 @@ def _refresh(rt: Path, br: str, key: tuple) -> None:
         _state.update(key=key, t=time.time(), busy=False)
 
 
+_branch_cache = {"where": None, "t": 0.0, "val": {}}
+
+
+def local(where: str) -> dict:
+    """{name, branch, detached} for a directory, cached on a short clock.
+
+    Cheap is not free: the terminal HUD draws twenty times a second, and
+    finding the repository means a stat per directory on the way up. Two
+    seconds is far below the time it takes to notice a branch has changed
+    and far above the time between two frames.
+    """
+    now = time.time()
+    if _branch_cache["where"] == where and now - _branch_cache["t"] < BRANCH_TTL:
+        return dict(_branch_cache["val"])
+    rt = root(where) if where else None
+    if not rt:
+        val = {}
+    else:
+        br, detached = branch(rt)
+        val = {"name": rt.name, "branch": br, "detached": detached,
+               "root": str(rt)}
+    _branch_cache.update(where=where, t=now, val=val)
+    return dict(val)
+
+
 def info(where: str) -> dict:
     """What to draw, right now, without waiting for anything.
 
@@ -204,12 +229,11 @@ def info(where: str) -> dict:
     branch alone for a second, which is the correct thing to show while the
     only honest answer to the rest is "asking".
     """
-    rt = root(where) if where else None
-    if not rt:
+    out = local(where)
+    if not out:
         return {}
-    br, detached = branch(rt)
-    out = {"name": rt.name, "branch": br, "detached": detached}
-    if not br or detached or not enabled():
+    rt, br = Path(out.pop("root")), out["branch"]
+    if not br or out["detached"] or not enabled():
         # A pull request belongs to a branch. Without one there is nothing
         # to ask about, and asking anyway would be one subprocess per HUD
         # per minute for an answer that cannot exist.
