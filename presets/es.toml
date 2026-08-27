@@ -49,6 +49,19 @@ tratando de usted. Di qué vas a hacer, no lo hagas. Sin comillas, sin markdown,
 sin rutas, comandos ni nombres de archivo: se va a escuchar, no leer.
 Ejemplo: 'Reviso el espacio en disco.'
 """
+# Se añade a `system`, y solo cuando ack.context aporta historial. Tiene que
+# decir QUÉ es ese historial: tus líneas ahí son las frases breves que se
+# dijeron en voz alta, no las respuestas que resumían.
+context_system = """
+Los mensajes anteriores al último son esta conversación tal como se escuchó.
+Tus propias líneas ahí son resúmenes hablados, no las respuestas completas.
+Úsalos para saber a qué se refiere la última petición, de modo que el acuse
+nombre el trabajo real en vez de repetir las palabras. Lo dicho en voz alta
+pudo transcribirse mal: si una palabra no encaja con lo anterior y otra parecida
+sí, responde a lo que evidentemente se quiso decir y no menciones el error.
+Nunca añadas un detalle que no esté en la conversación: el contexto sirve para
+no ser vago, no para inventar. Responde igualmente solo con el acuse.
+"""
 
 [stt]
 language = "es"

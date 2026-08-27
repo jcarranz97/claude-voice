@@ -114,9 +114,17 @@ DEFAULTS = {
         "contextual": True,        # ask a small model what to say; else canned
         "model": "claude-haiku-4-5",
         "max_words": 9,
-            "timeout": 3.0,
+        "timeout": 3.0,
+        # Turns of the spoken log the acknowledgement is shown before the
+        # prompt it is acknowledging. Without them it can only paraphrase the
+        # sentence it was handed, which is how "try it again with the flag"
+        # comes back as "Retrying with the flag". 0 sends the prompt alone --
+        # exactly the old behaviour -- and every turn is tokens sent, in the
+        # one call that has to beat the answer to the speaker.
+        "context": 6,
         "phrases": [],             # blank -> from the preset
         "system": "",              # blank -> from the preset
+        "context_system": "",      # blank -> from the preset; used only with context
     },
     "stt": {
         "enabled": True,
@@ -157,8 +165,9 @@ DEFAULTS = {
     "history": {
         # The spoken log behind the HUD's history pane: what was said out
         # loud, both sides. One log per conversation, so the cap and the
-        # retention below are per session. Nothing else reads it, so turning
-        # it off costs only that pane.
+        # retention below are per session. It is also what the acknowledgement
+        # reads for context, so turning it off costs that pane AND leaves the
+        # acknowledgement seeing only the prompt.
         "enabled": True,
         "cap": 400,                # entries kept per session; older ones trimmed
         "show": 200,               # entries the panel reads back

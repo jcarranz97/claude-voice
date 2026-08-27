@@ -59,6 +59,16 @@ makes the instruction appear.
 tick all enqueue and return immediately — a slow hook stalls the session. A
 single locked player process plays them in order, one at a time.
 
+**The acknowledgement is shown the last few turns, not just the prompt.** The
+line spoken the instant you hit enter comes from its own small model call, and
+that call used to see one thing: the sentence just submitted. Handed six words
+it can only hand six back, so "try it again with the flag" came back as
+"Retrying with the flag" — a sentence with no content in it. Worse, a word
+dictation got wrong was repeated with total confidence, because there was
+nothing to notice it against. It now reads the last `ack.context` turns of the
+spoken log first, which is enough to name the actual work and to quietly read
+"bump" where the microphone heard "pump".
+
 **Per session, except what is genuinely shared.** You will have several
 sessions open, and a machine can be running a bot on the same hooks. What a
 *session* is doing — thinking, done — is one file each, and so are the
@@ -166,6 +176,7 @@ claude-voice hud                           # the status window, in a spare termi
 claude-voice history 20                    # the last 20 lines of this conversation
 claude-voice history 20 --all              # ... of every session on this machine
 claude-voice say "test one two"            # synthesize and play, ignoring the switch
+claude-voice ack "and now the tests"       # the acknowledgement for that prompt, printed
 claude-voice config                        # what is actually in effect, and from where
 claude-voice doctor                        # check the install and say what is wrong
 claude-voice --help                        # everything, grouped
@@ -325,7 +336,8 @@ not follow you across the resume.
 
 The log is capped and trimmed per session, and a session that has been silent
 for `keep_days` is swept away. Turn it off with `enabled = false` under
-`[history]` and only that panel goes away.
+`[history]` and the panel goes — and with it the context the acknowledgement
+reads, which falls back to seeing only the prompt.
 
 ### Dictation and conversation mode
 
@@ -419,6 +431,10 @@ max_per_turn = 12
 [stt]
 device = "plughw:CARD=Headset,DEV=0"   # arecord -L; prefer a NAME over an index
 node = "alsa_input.usb-..."            # pw-record --list-targets
+
+[ack]
+context = 6                       # turns of spoken history the acknowledgement sees
+timeout = 3.0                     # past this, the cached phrase plays instead
 
 [history]
 enabled = true                    # the spoken log behind the HUD's h panel
@@ -599,9 +615,16 @@ It caps itself, or `claude-voice silence` ends it now.
 | Optional | `tmux` for dictation; an Anthropic credential for contextual acknowledgements |
 
 The contextual acknowledgement — a one-line "Checking the disk space" spoken
-the instant you hit enter — costs one small model call per prompt. Set
-`ack.contextual = false` to use the cached phrases instead, or
+the instant you hit enter — costs one small model call per prompt, and that
+call is sent the last `ack.context` turns of what was said out loud as well as
+the prompt itself. That is more tokens and more of the conversation leaving the
+machine than a single sentence was; `ack.context = 0` sends the prompt alone.
+Set `ack.contextual = false` to use the cached phrases instead, or
 `ack.enabled = false` to skip it entirely.
+
+`claude-voice ack "some prompt"` prints what would be said, with how long the
+call took and how many turns it read — the way to choose `ack.context` for your
+own connection, since a late acknowledgement is worse than a vague one.
 
 ---
 

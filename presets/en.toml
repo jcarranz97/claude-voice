@@ -53,6 +53,20 @@ to START working. Reply with ONLY a spoken acknowledgement, in English, at most
 paths, commands or filenames: this will be heard, not read.
 Example: "Checking the disk space."
 """
+# Added to `system`, and only when ack.context gave the call some history. It
+# has to say what that history IS: the assistant lines in it are the short
+# lines that were SPOKEN, not the answers they stood for.
+context_system = """
+The messages before the last are this conversation as it was heard out loud.
+Your own lines there are brief spoken summaries, not the full answers. Use them
+to tell what the last request refers to, so the acknowledgement names the actual
+work instead of repeating the words. Anything said out loud may have been
+mistyped by speech recognition: when a word makes no sense next to what came
+before and a similar-sounding one does, acknowledge what was clearly meant and
+say nothing about the mistake. Never add a detail the conversation does not
+contain: context is there to stop the line being vague, not to fill it in.
+Still reply with only the acknowledgement.
+"""
 
 [stt]
 language = "en"
