@@ -1,11 +1,5 @@
 # claude-voice
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-00ff88?style=flat-square)](LICENSE)
-[![Platform: Linux](https://img.shields.io/badge/platform-Linux-00ff88?style=flat-square&logo=linux&logoColor=white)](#-where-it-runs)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-00ff88?style=flat-square&logo=python&logoColor=white)](#-requirements)
-[![Runtime: Claude Code](https://img.shields.io/badge/runtime-Claude%20Code-00ff88?style=flat-square)](#-where-it-runs)
-[![Speech: on-device](https://img.shields.io/badge/speech-on--device-00ff88?style=flat-square)](#-why-the-design-is-the-way-it-is)
-
 Give Claude Code a voice, an ear, and a status display — locally, with no
 cloud speech services.
 
@@ -70,20 +64,21 @@ Both read the same module, so they cannot disagree about what is on screen — o
 
 ## 💻 Where it runs
 
-| OS | | |
+| OS | Supported | Notes |
 |---|:---:|---|
-| 🐧 **Linux** | ✅ | supported |
-| 🍎 **macOS** | ❌ | not yet |
-| 🪟 **Windows** | ❌ | not yet |
+| 🐧 **Linux** | ✅ | PipeWire for capture, PulseAudio or ALSA for playback; X11 and Wayland both |
+| 🍎 **macOS** | ❌ | not yet — no CoreAudio capture path, and no window |
+| 🪟 **Windows** | ❌ | not yet — same, plus no systemd for the microphone watchdog |
 
 Linux only for now, and not by preference. The parts that are tied to it are the ones that touch the machine directly: PipeWire and ALSA for capture, `/proc` and `/sys` for the system and GPU meters, systemd for the microphone watchdog, and WebKitGTK for the window. None of that is unportable in principle; none of it is written yet.
 
-| Runtime | | |
+| Runtime | Supported | Notes |
 |---|:---:|---|
-| **Claude Code** | ✅ | supported |
-| other agent runtimes | 🚧 | planned |
+| 🤖 **Claude Code** | ✅ | hooks for the voice, a tmux pane for dictation |
+| 🧩 **OpenCode** | 🚧 | planned |
+| 🧩 other agent runtimes | 🚧 | planned |
 
-The voice attaches through Claude Code's hooks — `SessionStart`, `UserPromptSubmit`, `MessageDisplay` and `Stop` — and dictation delivers into a tmux pane running `claude`. Other agent runtimes are the intended direction; today it is Claude Code.
+The voice attaches through Claude Code's hooks — `SessionStart`, `UserPromptSubmit`, `MessageDisplay` and `Stop` — and dictation delivers into a tmux pane running `claude`. Nothing below that layer is Claude Code's: the synthesis, the ear, the HUD and the state files are all runtime-agnostic already, so a second runtime is a matter of another way in, not another implementation.
 
 ---
 
