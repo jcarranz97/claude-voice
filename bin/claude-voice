@@ -31,6 +31,7 @@ Watch
 
 Speech
   claude-voice say "text"         synthesize and play, ignoring the switch
+  claude-voice ack "text"         the acknowledgement, printed not spoken
   claude-voice pron diag <word>…  why a word sounds wrong, and how to fix it
   claude-voice pron say "…"       hear a phrase, with a level sanity check
   claude-voice pron list          the active pronunciation rules
@@ -79,6 +80,9 @@ case "$cmd" in
   hud)         exec "$PY" "$PKG/hud.py" "$@" ;;
   history)     exec "$PY" "$PKG/spokenlog.py" "$@" ;;
   say)         exec "$PY" "$PKG/speak.py" "$@" ;;
+  # Always dry: an acknowledgement belongs to a prompt, and there is no prompt
+  # here. What this is for is reading the line -- and its cost -- back.
+  ack)         exec "$PY" "$PKG/ack.py" --dry-run "$@" ;;
   dictate)     exec "$PY" "$PKG/dictate.py" "$@" ;;
   listen)      exec "$PY" "$PKG/listen.py" "$@" ;;
   pron)        exec "$PY" "$PKG/pron.py" "$@" ;;

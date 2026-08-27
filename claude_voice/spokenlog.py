@@ -34,6 +34,12 @@ it is given and about no other. The HUD asks about the session it is watching,
 narrows to that pane's project when the title cannot name it, and only falls
 back to the liveliest session on the machine when there is no pane at all.
 
+It is read for more than a panel now: ack.py shows the last few turns to the
+acknowledgement call, which is why the assistant side being the SPOKEN line
+rather than the whole answer is worth stating twice. It is a summary of a
+summary -- enough to tell what "try it again" refers to, and cheap, which is
+what a call in the latency path can afford.
+
 One file per conversation
 -------------------------
 History is a SESSION question -- it is the record of one conversation -- so it

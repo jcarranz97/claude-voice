@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Contextual acknowledgement: say what was asked for, not a canned phrase.
 
-  ack.py [--session <id>] "<the prompt text>"
+  ack.py [--session <id>] [--dry-run] "<the prompt text>"
 
 voice.py launches this from the UserPromptSubmit hook, in the background,
 because a model call takes ~0.7 s and a slow hook stalls the whole session.
@@ -14,6 +14,18 @@ that has something to do with what you asked.
 If the model fails or takes too long, it falls back to the cached phrase:
 something always sounds. A generic "one moment" beats an unexplained silence.
 
+The call is shown the last few turns of the spoken log as well as the prompt
+(ack.context). Handed one sentence and nothing else, it can only hand that
+sentence back -- "try it again with the flag" becomes "Retrying with the flag",
+which says nothing -- and a dictated word Whisper got wrong is repeated with
+total confidence, because there is nothing to notice it against.
+
+That history is not free: it is tokens sent on every prompt, in the one call
+whose whole job is to arrive before the answer does. ack.context = 0 sends the
+prompt alone, which is what this did before, and ack.timeout stays the backstop
+either way. --dry-run prints the line and what it cost instead of speaking it,
+which is how to compare the two.
+
 Set ack.contextual = false to skip the model entirely and always use the cache.
 """
 
@@ -24,6 +36,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -32,6 +45,11 @@ import config as _config                              # noqa: E402
 
 CFG = _config.load()
 BASE = _config.BASE
+
+# A spoken line is short by construction, but a dictated one is bounded only by
+# how long you held the key. History is here for the gist of the turn, so a
+# monologue contributes its opening and no more.
+MAX_LINE = 300
 
 
 def _mod(name: str):
@@ -57,7 +75,74 @@ def _client():
     return anthropic.Anthropic(auth_token=token, timeout=timeout, max_retries=0)
 
 
-def contextual(prompt: str) -> str:
+def _bare(text: str) -> str:
+    """A line reduced to what was said, so punctuation is not a difference."""
+    return "".join(c for c in text.lower() if c.isalnum())
+
+
+def _drop_prompt(entries: list, prompt: str) -> list:
+    """The history, minus the prompt being acknowledged.
+
+    Whether it is in there at all depends on how the prompt arrived: dictation
+    writes the spoken line in deliver(), before this hook fires, while a typed
+    prompt is never written to the log at all. So it is removed if it is there
+    rather than assumed to be absent -- otherwise a dictated prompt is put to
+    the model twice and the turn that gives it its meaning falls off the end.
+
+    Only the trailing `in` lines are candidates: anything said out loud since
+    is not this prompt.
+    """
+    out = list(entries)
+    for i in range(len(out) - 1, -1, -1):
+        if out[i]["side"] != "in":
+            break
+        if _bare(out[i]["text"]) and _bare(out[i]["text"]) == _bare(prompt):
+            del out[i]
+            break
+    return out
+
+
+def history(prompt: str, session: str) -> list:
+    """The last ack.context turns of this conversation, as messages.
+
+    From the spoken log rather than the transcript, for the reason spokenlog.py
+    exists: most of what is heard never reaches the transcript. The price is
+    that the assistant's side is the line it SPOKE, a summary of an answer
+    rather than the answer -- thin, but it is what the ear got, and this call
+    cannot afford to read anything longer.
+
+    A turn is one side speaking, so the narration lines of a single answer
+    collapse into one message; the API is read the conversation, not the log.
+    """
+    try:
+        n = int(CFG.get("ack.context", 6))
+    except (TypeError, ValueError):
+        n = 6
+    if n <= 0 or not session:
+        return []
+    try:
+        # Generously more lines than turns: an answer often speaks several
+        # times, and the count that matters is taken after collapsing.
+        entries = _mod("spokenlog").tail(n * 8, session)
+    except Exception:
+        return []                    # history is a bonus, never a dependency
+    msgs = []
+    for e in _drop_prompt(entries, prompt):
+        role = "user" if e["side"] == "in" else "assistant"
+        text = e["text"].strip()[:MAX_LINE]
+        if not text:
+            continue
+        if msgs and msgs[-1]["role"] == role:
+            msgs[-1]["content"] = f'{msgs[-1]["content"]} {text}'[:MAX_LINE * 3]
+        else:
+            msgs.append({"role": role, "content": text})
+    msgs = msgs[-n:]
+    while msgs and msgs[0]["role"] != "user":
+        msgs.pop(0)                  # the conversation starts on your side
+    return msgs
+
+
+def contextual(prompt: str, session: str = "") -> str:
     """An acknowledgement related to what was asked. Empty string on failure."""
     if not CFG.get("ack.contextual", True):
         return ""
@@ -66,11 +151,24 @@ def contextual(prompt: str) -> str:
         if client is None:
             return ""
         max_words = int(CFG.get("ack.max_words", 9))
+        past = history(prompt, session)
+        messages = past + [{"role": "user", "content": prompt[:1500]}]
+        if len(messages) > 1 and messages[-2]["role"] == "user":
+            # The turn before drew no spoken line of its own -- the voice was
+            # off, or it was still talking. One side, one message.
+            messages[-1]["content"] = (messages.pop(-2)["content"] + "\n"
+                                       + messages[-1]["content"])
+        system = CFG.get("ack.system", "") or ""
+        if past:
+            # What that history IS has to be said, or the spoken lines read as
+            # full answers and the mis-transcriptions read as intended.
+            note = (CFG.get("ack.context_system", "") or "").strip()
+            system = f"{system.strip()}\n\n{note}".strip() if note else system
         r = client.messages.create(
             model=CFG.get("ack.model", "claude-haiku-4-5"),
             max_tokens=40,
-            system=CFG.get("ack.system", "") or "",
-            messages=[{"role": "user", "content": prompt[:1500]}],
+            system=system,
+            messages=messages,
         )
         text = "".join(b.text for b in r.content if b.type == "text").strip()
         text = text.strip('"“” ').replace("\n", " ")
@@ -106,17 +204,38 @@ def generic() -> tuple:
 
 def main() -> int:
     argv = sys.argv[1:]
+    # Say the line instead of speaking it. This is the latency path, and the
+    # only honest way to choose ack.context is to hear what each setting costs.
+    dry = "--dry-run" in argv
+    argv = [a for a in argv if a != "--dry-run"]
     # Whose acknowledgement this is. The queue is shared between windows, so
     # without it the HUD cannot tell whether the voice it hears is the session
-    # it is watching.
+    # it is watching. It is also whose history gets read.
     session = ""
     if len(argv) >= 2 and argv[0] == "--session":
         session, argv = argv[1], argv[2:]
     prompt = " ".join(argv).strip()
+
+    if dry:
+        log = _mod("spokenlog")
+        # Run from a terminal, there is no hook to name the session, so the
+        # reader's own policy answers it: the same conversation that
+        # `claude-voice history` would print.
+        session = session or log.follow(*log.target())
+        turns = len(history(prompt, session))
+        start = time.perf_counter()
+        text = contextual(prompt, session) if prompt else ""
+        ms = (time.perf_counter() - start) * 1000
+        print(f'  {text or "(nothing said -- the cached phrase would play)"}')
+        print(f"  {ms:.0f} ms, {turns} turns of history"
+              + (f", session {session[:8]}" if session
+                 else " -- no conversation to read"))
+        return 0
+
     audioq = _mod("audioq")
 
     wav = None
-    text = contextual(prompt) if prompt else ""
+    text = contextual(prompt, session) if prompt else ""
     if text:
         speak = _mod("speak")
         cand = Path(tempfile.gettempdir()) / f"cv-ack-ctx-{abs(hash(text)) % 10**8}.wav"
