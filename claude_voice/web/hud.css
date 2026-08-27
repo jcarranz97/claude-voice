@@ -292,6 +292,11 @@ body[data-mic="hearing"] .mic svg { filter: drop-shadow(0 0 6px var(--mic)); }
 .kv dt { color: var(--dim); text-transform: uppercase; font-size: .77em; letter-spacing: .14em; padding-top: 2px; }
 .kv dd { overflow-wrap: anywhere; }
 
+/* The mark in the repo heading. currentColor, so it is the heading's own
+   colour rather than a second one, and sized in em so it tracks the text
+   instead of floating beside it. */
+.mark { width: 1em; height: 1em; fill: currentColor; vertical-align: -.13em; margin-right: .5em; }
+
 /* The repository block. Branch and pull request are plain rows; only the
    checks carry a colour, and only three of them, because that is the row you
    look at while you wait. They are deliberately NOT --hue: whether CI passed
