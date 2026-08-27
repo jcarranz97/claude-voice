@@ -199,7 +199,9 @@ uv tool install claude-voice          # the voice alone, no microphone
 
 That is the whole program. It is an application on your machine, not a
 checkout: nothing is left pointing at a source tree, and you can use it in any
-directory.
+directory. Installing from a checkout instead of PyPI changes nothing about
+that — it is still a copy, so [step 5](#5-installing-it-again-from-your-own-checkout)
+is how you replace it later.
 
 ### 3. A voice
 
@@ -256,6 +258,29 @@ Drop the `MessageDisplay` entry if you only want the final line spoken.
 `SessionStart` is what lets a pane name its conversation. A window that has not exchanged anything yet still carries the default `Claude Code` title and has no transcript to match it against, so without the binding the very first dictated line of a conversation has no session to be filed under and never reaches the history panel. It costs nothing and says nothing; it writes one small file.
 
 </details>
+
+### 5. Installing it again, from your own checkout
+
+`uv tool install` copies the code into the tool's own environment. It is not a link back to the source tree — that is the point of [The program](#2-the-program) above, and it is also the thing that catches you out the first time you edit the checkout and nothing changes. The installed program keeps running the code it was built from until you replace it, and replacing it takes both flags:
+
+```bash
+uv tool install --force --refresh "$HOME/repos/claude-voice[stt]"   # wherever yours lives
+uv tool install --force --refresh "$HOME/repos/claude-voice"        # no microphone
+```
+
+`--refresh` is the one that matters and the one everybody leaves out. uv caches the wheel it built for a directory, so `--force` on its own reinstalls that cached wheel — your edits are not in it. What makes this worth a section of its own is that nothing complains: the command prints `Installed 1 executable: claude-voice` and exits zero, having installed the same code as before. Without `--force` you get the identical misleading success.
+
+The extra is not remembered either. Reinstall without `[stt]` and the microphone leaves with the old environment — the voice keeps working, dictation stops, and `claude-voice doctor` is where that shows up.
+
+**So which one is installed?** Not a question the version answers: it stays at whatever `pyproject.toml` says across every commit, so `uv tool list` prints the same number before and after. Compare the files.
+
+```bash
+diff -rq ~/repos/claude-voice/claude_voice \
+  ~/.local/share/uv/tools/claude-voice/lib/python3*/site-packages/claude_voice \
+  | grep -v __pycache__
+```
+
+Silence means the install matches your working tree, and the command above is the fix for anything else. It compares against the files on disk and nothing more — whether *those* are current is what `git status` and a `git fetch` are for.
 
 ---
 
@@ -838,6 +863,8 @@ for when it says everything is fine and you still hear nothing.
   in systemd services; there is nothing to play through.
 - No line at all — the `Stop` hook is not installed or points at a bad path.
   Re-run `claude-voice hooks` and compare.
+
+**Edits to the checkout change nothing.** The install is a copy, not a link, and it keeps running the code it was built from. `uv tool install --force --refresh "$HOME/repos/claude-voice[stt]"` puts your working tree back in charge. Both flags: `--force` alone reinstalls uv's cached wheel and reports success while changing nothing. [Installing it again, from your own checkout](#5-installing-it-again-from-your-own-checkout) has the rest, including the one-line check for whether the two differ at all.
 
 **The HUD dies with `NameError` or `AttributeError`.** You are running a stale
 copy from an old path. This is what an alias frozen on `python .../hud.py`

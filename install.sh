@@ -89,10 +89,10 @@ fi
 say "Installing claude-voice"
 if [ "$WITH_STT" = 1 ]; then
   echo "  with speech-to-text (faster-whisper and onnxruntime — this one is big)"
-  uv tool install --force "$HERE[stt]"
+  uv tool install --force --refresh "$HERE[stt]"
 else
   echo "  text-to-speech only"
-  uv tool install --force "$HERE"
+  uv tool install --force --refresh "$HERE"
 fi
 
 # --- the voice model ---------------------------------------------------------
