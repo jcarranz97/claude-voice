@@ -196,6 +196,11 @@ DEFAULTS = {
         # the right setting for a machine you never sit in front of, and the
         # wrong one for a laptop with a microphone.
         "required": True,
+        # `claude-voice run` opens a HUD when none is open, because a session
+        # started with no window comes up mute and nothing on screen says why.
+        # At most one is ever opened: the second terminal finds the first.
+        # False is for a machine that opens its window some other way.
+        "autostart": True,
         # Spaced out on purpose: the HUD letterspaces them as a title.
         "title": "",               # blank -> general.name
         "thinking": "T H I N K I N G",

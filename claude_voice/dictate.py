@@ -1,27 +1,33 @@
 #!/usr/bin/env python3
 """Push-to-talk dictation: record, transcribe, hand it to the Claude session.
 
-  dictate.py --pane 0:0.0     set the target tmux pane (once)
-  dictate.py --panes          list panes running claude
+  dictate.py --pane ID        set the target session (once)
+  dictate.py --panes          list the sessions text can be delivered to
   dictate.py --toggle         start recording / stop and send
   dictate.py --status         current state
-  dictate.py --target         the target pane as JSON (used by the HUD)
-  dictate.py --target-session the target pane's session uuid, if it resolves
+  dictate.py --target         the target as JSON (used by the HUD)
+  dictate.py --target-session the target's session uuid, if it resolves
   dictate.py --can-send       exit 0 if a Claude session can receive text
 
-Why tmux
---------
+The way in
+----------
 There is no supported way to push text into an already-running interactive
-Claude Code session: stdin is consumed at startup and there is no IPC. The
-usual Wayland alternative (ydotool) needs uinput permissions and window focus.
-If claude runs inside tmux, `send-keys` delivers the exact text to the pane
-with no special permissions and without stealing focus.
+Claude Code session: stdin belongs to the terminal emulator, which holds the
+pty master, and `/dev/pts/N` is the slave -- writing there paints the screen
+instead of feeding the program. The usual Wayland alternative (ydotool) needs
+uinput permissions and types into whatever has focus, which is a window and
+not a session.
+
+So the text arrives from something that was present at launch. `claude-voice
+run claude` holds the pty master itself, and run.py writes into it. That works
+in any terminal, tmux included -- a wrapper inside a pane is still a wrapper,
+and delivery does not go through tmux at all.
 
 Safety
 ------
-This TYPES AND SENDS into a terminal. If the target pane were a shell, any
-transcription error would run as a command. So sending is refused unless the
-pane is running `claude`, where the text lands in the prompt box, not a shell.
+This TYPES AND SENDS into a terminal, so a bad transcription in a shell would
+run as a command. The guarantee is identity: a socket reaches only the process
+its own wrapper started. There is nothing to guess about and nothing to check.
 """
 
 import json
@@ -84,48 +90,33 @@ def cfg() -> dict:
 
 
 def claude_panes() -> list:
-    """Panes running claude, each with what identifies it.
+    """Every session text can be delivered to: the ones started by the wrapper.
 
-    tmux exposes the pane title, and Claude Code puts the conversation title
-    there -- which together with the directory is the only thing telling two
-    sessions apart at a glance. Without it, picking a target is guesswork.
-
-    `pane_id` is carried alongside because it is what the SESSION knows itself
-    by: a hook running inside claude reads `$TMUX_PANE` and gets `%12`, never
-    `0:1.2`. It is the handle the pane -> session binding is filed under.
+    Named for what it used to enumerate -- panes -- because the HUD and the
+    history reader ask this question by that name, and the answer is the same
+    kind of thing. What changed is where sessions come from: they are started
+    on purpose now, not found by looking at every pane on the machine and
+    guessing which ones were meant.
     """
     try:
-        out = subprocess.run(
-            ["tmux", "list-panes", "-a", "-F",
-             "#{session_name}:#{window_index}.#{pane_index}\t"
-             "#{pane_current_command}\t#{pane_current_path}\t#{pane_title}\t"
-             "#{pane_id}"],
-            capture_output=True, text=True, timeout=5).stdout
+        return _mod("run").sessions()
     except Exception:
         return []
-    panes = []
-    for line in out.splitlines():
-        parts = line.split("\t")
-        if len(parts) < 5 or parts[1].strip() != "claude":
-            continue
-        panes.append({
-            "id": parts[0],
-            "dir": Path(parts[2]).name or parts[2],
-            "path": parts[2],
-            "title": parts[3].lstrip("✳ ").strip() or "(untitled)",
-            "pane_id": parts[4],
-        })
-    return panes
+
+
+def find(target: str) -> dict:
+    """The session with that id, {} when it is not there any more."""
+    return next((p for p in claude_panes() if p["id"] == target), {})
 
 
 def pane_is_claude(target: str) -> bool:
-    return any(p["id"] == target for p in claude_panes())
+    return bool(find(target))
 
 
 def describe(target: str) -> str:
-    for p in claude_panes():
-        if p["id"] == target:
-            return f'{p["dir"]} · {p["title"]}'
+    p = find(target)
+    if p:
+        return f'{p["dir"]} · {p["title"]}'
     return target or "(not set)"
 
 
@@ -134,6 +125,30 @@ def describe(target: str) -> str:
 # they need different fixes, so they are never collapsed into one message.
 NO_SESSION = "no Claude Code session"
 STALE_TARGET = "target session is gone"
+NO_TARGET = "several sessions, none picked"
+
+
+def current() -> str:
+    """The session dictation is aimed at, choosing one when it need not ask.
+
+    A stored target wins while it is alive. Otherwise, if there is exactly one
+    session on the machine, that is the answer and there was never a question
+    -- which is the ordinary case now that a session is started on purpose
+    rather than found. Making somebody pick from a list of one was a step that
+    existed only because the old lookup showed every pane on the machine,
+    most of which nobody meant to dictate into.
+
+    Not written back to disk: an implicit target is a fact about right now,
+    and remembering it would turn "the only session" into a stale pointer the
+    moment a second one opened.
+    """
+    live = claude_panes()
+    stored = cfg().get("pane")
+    if stored and any(p["id"] == stored for p in live):
+        return stored
+    if len(live) == 1:
+        return live[0]["id"]
+    return ""
 
 
 def target_status() -> tuple:
@@ -143,24 +158,26 @@ def target_status() -> tuple:
     void and discovering it afterwards costs a transcription and, worse, makes
     a dead setup look exactly like one that simply did not hear you.
     """
-    panes = claude_panes()
-    if not panes:
+    live = claude_panes()
+    if not live:
         return False, NO_SESSION
-    target = cfg().get("pane")
-    if not target:
-        return False, NO_SESSION
-    if not any(p["id"] == target for p in panes):
-        return False, STALE_TARGET
+    if not current():
+        # Sessions exist and none of them is the answer. Which of the two
+        # ways that happened decides what to do about it, so they stay apart:
+        # a target that died wants re-picking, several fresh ones want a
+        # choice, and saying "no session" to either was the lie that sent
+        # people looking for a session that was right there.
+        return False, STALE_TARGET if cfg().get("pane") else NO_TARGET
     return True, ""
 
 
 def cycle() -> str:
-    """Move to the next Claude pane. Returns the new target's description."""
-    panes = claude_panes()
-    if not panes:
-        return "(no Claude sessions in tmux)"
-    cur = cfg().get("pane")
-    ids = [p["id"] for p in panes]
+    """Move to the next session. Returns the new target's description."""
+    live = claude_panes()
+    if not live:
+        return "(no Claude sessions)"
+    cur = current()
+    ids = [p["id"] for p in live]
     nxt = ids[(ids.index(cur) + 1) % len(ids)] if cur in ids else ids[0]
     BASE.mkdir(parents=True, exist_ok=True)
     PANE_CFG.write_text(json.dumps({"pane": nxt}))
@@ -168,13 +185,14 @@ def cycle() -> str:
 
 
 def aim_at_pane_id(pane_id: str) -> str:
-    """Point dictation at the pane with this `%12` id. Its description, or "".
+    """Point dictation at the session on that `pts:` terminal, or "".
 
     The two ids are not interchangeable and both are needed. `pane.json` holds
-    `session:window.pane`, which is what `send-keys` takes; `%12` is what a
-    hook inside the pane knows itself by, and what a focus is filed under. This
-    is the crossing between them, so that focusing a session and dictating into
-    it stay one act rather than two settings that happen to agree.
+    the delivery handle, `wrap:<pid>`, which is what the socket is found by.
+    The other is what a hook INSIDE the session knows itself by -- the pty,
+    which it can read off `$CLAUDE_PID` without being told. This is the
+    crossing between them, so that focusing a session and dictating into it
+    stay one act rather than two settings that happen to agree.
     """
     p = next((q for q in claude_panes() if q.get("pane_id") == pane_id), None)
     if not p:
@@ -185,53 +203,43 @@ def aim_at_pane_id(pane_id: str) -> str:
 
 
 def target_session() -> str:
-    """The session uuid behind the target pane, "" if it cannot be resolved.
+    """The session uuid behind the target, "" if it cannot be resolved.
 
-    The pane is the only handle dictation has, and thinking.py owns the join
-    from one to the other -- same lookup the HUD makes, so a dictated line is
-    filed under the session that received it rather than under the machine.
-
-    The pane id matters here more than anywhere else. Dictation's first line
-    of a conversation arrives BEFORE the exchange that gives the window its
-    title, so a title-only lookup came up empty exactly once per conversation,
-    and exactly on the line that opens it.
+    The wrapper already knows: run.py joins Claude Code's own registry on the
+    pty it holds, so the uuid is there from the first moment -- including for
+    the dictated line that OPENS a conversation, which is the one a title
+    lookup could never match, because the title does not exist yet.
     """
-    cur = cfg().get("pane")
-    pane = next((p for p in claude_panes() if p["id"] == cur), None)
-    if not pane:
-        return ""
-    try:
-        return _mod("thinking").session_for(pane["path"], pane["title"],
-                                            pane.get("pane_id", ""))
-    except Exception:
-        return ""
+    return find(current()).get("session", "")
 
 
 def deliver(text: str) -> bool:
-    """Type the text into the pane and send it. Refused if it is not claude."""
+    """Type the text into the target session and send it.
+
+    Nothing is checked here beyond "is there a target", because there is
+    nothing left to check: the socket reaches the process its own wrapper
+    started, and no other. Identity is the guarantee, not inspection.
+    """
     ok, why = target_status()
     if not ok:
-        # This check IS the guardrail: in a shell, a bad transcription would
-        # execute as a command.
         log(f"refusing to send: {why}")
         return False
-    target = cfg().get("pane")
+    target = current()
+    sent = False
     try:
-        # -l = literal: do not interpret the text as key names.
-        subprocess.run(["tmux", "send-keys", "-t", target, "-l", text],
-                       check=True, timeout=5)
-        time.sleep(0.15)          # let the TUI process the paste
-        subprocess.run(["tmux", "send-keys", "-t", target, "Enter"],
-                       check=True, timeout=5)
-        log(f"delivered to {target}: {text[:60]}")
-        # This is the only place that knows a sentence was SPOKEN and not
-        # typed -- conversation mode lands here too -- so it is where your
-        # side of the spoken log gets written, under the session it went to.
-        _mod("spokenlog").record("in", text, session=target_session())
-        return True
+        sent = _mod("run").deliver(find(target), text)
     except Exception as e:
         log(f"delivery failed: {e}")
         return False
+    if not sent:
+        log(f"delivery failed: {target} did not take it")
+        return False
+    log(f"delivered to {target}: {text[:60]}")
+    # This is the only place that knows a sentence was SPOKEN and not typed --
+    # conversation mode lands here too -- so it is where your side of the
+    # spoken log gets written, under the session it went to.
+    _mod("spokenlog").record("in", text, session=target_session())
+    return True
 
 
 def recording() -> bool:
@@ -301,19 +309,18 @@ def main() -> int:
 
     if arg == "--panes":
         panes = claude_panes()
-        cur = cfg().get("pane")
+        cur = current()
         print("  Claude sessions:")
         for p in panes:
             mark = "  <- target" if p["id"] == cur else ""
-            print(f'    {p["id"]}  {p["dir"]:14} {p["title"][:44]}{mark}')
+            print(f'    {p["id"]:16} {p["dir"]:14} {p["title"][:40]}{mark}')
         if not panes:
-            print("    none (is claude running outside tmux?)")
+            print("    none — start one with: claude-voice")
     elif arg == "--target":
         # For the HUD: path and title are what identify the session, and
         # ok/why are what it shows when there is no session to name.
-        cur = cfg().get("pane")
         ok, why = target_status()
-        info = next((p for p in claude_panes() if p["id"] == cur), {})
+        info = find(current())
         print(json.dumps({**info, "ok": ok, "why": why}))
     elif arg == "--target-session":
         # For anything that needs the session rather than the pane: the CLI
@@ -323,7 +330,7 @@ def main() -> int:
         # For anything that wants the answer without parsing JSON: exit 0 when
         # a session is there, 1 when not, with the reason on stdout.
         ok, why = target_status()
-        print(why or describe(cfg().get("pane")))
+        print(why or describe(current()))
         return 0 if ok else 1
     elif arg == "--next":
         print(f"  target: {cycle()}")
@@ -347,7 +354,7 @@ def main() -> int:
     else:
         ok, why = target_status()
         print(f"  recording : {'yes' if recording() else 'no'}")
-        print(f"  target    : {describe(cfg().get('pane'))}"
+        print(f"  target    : {describe(current())}"
               + ("" if ok else f"   ({why}: dictation disabled)"))
         print(f"  device    : {DEVICE}")
     return 0

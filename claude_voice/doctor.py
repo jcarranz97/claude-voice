@@ -253,8 +253,7 @@ def check_input() -> None:
         report(OK, "speech-to-text", "faster-whisper and onnxruntime present")
 
     for tool, why in (("arecord", "push-to-talk dictation"),
-                      ("pw-record", "conversation mode"),
-                      ("tmux", "delivering text into a Claude session")):
+                      ("pw-record", "conversation mode")):
         if shutil.which(tool):
             report(OK, tool, "present")
         else:
