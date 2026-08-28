@@ -16,6 +16,9 @@
 # somebody else's behalf is not a thing a setup script should do, and a script
 # people pipe into bash is the last place to start.
 #
+# Working on it? `./install.sh --editable` from your clone installs the
+# checkout itself, so an edit is live with nothing to reinstall.
+#
 # It DOES install the hooks, into ~/.claude/settings.json, merged rather than
 # pasted: the four entries are added and everything already in the file is
 # kept. `--no-hooks` skips it and prints the snippet to paste yourself.
@@ -40,10 +43,15 @@ CONFIG_DIR="${CLAUDE_VOICE_HOME:-$HOME/.config/claude-voice}"
 
 PRESET="en"
 HOOKS=1
+EDITABLE=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --preset) PRESET="$2"; shift 2 ;;
     --no-hooks) HOOKS=0; shift ;;
+    # For working on it: the installed tool runs the checkout itself, so an
+    # edit is live with nothing to reinstall. Only means anything from a
+    # checkout -- there is nothing to point at when this came down a pipe.
+    --editable) EDITABLE=1; shift ;;
     # --no-stt used to install without the ear. There is no such install any
     # more: an environment that had it and an environment that did not looked
     # identical until the microphone was needed.
@@ -51,6 +59,11 @@ while [ $# -gt 0 ]; do
     *) echo "unknown flag: $1" >&2; exit 2 ;;
   esac
 done
+
+if [ "$EDITABLE" = "1" ] && [ -z "$HERE" ]; then
+  echo "--editable needs a checkout to point at; run it from your clone" >&2
+  exit 2
+fi
 
 # The preset is resolved to its voice here, before anything is installed: a
 # name with no voice behind it is an error rather than a quiet fall back to
@@ -114,8 +127,13 @@ if [ -n "$HERE" ]; then
   # A checkout installs itself. --refresh is not optional: uv caches the wheel
   # it built for a directory, so --force alone reinstalls the cached one and
   # reports success having changed nothing.
-  echo "  from this checkout: $HERE"
-  uv tool install --force --refresh "$HERE"
+  if [ "$EDITABLE" = "1" ]; then
+    echo "  editable, from this checkout: $HERE"
+    uv tool install --force --refresh --editable "$HERE"
+  else
+    echo "  from this checkout: $HERE"
+    uv tool install --force --refresh "$HERE"
+  fi
 else
   echo "  from PyPI"
   uv tool install --force claude-voice

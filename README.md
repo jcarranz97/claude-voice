@@ -63,6 +63,7 @@ When something is wrong, `claude-voice doctor` says what — it checks the voice
 | to change the voice, language or panels | [Configuration](#config) |
 | it installed but says nothing | [Troubleshooting](#troubleshooting) |
 | why any of it is built this way | [Why the design is the way it is](#design) |
+| to change the code | [Development](#development) |
 
 ---
 
@@ -177,12 +178,16 @@ That is the whole program, voice and ear both. It is an application on your mach
 
 **There is nothing behind a flag.** The ear used to be an `stt` extra, and `claude-voice[stt]` still works so that anything written down against it keeps working — it just installs what the bare name installs. The extra bought a smaller install and sold a failure worth more than the disk it saved: extras are not remembered across reinstalls, so one that forgot to name it took the microphone away silently, and the program went on speaking until the next time you pressed `c` and it said there was no module named faster_whisper.
 
-**From a clone**, which is the one to use while changing something — it installs the working tree instead of the published package, and says which it did:
+**From a clone**, which installs the working tree instead of the published package, and says which it did:
 
 ```bash
 git clone https://github.com/jcarranz97/claude-voice
-cd claude-voice && ./install.sh
+cd claude-voice
+./install.sh                 # a copy of the tree, as it is right now
+./install.sh --editable      # ... or the tree itself, edits and all
 ```
+
+`--editable` is the one to use if you are going to change something — see [Development](#development).
 
 ### 3. The hooks
 
@@ -236,6 +241,8 @@ The installer does not do this one. Off is the default the whole program is buil
 ```bash
 uv tool install --force --refresh "$HOME/repos/claude-voice"   # wherever yours lives
 ```
+
+None of this applies to an `--editable` install, which is a pointer at your working tree rather than a copy of it — [Development](#development) is where that lives, and it is the better answer if you are changing the code rather than installing it once.
 
 `--refresh` is the one that matters and the one everybody leaves out. uv caches the wheel it built for a directory, so `--force` on its own reinstalls that cached wheel — your edits are not in it. What makes this worth a section of its own is that nothing complains: the command prints `Installed 1 executable: claude-voice` and exits zero, having installed the same code as before. Without `--force` you get the identical misleading success.
 
@@ -1101,6 +1108,59 @@ call took and how many turns it read — the way to choose `ack.context` for you
 own connection, since a late acknowledgement is worse than a vague one.
 
 ---
+
+<a id="development"></a>
+
+## 🛠️ Development
+
+Everything above installs a copy. Changing the code means a checkout and an
+install that points back at it:
+
+```bash
+git clone https://github.com/jcarranz97/claude-voice
+cd claude-voice
+uv sync --group dev          # the test environment
+./install.sh --editable      # a voice, the config, the hooks — running your tree
+```
+
+`--editable` is what makes that different from every other install on this
+page: the tool on your PATH *is* the checkout, so an edit is live the next time
+a hook fires and there is nothing to reinstall. Without it the same script
+installs a copy, and you get to find out the first time you change something
+and nothing happens.
+
+Only the program needs a checkout, so if you already have the rest — a voice, a
+config, the hooks — this is the whole of it:
+
+```bash
+uv tool install --force --refresh --editable .
+```
+
+`--refresh` matters either way: uv caches the wheel it built for a directory,
+and without it a reinstall can quietly keep the old build and leave you testing
+code you did not write.
+
+The three things CI checks, which are three commands with no arguments:
+
+```bash
+uv run --group dev ruff check .          # lint
+uv run --group dev ruff format .         # format, in place
+uv run --group dev pytest                # tests
+```
+
+Coverage is gated at 95% of the package and the matrix is Python 3.11, 3.12 and
+3.13; locally 3.11 is enough. A pull request that adds code adds tests for it.
+
+**[CONTRIBUTING.md](CONTRIBUTING.md) is the rest of it** — what the test
+harness does to keep a suite from opening your microphone, spending your
+tokens or writing to your real config, the three rules every test here follows,
+and the house style for comments.
+
+The map of what lives where is [below](#layout).
+
+---
+
+<a id="layout"></a>
 
 ## 🗂️ Layout
 
