@@ -36,15 +36,15 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import config as _config                              # noqa: E402
+import config as _config  # noqa: E402
 
 CFG = _config.load()
 
-BRANCH_TTL = 2.0        # a file read; the branch may change under us any time
-PR_TTL = 60.0           # settled: nobody is waiting on this number
-PR_BUSY_TTL = 12.0      # something is running: this IS what is being watched
-PR_GONE_TTL = 300.0     # no gh, or no GitHub remote: stop asking so often
-GH_TIMEOUT = 12.0       # it is a network call, and networks hang
+BRANCH_TTL = 2.0  # a file read; the branch may change under us any time
+PR_TTL = 60.0  # settled: nobody is waiting on this number
+PR_BUSY_TTL = 12.0  # something is running: this IS what is being watched
+PR_GONE_TTL = 300.0  # no gh, or no GitHub remote: stop asking so often
+GH_TIMEOUT = 12.0  # it is a network call, and networks hang
 
 SHA = re.compile(r"^[0-9a-f]{7,40}$")
 
@@ -90,7 +90,7 @@ def branch(rt: Path) -> tuple:
     except Exception:
         return "", False
     if line.startswith("ref: refs/heads/"):
-        return line[len("ref: refs/heads/"):], False
+        return line[len("ref: refs/heads/") :], False
     if SHA.match(line):
         return line[:8], True
     return "", False
@@ -131,12 +131,14 @@ def summarise(rollup) -> dict:
                 failing.append(name)
     total = ok + fail + run
     return {
-        "pass": ok, "fail": fail, "running": run, "total": total,
+        "pass": ok,
+        "fail": fail,
+        "running": run,
+        "total": total,
         # One word for the whole thing, because that is what gets read from
         # across the room. Failing outranks running: a suite that has already
         # lost is not pending, whatever the rest of it is still doing.
-        "state": ("none" if not total else "failing" if fail
-                  else "running" if run else "passing"),
+        "state": ("none" if not total else "failing" if fail else "running" if run else "passing"),
         "failing": failing[:2],
     }
 
@@ -146,36 +148,44 @@ def _gh(rt: Path, br: str) -> dict:
     and {"gh": False} when there is nobody to ask."""
     try:
         p = subprocess.run(
-            ["gh", "pr", "view", br, "--json",
-             "number,title,state,isDraft,statusCheckRollup"],
-            cwd=str(rt), capture_output=True, text=True, timeout=GH_TIMEOUT,
+            ["gh", "pr", "view", br, "--json", "number,title,state,isDraft,statusCheckRollup"],
+            cwd=str(rt),
+            capture_output=True,
+            text=True,
+            timeout=GH_TIMEOUT,
             # gh reads the terminal for its prompts; there is no terminal here
             # and a prompt would hang until the timeout.
             stdin=subprocess.DEVNULL,
-            env={**os.environ, "GH_PROMPT_DISABLED": "1", "NO_COLOR": "1"})
+            env={**os.environ, "GH_PROMPT_DISABLED": "1", "NO_COLOR": "1"},
+        )
     except FileNotFoundError:
-        return {"gh": False}                 # not installed: say so once, quietly
+        return {"gh": False}  # not installed: say so once, quietly
     except Exception:
-        return {}                            # a timeout is a slow network, not news
+        return {}  # a timeout is a slow network, not news
     if p.returncode != 0:
         err = (p.stderr or "").lower()
         if "no pull requests found" in err:
             return {"pr": None}
         # Not a repository we can ask about, or not logged in. Same silence
         # either way: this is a status panel, not a linter for someone's setup.
-        return {"gh": False} if ("auth" in err or "not a git repository" in err
-                                 or "no git remotes" in err) else {}
+        return (
+            {"gh": False}
+            if ("auth" in err or "not a git repository" in err or "no git remotes" in err)
+            else {}
+        )
     try:
         d = json.loads(p.stdout or "{}")
     except Exception:
         return {}
-    return {"pr": {
-        "number": d.get("number", 0),
-        "title": d.get("title", ""),
-        "state": (d.get("state") or "").lower(),      # open, merged, closed
-        "draft": bool(d.get("isDraft")),
-        "checks": summarise(d.get("statusCheckRollup")),
-    }}
+    return {
+        "pr": {
+            "number": d.get("number", 0),
+            "title": d.get("title", ""),
+            "state": (d.get("state") or "").lower(),  # open, merged, closed
+            "draft": bool(d.get("isDraft")),
+            "checks": summarise(d.get("statusCheckRollup")),
+        }
+    }
 
 
 # One asker for the whole process. Two windows watching the same repository
@@ -214,8 +224,7 @@ def local(where: str) -> dict:
         val = {}
     else:
         br, detached = branch(rt)
-        val = {"name": rt.name, "branch": br, "detached": detached,
-               "root": str(rt)}
+        val = {"name": rt.name, "branch": br, "detached": detached, "root": str(rt)}
     _branch_cache.update(where=where, t=now, val=val)
     return dict(val)
 
@@ -247,18 +256,16 @@ def info(where: str) -> dict:
         if pr:
             out["pr"] = pr
         busy = pr and pr.get("checks", {}).get("state") == "running"
-        ttl = (PR_BUSY_TTL if busy else
-               PR_GONE_TTL if fresh and not _state["gh"] else PR_TTL)
+        ttl = PR_BUSY_TTL if busy else PR_GONE_TTL if fresh and not _state["gh"] else PR_TTL
         due = not fresh or time.time() - _state["t"] > ttl
         if due and not _state["busy"]:
             _state["busy"] = True
-            threading.Thread(target=_refresh, args=(rt, br, key),
-                             daemon=True).start()
+            threading.Thread(target=_refresh, args=(rt, br, key), daemon=True).start()
     return out
 
 
 if __name__ == "__main__":
     where = sys.argv[1] if sys.argv[1:] else os.getcwd()
     print(json.dumps(info(where), indent=2))
-    time.sleep(3)                            # let the background answer land
+    time.sleep(3)  # let the background answer land
     print(json.dumps(info(where), indent=2))

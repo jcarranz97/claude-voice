@@ -58,8 +58,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import config as _config                              # noqa: E402
-import presence as _presence                          # noqa: E402
+import config as _config  # noqa: E402
+import presence as _presence  # noqa: E402
 
 CFG = _config.load()
 BASE = _config.BASE
@@ -68,7 +68,7 @@ TICK_AGENTS = BASE / "tick-agents.wav"
 
 # Defaults come from config; tune them live without editing anything:
 #   thinking.py --tune <delay> <interval>
-DELAY = float(CFG.get("thinking.delay", 1.75))     # nothing sounds before this
+DELAY = float(CFG.get("thinking.delay", 1.75))  # nothing sounds before this
 INTERVAL = float(CFG.get("thinking.interval", 2.45))
 # Hard cap. If the session dies (out of tokens, a hang, Ctrl-C) the Stop hook
 # never fires and nobody kills the loop: this is the only thing that stops it.
@@ -88,8 +88,8 @@ AGENT_MAX_RUN = float(CFG.get("thinking.agent_max_run", 1800))
 # Where subagents write their transcripts.
 AGENT_ROOT = Path.home() / ".claude" / "projects"
 AGENT_GLOB = "*/*/subagents/agent-*.jsonl"
-AGENT_FRESH = 90          # wrote just now: alive, no further questions
-AGENT_QUIET = 900         # quiet, but if it left a tool call open, still working
+AGENT_FRESH = 90  # wrote just now: alive, no further questions
+AGENT_QUIET = 900  # quiet, but if it left a tool call open, still working
 
 TUNE = BASE / "tick.json"
 
@@ -131,7 +131,8 @@ def _mid_tool(path: Path) -> bool:
         return False
     content = (d.get("message") or {}).get("content")
     return isinstance(content, list) and any(
-        isinstance(b, dict) and b.get("type") == "tool_use" for b in content)
+        isinstance(b, dict) and b.get("type") == "tool_use" for b in content
+    )
 
 
 def _slug(cwd: str) -> str:
@@ -180,16 +181,15 @@ def bind(session: str, pane: str = "", cwd: str = "") -> None:
     """
     pane = pane or os.environ.get("TMUX_PANE", "")
     if not session or not pane:
-        return                      # outside tmux there is no pane to bind to
+        return  # outside tmux there is no pane to bind to
     f = _pane_file(pane)
     if not f:
         return
     try:
         BASE.mkdir(parents=True, exist_ok=True)
         tmp = f.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps({"session": session, "cwd": cwd or "",
-                                   "ts": time.time()}))
-        os.replace(tmp, f)          # a reader never sees a half-written binding
+        tmp.write_text(json.dumps({"session": session, "cwd": cwd or "", "ts": time.time()}))
+        os.replace(tmp, f)  # a reader never sees a half-written binding
     except Exception:
         return
     sweep_panes()
@@ -261,8 +261,7 @@ def session_for(cwd: str, title: str, pane: str = "") -> str:
     if not d.is_dir():
         return ""
     try:
-        files = sorted(d.glob("*.jsonl"),
-                       key=lambda q: q.stat().st_mtime, reverse=True)[:10]
+        files = sorted(d.glob("*.jsonl"), key=lambda q: q.stat().st_mtime, reverse=True)[:10]
     except OSError:
         return ""
     for q in files:
@@ -285,9 +284,9 @@ def sessions_in(cwd: str) -> list:
     if not cwd or not d.is_dir():
         return []
     try:
-        return [q.stem for q in sorted(d.glob("*.jsonl"),
-                                       key=lambda q: q.stat().st_mtime,
-                                       reverse=True)]
+        return [
+            q.stem for q in sorted(d.glob("*.jsonl"), key=lambda q: q.stat().st_mtime, reverse=True)
+        ]
     except OSError:
         return []
 
@@ -343,16 +342,15 @@ def _write(path: Path, samples) -> None:
         w.setnchannels(1)
         w.setsampwidth(2)
         w.setframerate(RATE)
-        w.writeframes(b"".join(struct.pack("<h", int(max(-1, min(1, s)) * 32767))
-                               for s in samples))
+        w.writeframes(b"".join(struct.pack("<h", int(max(-1, min(1, s)) * 32767)) for s in samples))
 
 
 def make_tick(style: str = "soft", gain: float = 0.10):
     """A short blip with exponential decay. Deliberately soft: it is ambience."""
     tones = {
-        "soft":   [(1180, 0.075)],                    # one discreet ting
-        "double": [(1180, 0.055), (1480, 0.055)],     # two rising notes
-        "low":    [(720, 0.090)],                     # deeper, less intrusive
+        "soft": [(1180, 0.075)],  # one discreet ting
+        "double": [(1180, 0.055), (1480, 0.055)],  # two rising notes
+        "low": [(720, 0.090)],  # deeper, less intrusive
         # Agents: two notes that FALL, with a gap between them. The normal tick
         # is flat; this one drops. That is what makes it need no thinking about.
         "agents": [(980, 0.060), (0, 0.055), (700, 0.080)],
@@ -361,13 +359,13 @@ def make_tick(style: str = "soft", gain: float = 0.10):
     out = []
     for freq, dur in tones:
         n = int(RATE * dur)
-        if not freq:                                   # silence between notes
+        if not freq:  # silence between notes
             out.extend([0.0] * n)
             continue
         for i in range(n):
             t = i / RATE
-            env = math.exp(-t * 42)                    # fast decay
-            env *= min(1.0, i / (RATE * 0.004))        # soft attack, no click
+            env = math.exp(-t * 42)  # fast decay
+            env *= min(1.0, i / (RATE * 0.004))  # soft attack, no click
             out.append(math.sin(2 * math.pi * freq * t) * env * gain)
     return out
 
@@ -396,6 +394,7 @@ def demo() -> None:
 def _queue_busy() -> bool:
     try:
         import importlib.util
+
         spec = importlib.util.spec_from_file_location("audioq", HERE / "audioq.py")
         m = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(m)
@@ -410,7 +409,7 @@ def run(session: str = "") -> None:
     delay, interval = timing()
     time.sleep(delay)
     started = time.time()
-    last_agent = None            # when an agent was last seen alive
+    last_agent = None  # when an agent was last seen alive
     while True:
         elapsed = time.time() - started
         n = agents_running(session)
@@ -430,17 +429,20 @@ def run(session: str = "") -> None:
         # Do not step on the voice: if the queue is playing, skip this tick.
         # The tick is ambience; it does not deserve to queue.
         if not _queue_busy():
-            subprocess.run(["aplay", "-q", str(TICK_AGENTS if n else TICK)],
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                           check=False)
+            subprocess.run(
+                ["aplay", "-q", str(TICK_AGENTS if n else TICK)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
         if n:
-            gap = AGENT_INTERVAL          # no decay: the wait is long by nature
+            gap = AGENT_INTERVAL  # no decay: the wait is long by nature
         else:
             gap = interval
             if elapsed > DECAY_AFTER:
                 # grows gently: 2.45 -> 3.9 -> 6.3 -> cap
                 steps = (elapsed - DECAY_AFTER) / 30.0
-                gap = min(DECAY_MAX, interval * (DECAY_FACTOR ** steps))
+                gap = min(DECAY_MAX, interval * (DECAY_FACTOR**steps))
         time.sleep(gap)
 
 
@@ -461,8 +463,7 @@ def main() -> int:
     elif arg == "--agents":
         sid = sys.argv[2] if sys.argv[2:] else ""
         live = agents_live(sid)
-        print(f"  agents running ({('session ' + sid[:8]) if sid else 'all'}): "
-              f"{len(live)}")
+        print(f"  agents running ({('session ' + sid[:8]) if sid else 'all'}): {len(live)}")
         for d in live:
             print(f"    · {d}")
     elif arg == "--whose" and len(sys.argv) >= 4:
@@ -484,8 +485,9 @@ def main() -> int:
                 d = json.loads(f.read_text())
             except Exception:
                 continue
-            print(f'  %{f.stem[len(PANE_PREFIX):]}  {d.get("session", "")[:8]}  '
-                  f'{d.get("cwd", "")}')
+            print(
+                f"  %{f.stem[len(PANE_PREFIX) :]}  {d.get('session', '')[:8]}  {d.get('cwd', '')}"
+            )
         if not pane_files():
             print("  no pane is bound (is the SessionStart hook installed?)")
     elif arg == "--show":

@@ -21,7 +21,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import config as _config                              # noqa: E402
+import config as _config  # noqa: E402
 
 CFG = _config.load()
 
@@ -67,10 +67,14 @@ def diag(words) -> None:
 
     print()
     print("  How to fix it:")
-    print(f"   - if the '{foreign or 'foreign'}' column sounds right -> add to "
-          "pronunciation.foreign_terms")
-    print("   - if NEITHER sounds right                 -> add to "
-          "pronunciation.overrides with hand-written IPA")
+    print(
+        f"   - if the '{foreign or 'foreign'}' column sounds right -> add to "
+        "pronunciation.foreign_terms"
+    )
+    print(
+        "   - if NEITHER sounds right                 -> add to "
+        "pronunciation.overrides with hand-written IPA"
+    )
     print("   - if the primary language already says it the way you would, leave it")
 
     if suggest_foreign:

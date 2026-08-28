@@ -36,28 +36,38 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import config as _config                              # noqa: E402
-import focus as _focus                                # noqa: E402
-import lang as _lang                                  # noqa: E402
+import config as _config  # noqa: E402
+import focus as _focus  # noqa: E402
+import lang as _lang  # noqa: E402
+
 # How loud the voice is at this instant, in either direction. Both windows
 # ask the same way, for the same reason every other question here is asked
 # once: a reactor that pulses to a different number than the meter under it
 # is two instruments disagreeing about one room.
-import level as _level                                # noqa: E402
+import level as _level  # noqa: E402
+
 # The branch the watched session is on, and what GitHub thinks of it. Asked
 # here rather than in either window for the usual reason, and because the
 # answer costs a network call: two windows must not mean two of them.
-import repo as _repo                                  # noqa: E402
+import repo as _repo  # noqa: E402
+
 # Every microphone question -- who has it, whether anyone is actually
 # being recorded, and how to close a capture of ours that was left
 # behind -- is answered in one place, because the watchdog on the
 # systemd timer has to give the same answers this window does.
-from mic import (our_captures, mic_open, mic_speaking,      # noqa: E402,F401
-                 mic_held, daemon_alive, sweep_orphans, listen_stranded)
+from mic import (  # noqa: E402,F401
+    daemon_alive,
+    listen_stranded,
+    mic_held,
+    mic_open,
+    mic_speaking,
+    our_captures,
+    sweep_orphans,
+)
 
 try:
-    import spokenlog as _spokenlog                     # noqa: E402
-except Exception:                                      # an empty pane, not a crash
+    import spokenlog as _spokenlog  # noqa: E402
+except Exception:  # an empty pane, not a crash
     _spokenlog = None
 
 CFG = _config.load()
@@ -71,7 +81,7 @@ ENABLED = BASE / "enabled"
 PANEL_OPEN = BASE / "hud-history"
 LISTEN_PID = BASE / "listen.pid"
 
-IDLE_AFTER = 900          # after 15 min of nothing, treat it as asleep
+IDLE_AFTER = 900  # after 15 min of nothing, treat it as asleep
 
 TITLE = (CFG.get("hud.title", "") or CFG.name).strip()
 # Letterspaced, the way the status labels are.
@@ -107,8 +117,7 @@ def next_language() -> tuple:
     """
     if _lang_cache["preset"] != CFG.preset:
         nxt = _lang.following(CFG.preset)
-        _lang_cache.update(preset=CFG.preset, name=nxt,
-                           label=_lang.label(nxt) if nxt else "")
+        _lang_cache.update(preset=CFG.preset, name=nxt, label=_lang.label(nxt) if nxt else "")
     return _lang_cache["name"], _lang_cache["label"]
 
 
@@ -123,7 +132,10 @@ def dictate_target_info() -> dict:
     try:
         out = subprocess.run(
             [sys.executable, str(HERE / "dictate.py"), "--target"],
-            capture_output=True, text=True, timeout=3).stdout
+            capture_output=True,
+            text=True,
+            timeout=3,
+        ).stdout
         _target_cache["pane"] = json.loads(out.strip() or "{}")
     except Exception:
         _target_cache["pane"] = {}
@@ -136,7 +148,7 @@ def dictate_target() -> str:
     p = dictate_target_info()
     if not p.get("ok"):
         return ""
-    return f'{p.get("dir", "")} · {p.get("title", "")}'.strip(" ·")
+    return f"{p.get('dir', '')} · {p.get('title', '')}".strip(" ·")
 
 
 _focus_cache = {"t": 0.0, "val": ("", ""), "pane": ""}
@@ -165,9 +177,10 @@ def focus_state(fresh: bool = False) -> tuple:
     except Exception:
         panes = []
     p = next((q for q in panes if q.get("pane_id") == pane), None)
-    live = f'{p["dir"]} · {p["title"]}'.strip(" ·") if p else ""
-    _focus_cache.update(t=time.time(),
-                        val=("live", live) if p else ("gone", _focus.label() or pane))
+    live = f"{p['dir']} · {p['title']}".strip(" ·") if p else ""
+    _focus_cache.update(
+        t=time.time(), val=("live", live) if p else ("gone", _focus.label() or pane)
+    )
     return _focus_cache["val"]
 
 
@@ -209,6 +222,7 @@ def _mod(name: str):
     frame, and re-executing a module twenty times a second is pure waste."""
     if name not in _mods:
         import importlib.util
+
         spec = importlib.util.spec_from_file_location(name, HERE / f"{name}.py")
         m = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(m)
@@ -241,8 +255,7 @@ def target_session() -> tuple:
             sid = _thinking().session_for(key[0], key[1] or "", key[2] or "")
         except Exception:
             sid = ""
-    _session_cache.update({"t": time.time(), "key": key, "sid": sid,
-                           "cwd": key[0] or ""})
+    _session_cache.update({"t": time.time(), "key": key, "sid": sid, "cwd": key[0] or ""})
     return sid, key[0] or ""
 
 
@@ -280,7 +293,7 @@ def history_session() -> str:
     if sid:
         return sid
     if time.time() - _hist_sid["t"] < 2.0 and cwd == _hist_sid["key"]:
-        return _hist_sid["sid"]              # the panel asks 20 times a second
+        return _hist_sid["sid"]  # the panel asks 20 times a second
     try:
         sid = _spokenlog.follow("", cwd)
     except Exception:
@@ -311,8 +324,7 @@ def history_rows(width: int) -> list:
         mt = _spokenlog.mtime(sid)
     except Exception:
         return []
-    if (mt == _hist_cache["mtime"] and width == _hist_cache["w"]
-            and sid == _hist_cache["sid"]):
+    if mt == _hist_cache["mtime"] and width == _hist_cache["w"] and sid == _hist_cache["sid"]:
         return _hist_cache["rows"]
 
     try:
@@ -328,7 +340,7 @@ def history_rows(width: int) -> list:
         when = time.strftime("%H:%M", time.localtime(e["t"])) if e["t"] else "     "
         # Who said it is carried by the label, the arrow and the colour: one
         # of the three surviving a narrow terminal or a mono theme is enough.
-        head = f'{when}  {(you if mine else said):>{pad}} {"›" if mine else "‹"} '
+        head = f"{when}  {(you if mine else said):>{pad}} {'›' if mine else '‹'} "
         body = textwrap.wrap(e["text"], max(8, width - len(head))) or [""]
         rows.append((head + body[0], e["side"], False))
         for cont in body[1:]:
@@ -402,7 +414,6 @@ def read_state() -> dict:
     return sp
 
 
-
 def conversation_alive() -> bool:
     """Is the continuous listening daemon running? A pidfile is not an answer:
     a session that died leaves one behind, and nothing would ever start again."""
@@ -449,9 +460,12 @@ def conversation_start() -> None:
         err = open(LISTEN_LOG, "a")
     except Exception:
         err = subprocess.DEVNULL
-    subprocess.Popen([sys.executable, str(HERE / "listen.py")],
-                     stdout=subprocess.DEVNULL, stderr=err,
-                     start_new_session=True)
+    subprocess.Popen(
+        [sys.executable, str(HERE / "listen.py")],
+        stdout=subprocess.DEVNULL,
+        stderr=err,
+        start_new_session=True,
+    )
 
 
 def listen_failed() -> str:
@@ -470,11 +484,11 @@ def listen_failed() -> str:
 def run(script: str, *args, detach: bool = False) -> None:
     cmd = [sys.executable, str(HERE / script), *args]
     if detach:
-        subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
-                         stderr=subprocess.DEVNULL, start_new_session=True)
+        subprocess.Popen(
+            cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
+        )
     else:
-        subprocess.run(cmd, stdout=subprocess.DEVNULL,
-                       stderr=subprocess.DEVNULL, check=False)
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
 
 
 def history_entries(n: int = 0) -> list:
@@ -542,21 +556,21 @@ def _pci_name(pci_id: str, sub_vendor: str, sub_device: str) -> str:
             body = line.strip()
             if depth == 0:
                 if in_vendor:
-                    break                      # past our vendor entirely
+                    break  # past our vendor entirely
                 in_vendor = body.split()[0].lower() == vendor
             elif depth == 1 and in_vendor:
                 if in_device:
-                    break                      # past our device
+                    break  # past our device
                 in_device = body.split()[0].lower() == device
                 if in_device:
                     generic = body.split(None, 1)[-1]
             elif depth == 2 and in_device and body.lower().startswith(sub):
-                return body[len(sub):].strip()
+                return body[len(sub) :].strip()
         if generic:
             # "Navi 31 [Radeon RX 7900 XT/...]" -- the bracket is the part a
             # person recognises, and the codename in front of it is not.
             if "[" in generic and generic.endswith("]"):
-                return generic[generic.index("[") + 1:-1]
+                return generic[generic.index("[") + 1 : -1]
             return generic
     return pci_id
 
@@ -610,7 +624,8 @@ def _gpu_sysfs() -> dict:
     return {
         "name": _gpu_cache["name"],
         "busy": float(_read(dev / "gpu_busy_percent", int) or 0),
-        "vram_used": float(used or 0), "vram_total": float(total),
+        "vram_used": float(used or 0),
+        "vram_total": float(total),
     }
 
 
@@ -621,16 +636,24 @@ def _gpu_nvidia() -> dict:
         return None
     try:
         out = subprocess.run(
-            ["nvidia-smi",
-             "--query-gpu=name,utilization.gpu,memory.used,memory.total",
-             "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=3).stdout.strip()
+            [
+                "nvidia-smi",
+                "--query-gpu=name,utilization.gpu,memory.used,memory.total",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=3,
+        ).stdout.strip()
         name, busy, used, total = [x.strip() for x in out.splitlines()[0].split(",")]
     except Exception:
         return None
-    return {"name": name, "busy": float(busy),
-            "vram_used": float(used) * 1024 ** 2,
-            "vram_total": float(total) * 1024 ** 2}
+    return {
+        "name": name,
+        "busy": float(busy),
+        "vram_used": float(used) * 1024**2,
+        "vram_total": float(total) * 1024**2,
+    }
 
 
 def gpu_stats() -> dict:
@@ -708,9 +731,11 @@ def system_stats() -> dict:
     _stat_cache["val"] = {
         "cpu": round(max(0.0, min(100.0, cpu)), 1),
         "mem": pct(mem_used, mem_total),
-        "mem_used": mem_used, "mem_total": mem_total,
+        "mem_used": mem_used,
+        "mem_total": mem_total,
         "disk": pct(disk_used, disk_total),
-        "disk_free": disk_total - disk_used, "disk_total": disk_total,
+        "disk_free": disk_total - disk_used,
+        "disk_total": disk_total,
         "load": list(os.getloadavg()) if hasattr(os, "getloadavg") else [0, 0, 0],
         "gpu": gpu_stats(),
     }
@@ -758,9 +783,14 @@ def display_state() -> tuple:
 # The label each state is drawn with, and the colour role it takes. The
 # names are the config keys, so a language pack relabels both windows at once.
 STATE_LABELS = {
-    "thinking": "thinking", "speaking": "speaking", "listening": "listening",
-    "stranded": "stranded", "ready": "ready", "idle": "idle",
-    "agents": "agents", "voice_off": "voice_off",
+    "thinking": "thinking",
+    "speaking": "speaking",
+    "listening": "listening",
+    "stranded": "stranded",
+    "ready": "ready",
+    "idle": "idle",
+    "agents": "agents",
+    "voice_off": "voice_off",
 }
 
 
@@ -796,10 +826,17 @@ def snapshot() -> dict:
             "stranded": stranded,
             "conversation": conversation_alive(),
         },
-        "language": {"preset": CFG.preset, "name": CFG.get("general.language", ""),
-                     "next": other, "next_label": other_label},
-        "session": {"id": tgt.get("session", "") or target_session()[0],
-                    "dir": tgt.get("dir", ""), "title": tgt.get("title", "")},
+        "language": {
+            "preset": CFG.preset,
+            "name": CFG.get("general.language", ""),
+            "next": other,
+            "next_label": other_label,
+        },
+        "session": {
+            "id": tgt.get("session", "") or target_session()[0],
+            "dir": tgt.get("dir", ""),
+            "title": tgt.get("title", ""),
+        },
         # The pane's real path, not the pretty name beside it: `dir` is a
         # basename for a label, and a basename resolves against whatever
         # directory this process happens to be in.
@@ -808,9 +845,18 @@ def snapshot() -> dict:
         "panels": show,
         "system": system_stats(),
         "history": history_entries(),
-        "labels": {k: L(k, k) for k in
-                   ("history", "history_empty", "history_you", "history_said",
-                    "mic_ready", "mic_hearing", "mic_deaf")},
+        "labels": {
+            k: L(k, k)
+            for k in (
+                "history",
+                "history_empty",
+                "history_you",
+                "history_said",
+                "mic_ready",
+                "mic_hearing",
+                "mic_deaf",
+            )
+        },
         "ts": time.time(),
     }
 
@@ -1006,9 +1052,13 @@ def act_sweep() -> tuple:
 
 
 ACTIONS = {
-    "voice": act_voice, "focus": act_focus, "dictate": act_dictate,
-    "conversation": act_conversation, "session": act_session_next,
-    "language": act_language, "sweep": act_sweep,
+    "voice": act_voice,
+    "focus": act_focus,
+    "dictate": act_dictate,
+    "conversation": act_conversation,
+    "session": act_session_next,
+    "language": act_language,
+    "sweep": act_sweep,
 }
 
 
@@ -1018,5 +1068,5 @@ def act(name: str) -> tuple:
         return False, f"unknown action: {name}"
     try:
         return fn()
-    except Exception as e:                 # a refusal, never a dead window
+    except Exception as e:  # a refusal, never a dead window
         return False, str(e) or e.__class__.__name__

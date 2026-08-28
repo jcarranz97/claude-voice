@@ -25,7 +25,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import config as _config                              # noqa: E402
+import config as _config  # noqa: E402
 
 BASE = _config.BASE
 QUEUE = BASE / "queue"
@@ -41,7 +41,9 @@ def _next_seq() -> int:
         with open(SEQ, "r+") as f:
             fcntl.flock(f, fcntl.LOCK_EX)
             n = int(f.read().strip() or 0) + 1
-            f.seek(0); f.truncate(); f.write(str(n))
+            f.seek(0)
+            f.truncate()
+            f.write(str(n))
             return n
     except FileNotFoundError:
         with open(SEQ, "w") as f:
@@ -49,8 +51,7 @@ def _next_seq() -> int:
         return 1
 
 
-def enqueue(wav: Path, text: str = "", flush_pending: bool = False,
-            session: str = "") -> None:
+def enqueue(wav: Path, text: str = "", flush_pending: bool = False, session: str = "") -> None:
     """Append to the queue. flush_pending drops whatever has not played yet.
 
     The final answer uses flush_pending: hearing "let me check the config file"
@@ -85,12 +86,14 @@ def enqueue(wav: Path, text: str = "", flush_pending: bool = False,
     n = _next_seq()
     dest = QUEUE / f"{n:08d}.wav"
     try:
-        os.replace(wav, dest)             # atomic: the player never sees half a file
+        os.replace(wav, dest)  # atomic: the player never sees half a file
     except OSError:
         import shutil
+
         shutil.copy(wav, dest)
-    (QUEUE / f"{n:08d}.json").write_text(json.dumps(
-        {"wav": str(dest), "text": text, "session": session or ""}))
+    (QUEUE / f"{n:08d}.json").write_text(
+        json.dumps({"wav": str(dest), "text": text, "session": session or ""})
+    )
     ensure_player()
 
 
@@ -100,8 +103,10 @@ def _record(text: str, session: str = "") -> None:
         return
     try:
         import importlib.util
+
         spec = importlib.util.spec_from_file_location(
-            "spokenlog", Path(__file__).resolve().parent / "spokenlog.py")
+            "spokenlog", Path(__file__).resolve().parent / "spokenlog.py"
+        )
         m = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(m)
         m.record("out", text, session=session)
@@ -127,15 +132,19 @@ def ensure_player() -> None:
     if is_busy():
         return
     try:
-        subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "--play"],
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                         start_new_session=True)
+        subprocess.Popen(
+            [sys.executable, str(Path(__file__).resolve()), "--play"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
     except Exception:
         pass
 
 
-def _set_state(state: str, text: str = "", secs: float = 0.0,
-               session: str = "", env=None, t0: float = 0.0) -> None:
+def _set_state(
+    state: str, text: str = "", secs: float = 0.0, session: str = "", env=None, t0: float = 0.0
+) -> None:
     """The state of the SPEAKER, which is global on purpose: there is one pair
     of them. `session` says whose line it is, so the HUD can decide whether the
     window it is watching is the one talking. What each session is DOING lives
@@ -149,11 +158,20 @@ def _set_state(state: str, text: str = "", secs: float = 0.0,
     """
     try:
         BASE.mkdir(parents=True, exist_ok=True)
-        (BASE / "state.json").write_text(json.dumps({
-            "state": state, "text": text,
-            "until": time.time() + secs if secs else 0, "ts": time.time(),
-            "session": session or "",
-            "env": env or [], "t0": t0, "step": _level().STEP}))
+        (BASE / "state.json").write_text(
+            json.dumps(
+                {
+                    "state": state,
+                    "text": text,
+                    "until": time.time() + secs if secs else 0,
+                    "ts": time.time(),
+                    "session": session or "",
+                    "env": env or [],
+                    "t0": t0,
+                    "step": _level().STEP,
+                }
+            )
+        )
     except Exception:
         pass
 
@@ -161,8 +179,10 @@ def _set_state(state: str, text: str = "", secs: float = 0.0,
 def _level():
     """level.py, loaded the way every module here loads its neighbours."""
     import importlib.util
+
     spec = importlib.util.spec_from_file_location(
-        "level", Path(__file__).resolve().parent / "level.py")
+        "level", Path(__file__).resolve().parent / "level.py"
+    )
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
     return m
@@ -174,7 +194,7 @@ def play_loop() -> int:
         try:
             fcntl.flock(lockf, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            return 0                      # a player already runs: this one is spare
+            return 0  # a player already runs: this one is spare
 
         idle_rounds = 0
         while True:
@@ -208,9 +228,9 @@ def play_loop() -> int:
                 pass
 
             try:
-                proc = subprocess.Popen(["aplay", "-q", str(wav)],
-                                        stdout=subprocess.DEVNULL,
-                                        stderr=subprocess.DEVNULL)
+                proc = subprocess.Popen(
+                    ["aplay", "-q", str(wav)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                )
                 # After the spawn, not before it: t0 is meant to be the moment
                 # sound starts, and forking is the slowest part of getting there.
                 _set_state("speaking", text, secs, owner, env, time.time())
@@ -257,6 +277,6 @@ if __name__ == "__main__":
         print(f"  playing: {'yes' if is_busy() else 'no'}   ·   queued: {len(pend)}")
         for p in pend:
             try:
-                print(f"    {p.stem}  {json.loads(p.read_text()).get('text','')[:60]}")
+                print(f"    {p.stem}  {json.loads(p.read_text()).get('text', '')[:60]}")
             except Exception:
                 pass

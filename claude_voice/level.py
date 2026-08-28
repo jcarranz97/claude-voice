@@ -31,7 +31,7 @@ from array import array
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import config as _config                              # noqa: E402
+import config as _config  # noqa: E402
 
 BASE = _config.BASE
 LIVE = BASE / "mic-level"
@@ -68,16 +68,16 @@ def envelope(path: Path) -> tuple:
         rate, width, chans = w.getframerate(), w.getsampwidth(), w.getnchannels()
         secs = w.getnframes() / rate if rate else 0.0
         if width != 2 or not rate:
-            return secs, []                  # 16-bit is what we synthesise
+            return secs, []  # 16-bit is what we synthesise
         pcm = array("h")
         pcm.frombytes(w.readframes(w.getnframes()))
     if sys.byteorder == "big":
-        pcm.byteswap()                       # the WAV is little-endian
+        pcm.byteswap()  # the WAV is little-endian
 
     per = max(1, int(rate * STEP)) * chans
     peaks = []
     for i in range(0, len(pcm), per):
-        chunk = pcm[i:i + per]
+        chunk = pcm[i : i + per]
         if not chunk:
             break
         # max() and min() over an array run in C; abs(min) catches the

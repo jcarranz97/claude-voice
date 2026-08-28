@@ -45,7 +45,6 @@ import json
 import os
 import random
 import shutil
-import subprocess
 import sys
 import tempfile
 import time
@@ -53,7 +52,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import config as _config                              # noqa: E402
+import config as _config  # noqa: E402
 
 CFG = _config.load()
 BASE = _config.BASE
@@ -75,6 +74,7 @@ _SILENT_WORDS = {"silent", "silencio"}
 
 def _mod(name: str):
     import importlib.util
+
     spec = importlib.util.spec_from_file_location(name, HERE / f"{name}.py")
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
@@ -85,6 +85,7 @@ def _client():
     """Whatever credential this machine has. API key first, then the Claude
     Code OAuth token that is already on disk if you are logged in."""
     import anthropic
+
     timeout = float(CFG.get("ack.timeout", 3.0))
     key = os.environ.get("ANTHROPIC_API_KEY")
     if key:
@@ -146,7 +147,7 @@ def history(prompt: str, session: str) -> list:
         # times, and the count that matters is taken after collapsing.
         entries = _mod("spokenlog").tail(n * 8, session)
     except Exception:
-        return []                    # history is a bonus, never a dependency
+        return []  # history is a bonus, never a dependency
     msgs = []
     for e in _drop_prompt(entries, prompt):
         role = "user" if e["side"] == "in" else "assistant"
@@ -154,12 +155,12 @@ def history(prompt: str, session: str) -> list:
         if not text:
             continue
         if msgs and msgs[-1]["role"] == role:
-            msgs[-1]["content"] = f'{msgs[-1]["content"]} {text}'[:MAX_LINE * 3]
+            msgs[-1]["content"] = f"{msgs[-1]['content']} {text}"[: MAX_LINE * 3]
         else:
             msgs.append({"role": role, "content": text})
     msgs = msgs[-n:]
     while msgs and msgs[0]["role"] != "user":
-        msgs.pop(0)                  # the conversation starts on your side
+        msgs.pop(0)  # the conversation starts on your side
     return msgs
 
 
@@ -182,8 +183,7 @@ def contextual(prompt: str, session: str = "") -> str:
         if len(messages) > 1 and messages[-2]["role"] == "user":
             # The turn before drew no spoken line of its own -- the voice was
             # off, or it was still talking. One side, one message.
-            messages[-1]["content"] = (messages.pop(-2)["content"] + "\n"
-                                       + messages[-1]["content"])
+            messages[-1]["content"] = messages.pop(-2)["content"] + "\n" + messages[-1]["content"]
         system = CFG.get("ack.system", "") or ""
         if CFG.get("ack.skip_quick", True):
             # Appended before the history note, so the last thing said is
@@ -264,9 +264,10 @@ def main() -> int:
         else:
             said = text or "(nothing said -- the cached phrase would play)"
         print(f"  {said}")
-        print(f"  {ms:.0f} ms, {turns} turns of history"
-              + (f", session {session[:8]}" if session
-                 else " -- no conversation to read"))
+        print(
+            f"  {ms:.0f} ms, {turns} turns of history"
+            + (f", session {session[:8]}" if session else " -- no conversation to read")
+        )
         return 0
 
     audioq = _mod("audioq")
@@ -274,7 +275,7 @@ def main() -> int:
     wav = None
     text = contextual(prompt, session) if prompt else ""
     if text == SILENT:
-        return 0                     # asked and answered: say nothing at all
+        return 0  # asked and answered: say nothing at all
     if text:
         speak = _mod("speak")
         cand = Path(tempfile.gettempdir()) / f"cv-ack-ctx-{abs(hash(text)) % 10**8}.wav"
@@ -294,4 +295,4 @@ if __name__ == "__main__":
     try:
         sys.exit(main())
     except Exception:
-        sys.exit(0)          # never break the session over an acknowledgement
+        sys.exit(0)  # never break the session over an acknowledgement

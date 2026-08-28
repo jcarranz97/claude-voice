@@ -54,15 +54,30 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import presence as _presence                          # noqa: E402
 # What the HUD knows lives in hudcore, so that this window and the web one
 # cannot disagree about it. What is left in here is drawing.
-import hudcore as core                                # noqa: E402
-from hudcore import (L, agents_live, conversation_alive,   # noqa: E402,F401
-                     daemon_alive, dictate_blocked, dictate_target,
-                     focus_here, focus_state, history_rows, listen_stranded,
-                     mic_held, mic_open, mic_speaking, panel_open, position,
-                     read_state, set_panel_open, sweep_orphans)
+import hudcore as core  # noqa: E402
+import presence as _presence  # noqa: E402
+from hudcore import (  # noqa: E402,F401
+    L,
+    agents_live,
+    conversation_alive,
+    daemon_alive,
+    dictate_blocked,
+    dictate_target,
+    focus_here,
+    focus_state,
+    history_rows,
+    listen_stranded,
+    mic_held,
+    mic_open,
+    mic_speaking,
+    panel_open,
+    position,
+    read_state,
+    set_panel_open,
+    sweep_orphans,
+)
 
 BASE = core.BASE
 ENABLED = core.ENABLED
@@ -72,12 +87,12 @@ IDLE_AFTER = core.IDLE_AFTER
 
 # The history panel shares the window with the reactor. When there is no
 # honest way to show both, it takes the window instead.
-SPLIT_MIN_W = 74          # narrower than this, no room beside the reactor
+SPLIT_MIN_W = 74  # narrower than this, no room beside the reactor
 PANEL_MIN_W = 34
 PANEL_MAX_W = 60
-PANEL_MIN_H = 6           # shorter than this, a bottom strip is not worth it
-BODY_TOP = 4              # the title and key legend span the window above it
-REACTOR_ROWS = 19         # rings (15), the bars under them, the target line
+PANEL_MIN_H = 6  # shorter than this, a bottom strip is not worth it
+BODY_TOP = 4  # the title and key legend span the window above it
+REACTOR_ROWS = 19  # rings (15), the bars under them, the target line
 
 CYAN, AMBER, GREEN, WHITE, MAGENTA, BLUE = 1, 2, 3, 4, 5, 6
 
@@ -109,12 +124,14 @@ def layout(h: int, w: int, history: bool) -> tuple:
     elif w >= SPLIT_MIN_W:
         pw = max(PANEL_MIN_W, min(PANEL_MAX_W, w * 2 // 5))
         if pos == "right":
-            return ((BODY_TOP, h - 1, w - pw, pw),
-                    (BODY_TOP, h - 1, 0, w - pw - 1), ("v", w - pw - 1))
-        return ((BODY_TOP, h - 1, 0, pw),
-                (BODY_TOP, h - 1, pw + 1, w - pw - 1), ("v", pw))
+            return (
+                (BODY_TOP, h - 1, w - pw, pw),
+                (BODY_TOP, h - 1, 0, w - pw - 1),
+                ("v", w - pw - 1),
+            )
+        return ((BODY_TOP, h - 1, 0, pw), (BODY_TOP, h - 1, pw + 1, w - pw - 1), ("v", pw))
 
-    return (0, h - 1, 0, w), None, None      # no room to share: take the window
+    return (0, h - 1, 0, w), None, None  # no room to share: take the window
 
 
 def draw_divider(win, divider, h: int, w: int) -> None:
@@ -139,8 +156,14 @@ def draw_panel(win, band, strip: bool, scroll: int) -> int:
     above it already says what h does, and the arrows are the obvious guess.
     """
     top, bottom, x0, w = band
-    centered(win, top if strip else top + 1, L("history", "H I S T O R Y"), w,
-             curses.color_pair(WHITE) | curses.A_BOLD, x0)
+    centered(
+        win,
+        top if strip else top + 1,
+        L("history", "H I S T O R Y"),
+        w,
+        curses.color_pair(WHITE) | curses.A_BOLD,
+        x0,
+    )
     if not strip:
         centered(win, top + 2, "↑↓ scroll  ·  g/G: ends", w, curses.A_DIM, x0)
     first = top + 2 if strip else top + 4
@@ -157,8 +180,9 @@ def draw_history(win, top, bottom, x0, w, scroll, said_color, mine_color) -> int
     """
     rows = history_rows(w - 4)
     if not rows:
-        centered(win, (top + bottom) // 2, L("history_empty", "nothing spoken yet"),
-                 w, curses.A_DIM, x0)
+        centered(
+            win, (top + bottom) // 2, L("history_empty", "nothing spoken yet"), w, curses.A_DIM, x0
+        )
         return 0
 
     page = max(1, bottom - top + 1)
@@ -171,13 +195,17 @@ def draw_history(win, top, bottom, x0, w, scroll, said_color, mine_color) -> int
         start += 1
     shown = rows[start:end]
 
-    y = bottom - len(shown) + 1        # bottom-aligned: the newest line anchors
+    y = bottom - len(shown) + 1  # bottom-aligned: the newest line anchors
     for text, side, _ in shown:
         mine = side == "in"
         try:
-            win.addstr(y, x0 + 2, text[:w - 3],
-                       curses.color_pair(mine_color if mine else said_color) |
-                       (curses.A_BOLD if mine else curses.A_NORMAL))
+            win.addstr(
+                y,
+                x0 + 2,
+                text[: w - 3],
+                curses.color_pair(mine_color if mine else said_color)
+                | (curses.A_BOLD if mine else curses.A_NORMAL),
+            )
         except curses.error:
             pass
         y += 1
@@ -203,8 +231,11 @@ def draw_reactor(win, cy, cx, t, state, color, band=None, level=0.0):
     the history panel, whichever edge it is on.
     """
     h, w = win.getmaxyx()
-    y0, y1, x0, x1 = (0, h - 1, 0, w) if band is None else (
-        band[0], band[1] + 1, band[2], min(band[2] + band[3], w))
+    y0, y1, x0, x1 = (
+        (0, h - 1, 0, w)
+        if band is None
+        else (band[0], band[1] + 1, band[2], min(band[2] + band[3], w))
+    )
     for radius, glyph in RINGS:
         if state == "thinking":
             # arcs spinning at a different speed per ring
@@ -218,8 +249,20 @@ def draw_reactor(win, cy, cx, t, state, color, band=None, level=0.0):
                 if delta > arc:
                     continue
                 bright = 1.0 - delta / arc
-                _plot(win, cy, cx, radius, a, glyph, color,
-                      curses.A_BOLD if bright > 0.55 else curses.A_DIM, y0, y1, x0, x1)
+                _plot(
+                    win,
+                    cy,
+                    cx,
+                    radius,
+                    a,
+                    glyph,
+                    color,
+                    curses.A_BOLD if bright > 0.55 else curses.A_DIM,
+                    y0,
+                    y1,
+                    x0,
+                    x1,
+                )
         elif state in ("listening", "speaking"):
             # A pulse travelling outward while I talk and inward while you
             # do: energy leaving, energy arriving. Which rings it is allowed
@@ -233,22 +276,45 @@ def draw_reactor(win, cy, cx, t, state, color, band=None, level=0.0):
             steps = int(radius * 9)
             for i in range(steps):
                 a = 2 * math.pi * i / steps
-                _plot(win, cy, cx, radius, a, glyph, color,
-                      curses.A_BOLD if near and lit else curses.A_DIM,
-                      y0, y1, x0, x1)
+                _plot(
+                    win,
+                    cy,
+                    cx,
+                    radius,
+                    a,
+                    glyph,
+                    color,
+                    curses.A_BOLD if near and lit else curses.A_DIM,
+                    y0,
+                    y1,
+                    x0,
+                    x1,
+                )
         else:
             # slow breathing
             breath = (math.sin(t * 0.9) + 1) / 2
             steps = int(radius * 7)
             for i in range(steps):
                 a = 2 * math.pi * i / steps
-                _plot(win, cy, cx, radius, a, glyph, color,
-                      curses.A_BOLD if breath > 0.75 else curses.A_DIM, y0, y1, x0, x1)
+                _plot(
+                    win,
+                    cy,
+                    cx,
+                    radius,
+                    a,
+                    glyph,
+                    color,
+                    curses.A_BOLD if breath > 0.75 else curses.A_DIM,
+                    y0,
+                    y1,
+                    x0,
+                    x1,
+                )
 
 
 def _plot(win, cy, cx, r, angle, glyph, color, attr, y0, y1, x0, x1):
     y = int(round(cy + math.sin(angle) * r))
-    x = int(round(cx + math.cos(angle) * r * 2))   # x2: cells are not square
+    x = int(round(cx + math.cos(angle) * r * 2))  # x2: cells are not square
     if y0 <= y < y1 and x0 <= x < x1 - 1:
         try:
             win.addstr(y, x, glyph, curses.color_pair(color) | attr)
@@ -283,8 +349,12 @@ def draw_bars(win, y, cx, t, state, color, w, x0=0, level=0.0):
     x = max(x0, cx - len(s) // 2)
     if x + len(s) < w:
         try:
-            win.addstr(y, x, s, curses.color_pair(color) |
-                       (curses.A_BOLD if state == "speaking" else curses.A_DIM))
+            win.addstr(
+                y,
+                x,
+                s,
+                curses.color_pair(color) | (curses.A_BOLD if state == "speaking" else curses.A_DIM),
+            )
         except curses.error:
             pass
 
@@ -299,27 +369,26 @@ def draw_repo(win, y, w, r) -> None:
     """
     if not r or not r.get("branch"):
         return
-    left = f'{r.get("name", "")} · {r["branch"]}'.strip(" ·")
+    left = f"{r.get('name', '')} · {r['branch']}".strip(" ·")
     if r.get("detached"):
         left += " (detached)"
     pr = r.get("pr")
     if pr:
-        left += f'  ·  #{pr["number"]} {"draft" if pr["draft"] and pr["state"] == "open" else pr["state"]}'
+        left += f"  ·  #{pr['number']} {'draft' if pr['draft'] and pr['state'] == 'open' else pr['state']}"
     c = (pr or {}).get("checks", {})
     tail, attr = "", curses.A_DIM
     if c.get("state") == "passing":
-        tail = f'  ✓ {c["pass"]} passing'
+        tail = f"  ✓ {c['pass']} passing"
     elif c.get("state") == "running":
-        tail = f'  ● {c["running"]} running'
+        tail = f"  ● {c['running']} running"
     elif c.get("state") == "failing":
-        tail = f'  ✗ {c["fail"]} failing'
+        tail = f"  ✗ {c['fail']} failing"
         if c.get("failing"):
-            tail += f' — {", ".join(c["failing"])}'
+            tail += f" — {', '.join(c['failing'])}"
         attr = curses.A_BOLD
-    line = (left + tail)[:max(0, w - 2)]
+    line = (left + tail)[: max(0, w - 2)]
     x = max(0, (w - len(line)) // 2)
-    colour = {"passing": GREEN, "running": AMBER,
-              "failing": AMBER}.get(c.get("state"), WHITE)
+    colour = {"passing": GREEN, "running": AMBER, "failing": AMBER}.get(c.get("state"), WHITE)
     try:
         win.addstr(y, x, line, curses.color_pair(colour) | attr)
     except curses.error:
@@ -330,7 +399,7 @@ def centered(win, y, text, w, attr=0, x0=0):
     """Centre text in the column band [x0, x0 + w). w is the band, not the screen."""
     x = max(0, (w - len(text)) // 2)
     try:
-        win.addstr(y, x0 + x, text[:max(0, w - x - 1)], attr)
+        win.addstr(y, x0 + x, text[: max(0, w - x - 1)], attr)
     except curses.error:
         pass
 
@@ -339,9 +408,17 @@ def main(stdscr):
     curses.curs_set(0)
     stdscr.nodelay(True)
     curses.use_default_colors()
-    for i, fg in enumerate((curses.COLOR_CYAN, curses.COLOR_YELLOW,
-                            curses.COLOR_GREEN, curses.COLOR_WHITE,
-                            curses.COLOR_MAGENTA, curses.COLOR_BLUE), start=1):
+    for i, fg in enumerate(
+        (
+            curses.COLOR_CYAN,
+            curses.COLOR_YELLOW,
+            curses.COLOR_GREEN,
+            curses.COLOR_WHITE,
+            curses.COLOR_MAGENTA,
+            curses.COLOR_BLUE,
+        ),
+        start=1,
+    ):
         curses.init_pair(i, fg, -1)
 
     t0 = time.time()
@@ -377,7 +454,7 @@ def main(stdscr):
             elif ch == curses.KEY_NPAGE:
                 hist_scroll -= 10
             elif ch == ord("g"):
-                hist_scroll = 10 ** 6      # clamped to the oldest line on draw
+                hist_scroll = 10**6  # clamped to the oldest line on draw
             elif ch == ord("G"):
                 hist_scroll = 0
             hist_scroll = max(0, hist_scroll)
@@ -387,10 +464,15 @@ def main(stdscr):
         # a click in the web HUD run the same code rather than two copies of
         # it that drift. A refusal is shown, never swallowed: the answer to
         # "I pressed d and nothing happened" has to be on screen.
-        action = {ord("c"): "conversation", ord("l"): "language",
-                  ord("t"): "session", ord("f"): "focus",
-                  ord("d"): "dictate", ord("m"): "voice",
-                  ord(" "): "voice"}.get(ch)
+        action = {
+            ord("c"): "conversation",
+            ord("l"): "language",
+            ord("t"): "session",
+            ord("f"): "focus",
+            ord("d"): "dictate",
+            ord("m"): "voice",
+            ord(" "): "voice",
+        }.get(ch)
         if action:
             ok, msg = core.act(action)
             if not ok:
@@ -423,11 +505,11 @@ def main(stdscr):
             st = "stranded"
 
         label, color = {
-            "thinking":  (L("thinking", "T H I N K I N G"), CYAN),
-            "speaking":  (L("speaking", "S P E A K I N G"), AMBER),
+            "thinking": (L("thinking", "T H I N K I N G"), CYAN),
+            "speaking": (L("speaking", "S P E A K I N G"), AMBER),
             "listening": (L("listening", "L I S T E N I N G"), MAGENTA),
-            "stranded":  (L("stranded", "N O T   L I S T E N I N G"), AMBER),
-            "ready":     (L("ready", "R E A D Y"), GREEN),
+            "stranded": (L("stranded", "N O T   L I S T E N I N G"), AMBER),
+            "ready": (L("ready", "R E A D Y"), GREEN),
         }.get(st, (L("idle", "S T A N D I N G   B Y"), WHITE))
 
         # Thinking and waiting on agents look the same from inside, but they
@@ -439,7 +521,7 @@ def main(stdscr):
         if agents and st not in ("speaking", "listening", "stranded"):
             label = L("agents", "A G E N T S") + (f"   x{len(agents)}" if len(agents) > 1 else "")
             color = BLUE
-            st = "thinking"          # spin the reactor, do not breathe
+            st = "thinking"  # spin the reactor, do not breathe
 
         t = time.time() - t0
         h, w = stdscr.getmaxyx()
@@ -454,12 +536,15 @@ def main(stdscr):
         panel, reactor, divider = layout(h, w, history)
         if reactor is None:
             # No room to share: the panel takes the window, as a view.
-            centered(stdscr, 1, L("history", "H I S T O R Y"), w,
-                     curses.color_pair(WHITE) | curses.A_BOLD)
-            centered(stdscr, 3, "h/q: back  ·  ↑↓ scroll  ·  g/G: ends", w,
-                     curses.A_DIM)
-            hist_scroll = draw_history(stdscr, 5, h - 3, 0, w,
-                                       hist_scroll, AMBER, MAGENTA)
+            centered(
+                stdscr,
+                1,
+                L("history", "H I S T O R Y"),
+                w,
+                curses.color_pair(WHITE) | curses.A_BOLD,
+            )
+            centered(stdscr, 3, "h/q: back  ·  ↑↓ scroll  ·  g/G: ends", w, curses.A_DIM)
+            hist_scroll = draw_history(stdscr, 5, h - 3, 0, w, hist_scroll, AMBER, MAGENTA)
             stdscr.refresh()
             time.sleep(1 / FPS)
             continue
@@ -491,9 +576,14 @@ def main(stdscr):
             # the voice: ON everywhere and ON in one window look the same
             # from every other window, and that is the confusing case.
             badge = "  VOICE ON · ONE SESSION  "
-        centered(stdscr, 2, badge, w,
-                 curses.color_pair(GREEN if on else WHITE) |
-                 (curses.A_BOLD | curses.A_REVERSE if on else curses.A_DIM))
+        centered(
+            stdscr,
+            2,
+            badge,
+            w,
+            curses.color_pair(GREEN if on else WHITE)
+            | (curses.A_BOLD | curses.A_REVERSE if on else curses.A_DIM),
+        )
         # Named after what it WILL DO, like the others: the language you get
         # by pressing it, written in that language. Hidden when there is no
         # other language with a voice on disk -- a key that can only refuse.
@@ -503,8 +593,13 @@ def main(stdscr):
             # The two silencing keys sit together, in scope order: m takes the
             # machine, f takes everything except the session t points at.
             # Apart, f read as a view control and got pressed as one.
-            row = [f"m: {voice_label}", f"f: {focus_label}",
-                   "d: dictate", "c: conversation", "t: session"]
+            row = [
+                f"m: {voice_label}",
+                f"f: {focus_label}",
+                "d: dictate",
+                "c: conversation",
+                "t: session",
+            ]
             if other and other != core.CFG.preset:
                 row.append(f"l: {other_label}")
             row += [f"h: {'hide history' if history else 'history'}", "q: quit"]
@@ -518,28 +613,35 @@ def main(stdscr):
         f_full = "unmute the rest" if fstate else "mute the rest"
         f_short = "unmute rest" if fstate else "mute rest"
         for voice_label, focus_label, sep in (
-                (full, f_full, "   ·   "), (full, f_full, "  ·  "),
-                (full, f_full, " · "), (short, f_full, " · "),
-                (short, f_short, " · ")):
+            (full, f_full, "   ·   "),
+            (full, f_full, "  ·  "),
+            (full, f_full, " · "),
+            (short, f_full, " · "),
+            (short, f_short, " · "),
+        ):
             keys = legend(voice_label, focus_label, sep)
             if len(keys) <= w - 4:
                 break
-        centered(stdscr, 3, keys, w,
-                 curses.color_pair(GREEN) | curses.A_BOLD if not on else curses.A_DIM)
+        centered(
+            stdscr, 3, keys, w, curses.color_pair(GREEN) | curses.A_BOLD if not on else curses.A_DIM
+        )
         if time.time() - refused_at < 2.5:
             # Louder than the footer, and only right after the key was
             # pressed: the answer to "I pressed d and nothing happened".
-            centered(stdscr, 4, f"  ⚠ {refused_why}  ", w,
-                     curses.color_pair(AMBER) | curses.A_BOLD | curses.A_REVERSE)
+            centered(
+                stdscr,
+                4,
+                f"  ⚠ {refused_why}  ",
+                w,
+                curses.color_pair(AMBER) | curses.A_BOLD | curses.A_REVERSE,
+            )
         elif time.time() - notice_at < 2.0:
-            centered(stdscr, 4, notice, w,
-                     curses.color_pair(AMBER) | curses.A_BOLD)
+            centered(stdscr, 4, notice, w, curses.color_pair(AMBER) | curses.A_BOLD)
 
         if panel:
             # Below the legend, which spans the window: the panel is beside or
             # under the reactor, never instead of it.
-            hist_scroll = draw_panel(stdscr, panel, divider[0] == "h",
-                                     hist_scroll)
+            hist_scroll = draw_panel(stdscr, panel, divider[0] == "h", hist_scroll)
             draw_divider(stdscr, divider, h, w)
 
         rtop, rbot, x0, cw = reactor
@@ -556,12 +658,15 @@ def main(stdscr):
         # separately leaves the label half a cell off and a ring glyph peeking
         # out of its last letter.
         try:
-            stdscr.addstr(cy, max(x0, cx - len(label) // 2), label[:cw - 1],
-                          curses.color_pair(color) | curses.A_BOLD)
+            stdscr.addstr(
+                cy,
+                max(x0, cx - len(label) // 2),
+                label[: cw - 1],
+                curses.color_pair(color) | curses.A_BOLD,
+            )
         except curses.error:
             pass
-        draw_bars(stdscr, min(foot_y - 1, cy + 9), cx, t, st, color,
-                  x0 + cw, x0, level)
+        draw_bars(stdscr, min(foot_y - 1, cy + 9), cx, t, st, color, x0 + cw, x0, level)
 
         if agents and show["agents"]:
             # What they are doing, not just how many. The reactor still says
@@ -571,8 +676,14 @@ def main(stdscr):
             for i, desc in enumerate(agents[:3]):
                 if top + i >= foot_y:
                     break
-                centered(stdscr, top + i, f"· {desc}"[:cw - 4], cw,
-                         curses.color_pair(BLUE) | curses.A_DIM, x0)
+                centered(
+                    stdscr,
+                    top + i,
+                    f"· {desc}"[: cw - 4],
+                    cw,
+                    curses.color_pair(BLUE) | curses.A_DIM,
+                    x0,
+                )
 
         # The capture warning is based on the kernel, not on our state, and is
         # shown even when the daemon is dead: an open microphone with no owner
@@ -583,20 +694,37 @@ def main(stdscr):
                 # Said in the loudest slot the HUD has, and said differently
                 # while you are mid-sentence, because that is the moment the
                 # silence would otherwise be mistaken for being listened to.
-                msg = (f"  ⚠ {stranded} — you are talking to nothing  "
-                       if mic_speaking() else
-                       f"  ⚠ {stranded} — conversation on hold  ")
-                centered(stdscr, notice_y, msg[:cw - 2], cw,
-                         curses.color_pair(AMBER) | curses.A_BOLD | curses.A_REVERSE,
-                         x0)
+                msg = (
+                    f"  ⚠ {stranded} — you are talking to nothing  "
+                    if mic_speaking()
+                    else f"  ⚠ {stranded} — conversation on hold  "
+                )
+                centered(
+                    stdscr,
+                    notice_y,
+                    msg[: cw - 2],
+                    cw,
+                    curses.color_pair(AMBER) | curses.A_BOLD | curses.A_REVERSE,
+                    x0,
+                )
             elif daemon_alive():
-                centered(stdscr, notice_y, "  ● CONVERSATION — microphone open  ", cw,
-                         curses.color_pair(MAGENTA) | curses.A_BOLD | curses.A_REVERSE,
-                         x0)
+                centered(
+                    stdscr,
+                    notice_y,
+                    "  ● CONVERSATION — microphone open  ",
+                    cw,
+                    curses.color_pair(MAGENTA) | curses.A_BOLD | curses.A_REVERSE,
+                    x0,
+                )
             else:
-                centered(stdscr, notice_y, "  ⚠ MICROPHONE OPEN, NO OWNER — press x  ", cw,
-                         curses.color_pair(AMBER) | curses.A_BOLD | curses.A_REVERSE,
-                         x0)
+                centered(
+                    stdscr,
+                    notice_y,
+                    "  ⚠ MICROPHONE OPEN, NO OWNER — press x  ",
+                    cw,
+                    curses.color_pair(AMBER) | curses.A_BOLD | curses.A_REVERSE,
+                    x0,
+                )
         else:
             # Nothing is recording, but somebody may still be holding the
             # microphone open. Said plainly, and without the alarm: there is
@@ -605,37 +733,68 @@ def main(stdscr):
             # and this is the sentence that explains it.
             held = mic_held()
             if held:
-                centered(stdscr, notice_y,
-                         f"  ◦ mic held open by {held[0]} — not recording  ", cw,
-                         curses.color_pair(WHITE) | curses.A_DIM, x0)
+                centered(
+                    stdscr,
+                    notice_y,
+                    f"  ◦ mic held open by {held[0]} — not recording  ",
+                    cw,
+                    curses.color_pair(WHITE) | curses.A_DIM,
+                    x0,
+                )
 
         tgt = dictate_target()
         blocked = dictate_blocked()
         if fstate == "gone":
             # Nothing speaks anywhere until this is cleared or moved, and no
             # other line on screen would say why.
-            centered(stdscr, foot_y,
-                     f"⚠ voice held by {flabel} — that pane is gone, press f"[:cw - 4],
-                     cw, curses.color_pair(AMBER) | curses.A_BOLD, x0)
+            centered(
+                stdscr,
+                foot_y,
+                f"⚠ voice held by {flabel} — that pane is gone, press f"[: cw - 4],
+                cw,
+                curses.color_pair(AMBER) | curses.A_BOLD,
+                x0,
+            )
         elif fstate and not focus_here():
             # Talking into one window while another answers. Only reachable by
             # aiming dictation from somewhere else, but worth naming when it is.
-            centered(stdscr, foot_y,
-                     f"⚠ voice → {flabel} · dictation → {tgt or '—'}"[:cw - 4],
-                     cw, curses.color_pair(AMBER) | curses.A_BOLD, x0)
+            centered(
+                stdscr,
+                foot_y,
+                f"⚠ voice → {flabel} · dictation → {tgt or '—'}"[: cw - 4],
+                cw,
+                curses.color_pair(AMBER) | curses.A_BOLD,
+                x0,
+            )
         elif tgt:
-            centered(stdscr, foot_y,
-                     f"{'voice + dictation' if fstate else 'dictation'} → {tgt}"[:cw - 4],
-                     cw, curses.color_pair(MAGENTA) | curses.A_DIM, x0)
+            centered(
+                stdscr,
+                foot_y,
+                f"{'voice + dictation' if fstate else 'dictation'} → {tgt}"[: cw - 4],
+                cw,
+                curses.color_pair(MAGENTA) | curses.A_DIM,
+                x0,
+            )
         elif blocked:
-            centered(stdscr, foot_y,
-                     f"⚠ {blocked} — dictation disabled"[:cw - 4], cw,
-                     curses.color_pair(AMBER) | curses.A_BOLD, x0)
+            centered(
+                stdscr,
+                foot_y,
+                f"⚠ {blocked} — dictation disabled"[: cw - 4],
+                cw,
+                curses.color_pair(AMBER) | curses.A_BOLD,
+                x0,
+            )
 
         said = d.get("text", "")
         if said and not strip:
-            centered(stdscr, rbot - 1, f'«{said}»'[:cw - 4], cw,
-                     curses.color_pair(GREEN if st != "speaking" else AMBER), x0)
+            centered(
+                stdscr,
+                rbot - 1,
+                f"«{said}»"[: cw - 4],
+                cw,
+                curses.color_pair(GREEN if st != "speaking" else AMBER),
+                x0,
+            )
 
         stdscr.refresh()
         time.sleep(1 / FPS)
@@ -663,7 +822,7 @@ def shutdown() -> None:
     except Exception:
         pass
     try:
-        core.run("voice.py", "silence")     # waited on: we are on the way out
+        core.run("voice.py", "silence")  # waited on: we are on the way out
     except Exception:
         pass
     try:

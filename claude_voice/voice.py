@@ -29,9 +29,9 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import config as _config                              # noqa: E402
-import focus as _focus                                # noqa: E402
-import presence as _presence                          # noqa: E402
+import config as _config  # noqa: E402
+import focus as _focus  # noqa: E402
+import presence as _presence  # noqa: E402
 
 CFG = _config.load()
 BASE = _config.BASE
@@ -71,6 +71,7 @@ def _migrate_flat_acks() -> None:
 
 def _mod(name: str):
     import importlib.util
+
     spec = importlib.util.spec_from_file_location(name, HERE / f"{name}.py")
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
@@ -104,7 +105,9 @@ def play_ack(session: str = "") -> None:
         LAST_ACK.write_text(pick.name)
     except Exception:
         pass
-    import shutil, tempfile
+    import shutil
+    import tempfile
+
     audioq = _mod("audioq")
     # Copy: the cache original must survive, the queue consumes the file.
     tmp = Path(tempfile.gettempdir()) / f"cv-ack-{os.getpid()}.wav"
@@ -127,9 +130,8 @@ def start_thinking(session: str = "") -> None:
         if session:
             cmd += ["--session", session]
         proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            start_new_session=True)
+            cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
+        )
         pidfile.parent.mkdir(parents=True, exist_ok=True)
         pidfile.write_text(str(proc.pid))
     except Exception:
@@ -191,8 +193,7 @@ def silence_all() -> int:
             cmd = (proc / "cmdline").read_bytes().decode("utf-8", "ignore")
         except Exception:
             continue
-        mine = ("thinking.py" in cmd or
-                ("aplay" in cmd and ("/cv-" in cmd or str(BASE) in cmd)))
+        mine = "thinking.py" in cmd or ("aplay" in cmd and ("/cv-" in cmd or str(BASE) in cmd))
         if not mine:
             continue
         try:
@@ -203,10 +204,11 @@ def silence_all() -> int:
 
     try:
         import time
+
         BASE.mkdir(parents=True, exist_ok=True)
-        (BASE / "state.json").write_text(json.dumps(
-            {"state": "idle", "text": "", "until": 0, "ts": time.time(),
-             "session": ""}))
+        (BASE / "state.json").write_text(
+            json.dumps({"state": "idle", "text": "", "until": 0, "ts": time.time(), "session": ""})
+        )
     except Exception:
         pass
     # Silence means silence everywhere, so no window is left claiming to think.
@@ -238,12 +240,12 @@ def build_acks(preset: str = "") -> None:
         # preset's cache means lending speak.py that preset for the duration.
         if speak.synthesize(phrase, out, cfg=cfg):
             print(f"  {out.name}  {phrase}")
-    print(f"\n  {len(list(out_dir.glob('*.wav')))} acknowledgements cached "
-          f"for {out_dir.name}")
+    print(f"\n  {len(list(out_dir.glob('*.wav')))} acknowledgements cached for {out_dir.name}")
 
 
 def session_mute(session_id: str) -> Path:
     import tempfile
+
     return Path(tempfile.gettempdir()) / f"cv-mute-{session_id or 'default'}"
 
 
@@ -280,8 +282,7 @@ def main() -> int:
         # wrote one; this covers a session that was running before the hook was
         # installed, and refreshes the file so a live pane is never swept.
         try:
-            _mod("thinking").bind(data.get("session_id", ""),
-                                  cwd=data.get("cwd", ""))
+            _mod("thinking").bind(data.get("session_id", ""), cwd=data.get("cwd", ""))
         except Exception:
             pass
         if not enabled(data.get("session_id", "")):
@@ -293,22 +294,35 @@ def main() -> int:
         if CFG.get("ack.enabled", True):
             try:
                 subprocess.Popen(
-                    [sys.executable, str(HERE / "ack.py"),
-                     "--session", sid, data.get("prompt", "")],
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                    start_new_session=True)
+                    [
+                        sys.executable,
+                        str(HERE / "ack.py"),
+                        "--session",
+                        sid,
+                        data.get("prompt", ""),
+                    ],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                )
             except Exception:
-                play_ack(sid)          # if even that won't start, the cached one
+                play_ack(sid)  # if even that won't start, the cached one
         if CFG.get("thinking.enabled", True):
             start_thinking(sid)
         # This session is thinking. Only this one -- the others are whatever
         # they already were.
         _mod("turn").write(sid, "thinking")
         if CFG.get("instruction.enabled", True) and CFG.instruction:
-            print(json.dumps({"hookSpecificOutput": {
-                "hookEventName": "UserPromptSubmit",
-                "additionalContext": CFG.instruction,
-            }}))
+            print(
+                json.dumps(
+                    {
+                        "hookSpecificOutput": {
+                            "hookEventName": "UserPromptSubmit",
+                            "additionalContext": CFG.instruction,
+                        }
+                    }
+                )
+            )
         return 0
 
     if arg == "--build-acks":
@@ -333,7 +347,7 @@ def main() -> int:
             print("  (no HUD open, so nothing runs yet: claude-voice hud)")
     elif arg == "off":
         STATE.unlink(missing_ok=True)
-        n = silence_all()          # off means shut up NOW, same as in the HUD
+        n = silence_all()  # off means shut up NOW, same as in the HUD
         print(f"  voice off{f' ({n} cut)' if n else ''}")
     elif arg in ("mute", "solo"):
         # `solo` is what this was called first, and it meant the opposite of
@@ -375,8 +389,10 @@ def main() -> int:
         muted = session_mute(sid).exists()
         speaks = on and not muted and _focus.allows(sid) and _presence.open_now()
         n = len(_presence.windows())
-        print(f"  window  : {f'open ({n})' if n else 'closed — nothing runs'}"
-              + ("" if _presence.required() else "   (not required)"))
+        print(
+            f"  window  : {f'open ({n})' if n else 'closed — nothing runs'}"
+            + ("" if _presence.required() else "   (not required)")
+        )
         print(f"  global  : {'ON' if on else 'off'}")
         print(f"  session : {'muted' if muted else 'normal'}")
         print(f"  focus   : {_focus.describe(sid)}")

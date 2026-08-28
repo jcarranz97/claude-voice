@@ -55,7 +55,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import config as _config                              # noqa: E402
+import config as _config  # noqa: E402
 
 # Chrome's own state, kept apart from yours: a shared profile would make this
 # a window of your browser, closing with it and carrying its extensions.
@@ -69,12 +69,20 @@ GEOMETRY = _config.BASE / "hud-window.json"
 
 ENV = {"GDK_BACKEND": "x11", "WEBKIT_DISABLE_DMABUF_RENDERER": "1"}
 
-BROWSERS = ("google-chrome", "chromium", "chromium-browser", "brave-browser",
-            "microsoft-edge", "vivaldi")
+BROWSERS = (
+    "google-chrome",
+    "chromium",
+    "chromium-browser",
+    "brave-browser",
+    "microsoft-edge",
+    "vivaldi",
+)
 
-PROBE = ("import gi; gi.require_version('Gtk', '3.0');"
-         "gi.require_version('WebKit2', '4.1');"
-         "from gi.repository import Gtk, WebKit2")
+PROBE = (
+    "import gi; gi.require_version('Gtk', '3.0');"
+    "gi.require_version('WebKit2', '4.1');"
+    "from gi.repository import Gtk, WebKit2"
+)
 
 
 class Shell:
@@ -113,8 +121,7 @@ def _python_with_gi() -> str:
             continue
         seen.add(exe)
         try:
-            if subprocess.run([exe, "-c", PROBE], capture_output=True,
-                              timeout=25).returncode == 0:
+            if subprocess.run([exe, "-c", PROBE], capture_output=True, timeout=25).returncode == 0:
                 return exe
         except Exception:
             continue
@@ -124,10 +131,13 @@ def _python_with_gi() -> str:
 def _webview(url: str) -> Shell:
     exe = _python_with_gi()
     if not exe:
-        raise RuntimeError("no interpreter with PyGObject and WebKit2 "
-                           "(apt install python3-gi gir1.2-webkit2-4.1)")
-    return Shell(subprocess.Popen([exe, str(HERE / "hudshell.py"), url],
-                                  env={**os.environ, **ENV}), "webview")
+        raise RuntimeError(
+            "no interpreter with PyGObject and WebKit2 (apt install python3-gi gir1.2-webkit2-4.1)"
+        )
+    return Shell(
+        subprocess.Popen([exe, str(HERE / "hudshell.py"), url], env={**os.environ, **ENV}),
+        "webview",
+    )
 
 
 def _browser(url: str) -> Shell:
@@ -135,13 +145,23 @@ def _browser(url: str) -> Shell:
     if not exe:
         raise RuntimeError("no chromium-based browser to open an app window in")
     PROFILE.mkdir(parents=True, exist_ok=True)
-    cmd = [exe, f"--app={url}", f"--user-data-dir={PROFILE}",
-           "--class=claude-voice-hud", "--window-size=1280,820",
-           "--ozone-platform=x11", "--no-first-run",
-           "--no-default-browser-check", "--disable-features=Translate"]
-    return Shell(subprocess.Popen(cmd, env={**os.environ, **ENV},
-                                  stdout=subprocess.DEVNULL,
-                                  stderr=subprocess.DEVNULL), "browser")
+    cmd = [
+        exe,
+        f"--app={url}",
+        f"--user-data-dir={PROFILE}",
+        "--class=claude-voice-hud",
+        "--window-size=1280,820",
+        "--ozone-platform=x11",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--disable-features=Translate",
+    ]
+    return Shell(
+        subprocess.Popen(
+            cmd, env={**os.environ, **ENV}, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        ),
+        "browser",
+    )
 
 
 def _none(url: str) -> Shell:
@@ -200,16 +220,21 @@ def _save_geometry(g: dict) -> None:
 
 def run_webview(url: str) -> int:
     import gi
+
     gi.require_version("Gtk", "3.0")
     gi.require_version("WebKit2", "4.1")
-    from gi.repository import Gtk, WebKit2, Gdk
+    from gi.repository import Gdk, Gtk, WebKit2
 
     global EDGES
     EDGES = {
-        "nw": Gdk.WindowEdge.NORTH_WEST, "n": Gdk.WindowEdge.NORTH,
-        "ne": Gdk.WindowEdge.NORTH_EAST, "w": Gdk.WindowEdge.WEST,
-        "e": Gdk.WindowEdge.EAST, "sw": Gdk.WindowEdge.SOUTH_WEST,
-        "s": Gdk.WindowEdge.SOUTH, "se": Gdk.WindowEdge.SOUTH_EAST,
+        "nw": Gdk.WindowEdge.NORTH_WEST,
+        "n": Gdk.WindowEdge.NORTH,
+        "ne": Gdk.WindowEdge.NORTH_EAST,
+        "w": Gdk.WindowEdge.WEST,
+        "e": Gdk.WindowEdge.EAST,
+        "sw": Gdk.WindowEdge.SOUTH_WEST,
+        "s": Gdk.WindowEdge.SOUTH,
+        "se": Gdk.WindowEdge.SOUTH_EAST,
     }
 
     cfg = _config.load()
@@ -276,8 +301,9 @@ def run_webview(url: str) -> int:
 
     # Small enough to tuck in a corner, not so small that the panels collapse
     # into unreadable slivers. Below this the layout stacks instead.
-    win.set_size_request(int(cfg.get("hud.min_width", 720) or 720),
-                         int(cfg.get("hud.min_height", 520) or 520))
+    win.set_size_request(
+        int(cfg.get("hud.min_width", 720) or 720), int(cfg.get("hud.min_height", 520) or 520)
+    )
 
     ucm = view.get_user_content_manager()
     ucm.connect("script-message-received::hud", message)
@@ -298,7 +324,7 @@ def run_webview(url: str) -> int:
     last = {}
 
     def remember(*_a):
-        if not win.is_maximized():      # maximised is the screen, not a choice
+        if not win.is_maximized():  # maximised is the screen, not a choice
             x, y = win.get_position()
             w, h = win.get_size()
             last.update(x=x, y=y, w=w, h=h)
@@ -311,8 +337,10 @@ def run_webview(url: str) -> int:
     # while the interpreter is blocked inside Gtk.main(). The call moved to
     # GLibUnix at some point, and both spellings are in the wild.
     from gi.repository import GLib
+
     try:
         from gi.repository import GLibUnix
+
         add_signal = GLibUnix.signal_add
     except Exception:
         add_signal = GLib.unix_signal_add

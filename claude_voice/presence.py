@@ -31,7 +31,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import config as _config                              # noqa: E402
+import config as _config  # noqa: E402
 
 BASE = _config.BASE
 PREFIX = "hud-"
@@ -52,7 +52,7 @@ def _alive(pid: int) -> bool:
     except (ProcessLookupError, ValueError):
         return False
     except PermissionError:
-        return True            # somebody else's process, but a process
+        return True  # somebody else's process, but a process
 
 
 def windows() -> list:
@@ -65,7 +65,7 @@ def windows() -> list:
     live = []
     for f in _files():
         try:
-            pid = int(f.name[len(PREFIX):-len(SUFFIX)])
+            pid = int(f.name[len(PREFIX) : -len(SUFFIX)])
         except ValueError:
             continue
         if _alive(pid):

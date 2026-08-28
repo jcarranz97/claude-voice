@@ -40,7 +40,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import config as _config                              # noqa: E402
+import config as _config  # noqa: E402
 
 BASE = _config.BASE
 PRESET_FILE = _config.PRESET_FILE
@@ -50,6 +50,7 @@ VOICE_REPO = "https://huggingface.co/rhasspy/piper-voices/resolve/main"
 
 def _mod(name: str):
     import importlib.util
+
     spec = importlib.util.spec_from_file_location(name, HERE / f"{name}.py")
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
@@ -80,8 +81,7 @@ def following(name: str = "", speakable: bool = True) -> str:
     language nothing can pronounce is a key that refuses for a living.
     """
     name = name or current()
-    opts = [p for p in options()
-            if p == name or not speakable or ready(p)[0]]
+    opts = [p for p in options() if p == name or not speakable or ready(p)[0]]
     if not opts:
         return ""
     try:
@@ -102,8 +102,7 @@ def ready(name: str) -> tuple:
         return False, f"no preset called {name}"
     cfg = _config.resolve(name)
     if not cfg.voice_model.exists():
-        return False, (f"no {cfg.language} voice downloaded — "
-                       f"claude-voice lang --fetch {name}")
+        return False, (f"no {cfg.language} voice downloaded — claude-voice lang --fetch {name}")
     return True, ""
 
 
@@ -124,8 +123,10 @@ def warm_acks(name: str) -> None:
     try:
         subprocess.Popen(
             [sys.executable, str(HERE / "voice.py"), "--build-acks", name],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            start_new_session=True)
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
     except OSError:
         pass
 
@@ -164,8 +165,10 @@ def switch_next() -> tuple:
     if not nxt or nxt == now:
         missing = [p for p in options() if p != now and not ready(p)[0]]
         if missing:
-            return False, (f"no voice for {', '.join(label(p) for p in missing)}"
-                           f" — claude-voice lang --fetch {missing[0]}")
+            return False, (
+                f"no voice for {', '.join(label(p) for p in missing)}"
+                f" — claude-voice lang --fetch {missing[0]}"
+            )
         return False, "only one language pack on disk"
     return switch(nxt)
 
@@ -201,10 +204,13 @@ def fetch(name: str) -> bool:
     else:
         base = _voice_url(model)
         if not base:
-            print(f"  cannot derive a download URL from {model.name} — "
-                  "fetch it by hand from huggingface.co/rhasspy/piper-voices")
+            print(
+                f"  cannot derive a download URL from {model.name} — "
+                "fetch it by hand from huggingface.co/rhasspy/piper-voices"
+            )
             return False
         import urllib.request
+
         model.parent.mkdir(parents=True, exist_ok=True)
         for ext in (".onnx", ".onnx.json"):
             dest = model.parent / (model.name.removesuffix(".onnx") + ext)
@@ -226,8 +232,11 @@ def fetch(name: str) -> bool:
 
 def show() -> None:
     name, source = _config.active_preset()
-    origin = {"switch": "switched", "config": "from the config file",
-              "default": "built-in default"}[source]
+    origin = {
+        "switch": "switched",
+        "config": "from the config file",
+        "default": "built-in default",
+    }[source]
     for p in options():
         ok, why = ready(p)
         cfg = _config.resolve(p)

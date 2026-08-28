@@ -28,7 +28,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import config as _config                              # noqa: E402
+import config as _config  # noqa: E402
 
 CFG = _config.load()
 BASE = _config.BASE
@@ -56,6 +56,7 @@ MIN_WORDS = int(CFG.get("narrate.min_words", 3))
 
 def _mod(name: str):
     import importlib.util
+
     spec = importlib.util.spec_from_file_location(name, HERE / f"{name}.py")
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
@@ -65,8 +66,14 @@ def _mod(name: str):
 def find_text(data: dict) -> str:
     """The MessageDisplay payload is undocumented: try several names, and fall
     back to the last text block in the transcript."""
-    for key in ("message", "text", "content", "assistant_message",
-                "display_text", "last_assistant_message"):
+    for key in (
+        "message",
+        "text",
+        "content",
+        "assistant_message",
+        "display_text",
+        "last_assistant_message",
+    ):
         v = data.get(key)
         if isinstance(v, str) and v.strip():
             return v
@@ -107,21 +114,21 @@ def find_text(data: dict) -> str:
 def speakable(raw: str) -> str:
     """Clean, sayable text. Empty string if it is not worth saying."""
     if not raw or "<!-- TTS:" in raw:
-        return ""                      # that one belongs to the Stop hook
-    t = re.sub(r"```.*?```", " ", raw, flags=re.DOTALL)     # code blocks
-    t = re.sub(r"`[^`]+`", " ", t)                          # inline code
+        return ""  # that one belongs to the Stop hook
+    t = re.sub(r"```.*?```", " ", raw, flags=re.DOTALL)  # code blocks
+    t = re.sub(r"`[^`]+`", " ", t)  # inline code
     t = re.sub(r"<!--.*?-->", " ", t, flags=re.DOTALL)
     # Whole table rows: reading them aloud is incomprehensible.
     t = "\n".join(ln for ln in t.splitlines() if ln.count("|") < 2)
     t = re.sub(r"^\s*[|>#\-*\d.]+\s*", "", t, flags=re.MULTILINE)  # lists, quotes
-    t = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", t)          # links
+    t = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", t)  # links
     t = re.sub(r"[*_~]", "", t)
     # Paths -> just the filename. Deleting them outright left broken sentences
     # ("The commit touched and landed on main"); the basename informs and reads
     # out loud fine.
     t = re.sub(r"(?:[\w.~-]*/)+([\w.-]+)", r"\1", t)
-    t = re.sub(r"\b[0-9a-f]{7,}\b", "", t)                  # hashes: unpronounceable
-    t = re.sub(r"\s+([,.])", r"\1", t)                      # tidy the gap they leave
+    t = re.sub(r"\b[0-9a-f]{7,}\b", "", t)  # hashes: unpronounceable
+    t = re.sub(r"\s+([,.])", r"\1", t)  # tidy the gap they leave
     t = " ".join(t.split())
     # "Let me check the config:" introduces something we are not going to read.
     # Dropping the colon leaves a useful sentence instead of discarding it.
@@ -129,11 +136,11 @@ def speakable(raw: str) -> str:
 
     words = t.split()
     if len(words) < MIN_WORDS:
-        return ""                      # "Ok." / "Done:" -- noise, not information
+        return ""  # "Ok." / "Done:" -- noise, not information
 
     limit, _ = cfg()
     if len(words) <= limit:
-        return t                       # short: spoken WHOLE
+        return t  # short: spoken WHOLE
 
     # Long: the first two sentences as a lead-in. Hearing 300 words in one go
     # does not help, and the Stop hook already delivers the conclusion.
@@ -197,8 +204,10 @@ def main() -> int:
 def tune(limit: int, per_turn: int) -> None:
     TUNE.parent.mkdir(parents=True, exist_ok=True)
     TUNE.write_text(json.dumps({"word_limit": limit, "max_per_turn": per_turn}))
-    print(f"  whole up to {limit} words (~{limit * 0.5:.0f}s of audio), "
-          f"at most {per_turn} notices per turn")
+    print(
+        f"  whole up to {limit} words (~{limit * 0.5:.0f}s of audio), "
+        f"at most {per_turn} notices per turn"
+    )
 
 
 if __name__ == "__main__":

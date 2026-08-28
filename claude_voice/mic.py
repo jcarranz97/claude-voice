@@ -24,15 +24,15 @@ HUD and outside any session, and it survives all of them.
 """
 
 import json
-import subprocess
 import shutil
+import subprocess
 import sys
 import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import config as _config                              # noqa: E402
+import config as _config  # noqa: E402
 
 CFG = _config.load()
 BASE = _config.BASE
@@ -44,7 +44,6 @@ BASE = _config.BASE
 WATCH_STATE = BASE / "mic-watch.json"
 
 _open_cache = {"t": 0.0, "v": False}
-
 
 
 def our_captures() -> list:
@@ -108,13 +107,16 @@ def mic_open(fresh: bool = False) -> bool:
                 o.get("type") == "PipeWire:Interface:Node"
                 and o.get("info", {}).get("props", {}).get("media.class") == "Stream/Input/Audio"
                 and o.get("info", {}).get("state") == "running"
-                for o in objs)
+                for o in objs
+            )
         except Exception:
             # Without pw-dump, ALSA is the fallback. It reads RUNNING too, so
             # it agrees with the rule above rather than second-guessing it.
             try:
-                val = any(f.read_text().startswith("state: RUNNING")
-                          for f in Path("/proc/asound").glob("card*/pcm*c/sub*/status"))
+                val = any(
+                    f.read_text().startswith("state: RUNNING")
+                    for f in Path("/proc/asound").glob("card*/pcm*c/sub*/status")
+                )
             except Exception:
                 val = False
     _open_cache.update(t=time.time(), v=val)
@@ -147,8 +149,7 @@ def mic_held() -> list:
         return _held_cache["v"]
     held = []
     try:
-        out = subprocess.run(["pw-dump"], capture_output=True, text=True,
-                             timeout=3).stdout
+        out = subprocess.run(["pw-dump"], capture_output=True, text=True, timeout=3).stdout
         objs = json.loads(out)
         byid = {o.get("id"): o for o in objs}
         for o in objs:
@@ -157,8 +158,8 @@ def mic_held() -> list:
             if props.get("media.class") != "Stream/Input/Audio":
                 continue
             if info.get("state") == "running":
-                continue           # that is recording, and mic_open() has it
-            client = (byid.get(props.get("client.id"), {}).get("info") or {})
+                continue  # that is recording, and mic_open() has it
+            client = byid.get(props.get("client.id"), {}).get("info") or {}
             cprops = client.get("props") or {}
             pid = cprops.get("pipewire.sec.pid") or props.get("application.process.id")
             name = ""
@@ -166,7 +167,7 @@ def mic_held() -> list:
                 try:
                     name = (Path("/proc") / str(pid) / "comm").read_text().strip()
                 except OSError:
-                    continue       # the process is gone; the node is just residue
+                    continue  # the process is gone; the node is just residue
             name = name or props.get("application.name") or "?"
             held.append(f"{name} ({pid})" if pid else name)
     except Exception:
@@ -191,6 +192,7 @@ def listen_stranded() -> str:
 def daemon_alive() -> bool:
     try:
         import os as _os
+
         _os.kill(int((BASE / "listen.pid").read_text().strip()), 0)
         return True
     except Exception:
@@ -199,7 +201,9 @@ def daemon_alive() -> bool:
 
 def sweep_orphans() -> int:
     """Kill captures of ours that were left without an owner."""
-    import os as _os, signal
+    import os as _os
+    import signal
+
     killed = 0
     me = _os.getpid()
     # Ours by signature -- the configured node, or the exact raw capture flags
@@ -238,7 +242,7 @@ def _started(pid) -> str:
     """
     try:
         raw = (Path("/proc") / str(pid) / "stat").read_text()
-        return raw[raw.rindex(")") + 2:].split()[19]
+        return raw[raw.rindex(")") + 2 :].split()[19]
     except Exception:
         return ""
 
@@ -278,12 +282,12 @@ def holders() -> list:
     owned = daemon_alive()
     for pid in our_captures():
         seen.add(pid)
-        found.append({"kind": "ours" if owned else "orphan", "pid": pid,
-                      "name": _comm(pid) or "pw-record"})
+        found.append(
+            {"kind": "ours" if owned else "orphan", "pid": pid, "name": _comm(pid) or "pw-record"}
+        )
 
     try:
-        out = subprocess.run(["pw-dump"], capture_output=True, text=True,
-                             timeout=5).stdout
+        out = subprocess.run(["pw-dump"], capture_output=True, text=True, timeout=5).stdout
         objs = json.loads(out)
         byid = {o.get("id"): o for o in objs}
         for o in objs:
@@ -291,21 +295,20 @@ def holders() -> list:
             props = info.get("props") or {}
             if props.get("media.class") != "Stream/Input/Audio":
                 continue
-            client = (byid.get(props.get("client.id"), {}).get("info") or {})
+            client = byid.get(props.get("client.id"), {}).get("info") or {}
             cprops = client.get("props") or {}
             pid = cprops.get("pipewire.sec.pid") or props.get("application.process.id")
             pid = int(pid) if pid else None
             if pid and pid in seen:
-                continue                # ours, and already classified above
+                continue  # ours, and already classified above
             running = info.get("state") == "running"
             name = _comm(pid) if pid else ""
             if pid and not name:
-                continue                # the process is gone; residue, not a holder
+                continue  # the process is gone; residue, not a holder
             if not running and not pid:
-                continue                # parked and unattributable: nothing to say
+                continue  # parked and unattributable: nothing to say
             kind = "recording" if running else "parked"
-            entry = {"kind": kind, "pid": pid,
-                     "name": name or props.get("application.name") or "?"}
+            entry = {"kind": kind, "pid": pid, "name": name or props.get("application.name") or "?"}
             # One process can own several streams -- a parked one it opened at
             # launch and a live one it is recording through. Reporting whichever
             # pw-dump happened to list first would let a recording hide behind a
@@ -365,23 +368,34 @@ def _notify(holder: dict, age: float) -> None:
     who = f"{name} ({pid})" if pid else name
     if kind == "orphan":
         title = "Microphone left open"
-        body = (f"{who} has been recording for {_human(age)} with no session "
-                f"behind it.\nClear it with: claude-voice mic --sweep")
+        body = (
+            f"{who} has been recording for {_human(age)} with no session "
+            f"behind it.\nClear it with: claude-voice mic --sweep"
+        )
     elif kind == "recording":
         title = "Microphone in use"
         body = f"{who} has been recording for {_human(age)}."
     else:
         title = "Microphone held open"
-        body = (f"{who} has held the microphone open for {_human(age)} "
-                f"— not recording.\nQuitting it turns the indicator off.")
+        body = (
+            f"{who} has held the microphone open for {_human(age)} "
+            f"— not recording.\nQuitting it turns the indicator off."
+        )
     try:
         subprocess.run(
-            ["notify-send", "--app-name=claude-voice",
-             f"--urgency={URGENCY.get(kind, 'normal')}",
-             "--icon=audio-input-microphone",
-             "-h", "string:x-canonical-private-synchronous:claude-voice-mic",
-             title, body],
-            check=False, timeout=5)
+            [
+                "notify-send",
+                "--app-name=claude-voice",
+                f"--urgency={URGENCY.get(kind, 'normal')}",
+                "--icon=audio-input-microphone",
+                "-h",
+                "string:x-canonical-private-synchronous:claude-voice-mic",
+                title,
+                body,
+            ],
+            check=False,
+            timeout=5,
+        )
     except Exception:
         pass
 
@@ -400,15 +414,20 @@ def check(notify: bool = True) -> list:
     old, new, overdue = _state(), {}, []
     for h in holders():
         if h["kind"] == "ours":
-            continue                    # conversation mode, working as intended
+            continue  # conversation mode, working as intended
         was = old.get(h["key"]) or {}
         first = was.get("first", now)
-        entry = {"first": first, "notified": was.get("notified", 0.0),
-                 "name": h["name"], "pid": h["pid"], "kind": h["kind"]}
+        entry = {
+            "first": first,
+            "notified": was.get("notified", 0.0),
+            "name": h["name"],
+            "pid": h["pid"],
+            "kind": h["kind"],
+        }
         age = now - first
         new[h["key"]] = entry
         if any(p in h["name"].lower() for p in ignore):
-            continue                    # aged, deliberately never announced
+            continue  # aged, deliberately never announced
         if age < after:
             continue
         overdue.append(dict(h, age=age))
@@ -429,10 +448,12 @@ def report() -> int:
     if not hs:
         print("  microphone : free — no capture stream open")
         return 0
-    label = {"ours": "conversation mode (ours)",
-             "orphan": "ORPHAN — no session behind it",
-             "recording": "recording",
-             "parked": "held open, not recording"}
+    label = {
+        "ours": "conversation mode (ours)",
+        "orphan": "ORPHAN — no session behind it",
+        "recording": "recording",
+        "parked": "held open, not recording",
+    }
     for h in hs:
         first = (state.get(h["key"]) or {}).get("first")
         age = f"  for {_human(now - first)}" if first else ""
@@ -509,30 +530,28 @@ def install() -> int:
     (d / f"{UNIT}.service").write_text(service)
     (d / f"{UNIT}.timer").write_text(timer)
     for args in (["daemon-reload"], ["enable", "--now", f"{UNIT}.timer"]):
-        r = subprocess.run(["systemctl", "--user"] + args,
-                           capture_output=True, text=True)
+        r = subprocess.run(["systemctl", "--user"] + args, capture_output=True, text=True)
         if r.returncode:
-            print(f"systemctl {' '.join(args)}: {r.stderr.strip()}",
-                  file=sys.stderr)
+            print(f"systemctl {' '.join(args)}: {r.stderr.strip()}", file=sys.stderr)
             return 1
     print(f"  installed  : {d / (UNIT + '.timer')}")
     print(f"  checks     : every {int(float(CFG.get('mic.watch.interval', 60)))}s")
     print(f"  warns after: {int(float(CFG.get('mic.watch.after', 300)))}s held")
-    print(f"  remove with: claude-voice mic --uninstall")
+    print("  remove with: claude-voice mic --uninstall")
     return 0
 
 
 def uninstall() -> int:
-    subprocess.run(["systemctl", "--user", "disable", "--now", f"{UNIT}.timer"],
-                   capture_output=True, text=True)
+    subprocess.run(
+        ["systemctl", "--user", "disable", "--now", f"{UNIT}.timer"], capture_output=True, text=True
+    )
     d = Path.home() / ".config" / "systemd" / "user"
     for name in (f"{UNIT}.timer", f"{UNIT}.service"):
         try:
             (d / name).unlink()
         except FileNotFoundError:
             pass
-    subprocess.run(["systemctl", "--user", "daemon-reload"],
-                   capture_output=True, text=True)
+    subprocess.run(["systemctl", "--user", "daemon-reload"], capture_output=True, text=True)
     print("  the microphone watchdog is removed")
     return 0
 
@@ -546,9 +565,8 @@ def main(argv: list) -> int:
         n = sweep_orphans()
         print(f"closed {n} capture{'' if n == 1 else 's'} of ours")
         return 0
-    if "--once" in argv or "--watch" in argv:
-        if not CFG.get("mic.watch.enabled", True):
-            return 0
+    if ("--once" in argv or "--watch" in argv) and not CFG.get("mic.watch.enabled", True):
+        return 0
     if "--once" in argv:
         for h in check():
             print(f"{h['kind']}: {h['name']} ({h['pid']}) for {_human(h['age'])}")

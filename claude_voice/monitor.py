@@ -29,9 +29,9 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import config as _config                              # noqa: E402
-import mic as _mic                                    # noqa: E402
-import presence as _presence                          # noqa: E402
+import config as _config  # noqa: E402
+import mic as _mic  # noqa: E402
+import presence as _presence  # noqa: E402
 
 BASE = _config.BASE
 
@@ -75,8 +75,9 @@ def _pw_streams(media_class: str) -> list:
     """
     out = []
     try:
-        objs = json.loads(subprocess.run(["pw-dump"], capture_output=True,
-                                         text=True, timeout=5).stdout)
+        objs = json.loads(
+            subprocess.run(["pw-dump"], capture_output=True, text=True, timeout=5).stdout
+        )
     except Exception:
         return out
     byid = {o.get("id"): o for o in objs}
@@ -85,22 +86,23 @@ def _pw_streams(media_class: str) -> list:
         props = info.get("props") or {}
         if props.get("media.class") != media_class:
             continue
-        client = (byid.get(props.get("client.id"), {}).get("info") or {})
+        client = byid.get(props.get("client.id"), {}).get("info") or {}
         cprops = client.get("props") or {}
         pid = cprops.get("pipewire.sec.pid") or props.get("application.process.id")
         pid = int(pid) if pid else None
         name = _mic._comm(pid) if pid else ""
         if pid and not name:
             continue
-        out.append({
-            "pid": pid,
-            "running": info.get("state") == "running",
-            "name": name or props.get("application.name") or "?",
-            # What a person would recognise it by: the tab title, the file
-            # being played, the app's own name for itself.
-            "detail": (props.get("media.name")
-                       or props.get("application.name") or ""),
-        })
+        out.append(
+            {
+                "pid": pid,
+                "running": info.get("state") == "running",
+                "name": name or props.get("application.name") or "?",
+                # What a person would recognise it by: the tab title, the file
+                # being played, the app's own name for itself.
+                "detail": (props.get("media.name") or props.get("application.name") or ""),
+            }
+        )
     return out
 
 
@@ -113,8 +115,7 @@ def _is_ours(pid) -> bool:
     speakers -- the one mistake this view must not make.
     """
     try:
-        cmd = (Path("/proc") / str(pid) / "cmdline").read_bytes().decode(
-            "utf-8", "ignore")
+        cmd = (Path("/proc") / str(pid) / "cmdline").read_bytes().decode("utf-8", "ignore")
     except Exception:
         return False
     return bool(cmd) and (str(HERE) in cmd or str(BASE) in cmd)
@@ -181,14 +182,19 @@ def report() -> None:
     if not live:
         print("  ◦ idle — nothing is playing")
     for s in live:
-        who = ("claude-voice · speaking" if s["pid"] and _is_ours(s["pid"])
-               else (s["detail"] or "playing"))
+        who = (
+            "claude-voice · speaking"
+            if s["pid"] and _is_ours(s["pid"])
+            else (s["detail"] or "playing")
+        )
         print(_line("●", s["name"], who, _age(s["pid"]) if s["pid"] else 0))
 
     print("\nclaude-voice")
     if not ours and not _mic.our_captures():
-        print("  ◦ nothing running"
-              + ("" if _presence.required() else "   (a window is not required)"))
+        print(
+            "  ◦ nothing running"
+            + ("" if _presence.required() else "   (a window is not required)")
+        )
     for pid, (what, comm) in sorted(ours.items(), key=lambda kv: -_age(kv[0])):
         if what == "the window":
             what = f"the window ({windows} open)"

@@ -36,7 +36,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import config as _config                              # noqa: E402
+import config as _config  # noqa: E402
 
 BASE = _config.BASE
 FOCUS = BASE / "focus.json"
@@ -67,7 +67,7 @@ def _stale(d: dict) -> bool:
     outside tmux cannot tell, and guessing there would drop a live focus.
     """
     if not str(d.get("pane") or "").startswith("%"):
-        return False           # a pty key was never issued by a tmux server
+        return False  # a pty key was never issued by a tmux server
     was, now = _server(d.get("tmux", "")), _server(os.environ.get("TMUX", ""))
     return bool(was and now and was != now)
 
@@ -112,7 +112,7 @@ def here() -> str:
         except (OSError, ValueError):
             pass
     try:
-        return "pts:" + os.ttyname(0)      # run straight from the session
+        return "pts:" + os.ttyname(0)  # run straight from the session
     except OSError:
         pass
     # Last, not first, and that ordering is load-bearing. A session inside
@@ -132,9 +132,16 @@ def set_pane(pane_id: str, name: str = "") -> bool:
     try:
         BASE.mkdir(parents=True, exist_ok=True)
         tmp = FOCUS.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps({"pane": pane_id, "label": name,
-                                   "tmux": os.environ.get("TMUX", ""),
-                                   "ts": time.time()}))
+        tmp.write_text(
+            json.dumps(
+                {
+                    "pane": pane_id,
+                    "label": name,
+                    "tmux": os.environ.get("TMUX", ""),
+                    "ts": time.time(),
+                }
+            )
+        )
         os.replace(tmp, FOCUS)
         return True
     except Exception:
@@ -152,8 +159,8 @@ def _bound_session(pane_id: str) -> str:
     """The session thinking.py last saw in that pane, "" if unknown."""
     try:
         import importlib.util
-        spec = importlib.util.spec_from_file_location(
-            "thinking", HERE / "thinking.py")
+
+        spec = importlib.util.spec_from_file_location("thinking", HERE / "thinking.py")
         m = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(m)
         return m.bound_session(pane_id)

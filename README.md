@@ -1,5 +1,7 @@
 # claude-voice
 
+[![CI](https://github.com/jcarranz97/claude-voice/actions/workflows/ci.yml/badge.svg)](https://github.com/jcarranz97/claude-voice/actions/workflows/ci.yml)
+
 Give Claude Code a voice, an ear, and a status display — locally, with no
 cloud speech services.
 

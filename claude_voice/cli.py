@@ -10,9 +10,11 @@ and handing it the process whole keeps argv, exit codes and signal handling
 identical to running it directly. A hook that behaves differently depending on
 how it was reached is not a thing worth debugging later.
 """
+
 import os
 import sys
 from pathlib import Path
+from typing import NoReturn
 
 HERE = Path(__file__).resolve().parent
 
@@ -87,37 +89,37 @@ Your own language packs live in ~/.config/claude-voice/presets/
 
 # subcommand -> (module, arguments to put in front of the user's own)
 ROUTES = {
-    "history":     ("spokenlog.py", []),
-    "say":         ("speak.py", []),
+    "history": ("spokenlog.py", []),
+    "say": ("speak.py", []),
     # Always dry: an acknowledgement belongs to a prompt, and there is no
     # prompt here. What this is for is reading the line -- and its cost -- back.
-    "ack":         ("ack.py", ["--dry-run"]),
+    "ack": ("ack.py", ["--dry-run"]),
     # Everything after `run` is the child's: no parsing here, no flags of
     # our own, so a `--model` or a `--resume` reaches claude untouched.
-    "run":         ("run.py", []),
-    "dictate":     ("dictate.py", []),
-    "listen":      ("listen.py", []),
-    "pron":        ("pron.py", []),
-    "narrate":     ("narrate.py", []),
-    "queue":       ("audioq.py", []),
-    "config":      ("config.py", []),
-    "lang":        ("lang.py", []),
-    "build-acks":  ("voice.py", ["--build-acks"]),
+    "run": ("run.py", []),
+    "dictate": ("dictate.py", []),
+    "listen": ("listen.py", []),
+    "pron": ("pron.py", []),
+    "narrate": ("narrate.py", []),
+    "queue": ("audioq.py", []),
+    "config": ("config.py", []),
+    "lang": ("lang.py", []),
+    "build-acks": ("voice.py", ["--build-acks"]),
     "build-ticks": ("thinking.py", ["--build"]),
-    "agents":      ("thinking.py", ["--agents"]),
-    "sessions":    ("turn.py", []),
-    "mic":         ("mic.py", []),
-    "monitor":     ("monitor.py", []),
-    "doctor":      ("doctor.py", []),
+    "agents": ("thinking.py", ["--agents"]),
+    "sessions": ("turn.py", []),
+    "mic": ("mic.py", []),
+    "monitor": ("monitor.py", []),
+    "doctor": ("doctor.py", []),
 }
 
 # What Claude Code calls, keyed by the settings.json event name so that a
 # person reading their settings can see which hook is which without a lookup.
 HOOKS = {
-    "session-start":      ("thinking.py", ["--bind"]),
+    "session-start": ("thinking.py", ["--bind"]),
     "user-prompt-submit": ("voice.py", ["--hook-context"]),
-    "message-display":    ("narrate.py", []),
-    "stop":               ("speak.py", []),
+    "message-display": ("narrate.py", []),
+    "stop": ("speak.py", []),
 }
 
 SNIPPET = """Add this to the "hooks" block of ~/.claude/settings.json
@@ -154,7 +156,7 @@ final line spoken. The voice stays off until you run: claude-voice on
 """
 
 
-def _exec(module: str, args) -> "NoReturn":
+def _exec(module: str, args) -> NoReturn:
     """Hand the process over. execv, so exit codes and signals are the module's."""
     os.execv(sys.executable, [sys.executable, str(HERE / module), *args])
 

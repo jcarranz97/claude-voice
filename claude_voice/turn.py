@@ -31,7 +31,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import config as _config                              # noqa: E402
+import config as _config  # noqa: E402
 
 BASE = _config.BASE
 PREFIX = "turn-"
@@ -61,11 +61,17 @@ def write(session: str, state: str, text: str = "", secs: float = 0.0) -> None:
     """Publish one session's state. Best effort: never worth breaking a hook."""
     try:
         BASE.mkdir(parents=True, exist_ok=True)
-        path(session).write_text(json.dumps({
-            "state": state, "text": text,
-            "until": time.time() + secs if secs else 0,
-            "ts": time.time(), "session": session or "",
-        }))
+        path(session).write_text(
+            json.dumps(
+                {
+                    "state": state,
+                    "text": text,
+                    "until": time.time() + secs if secs else 0,
+                    "ts": time.time(),
+                    "session": session or "",
+                }
+            )
+        )
     except Exception:
         return
     sweep()
@@ -108,7 +114,7 @@ def files() -> list:
 
 def sessions() -> list:
     """Every session id we have ever written state for."""
-    return [p.stem[len(PREFIX):] for p in files()]
+    return [p.stem[len(PREFIX) :] for p in files()]
 
 
 def sweep(max_age: float = STALE) -> None:
@@ -156,7 +162,7 @@ def main() -> int:
     now = time.time()
     for sid, d in sorted(rows, key=lambda r: -r[1].get("ts", 0)):
         ago = now - d.get("ts", 0)
-        print(f"  {sid[:8]}  {d['state']:<10} {ago:6.0f}s ago  {d.get('text','')[:40]}")
+        print(f"  {sid[:8]}  {d['state']:<10} {ago:6.0f}s ago  {d.get('text', '')[:40]}")
     return 0
 
 
