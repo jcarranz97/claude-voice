@@ -371,6 +371,21 @@ class TestSessions:
         (home / f"{run.PREFIX}{pid}.json").write_text(json.dumps(data))
         return home / f"{run.PREFIX}{pid}.json", sock
 
+    def test_a_registry_entry_with_a_bad_pid_is_skipped(self, home, monkeypatch):
+        # The conversion used to sit outside the guard, so one entry with a
+        # non-numeric pid raised out of the whole sweep -- and this is what the
+        # HUD and `--sessions` both call.
+        monkeypatch.setattr(run, "claude_session", lambda pty: {})
+        (home / f"{run.PREFIX}bad.json").write_text('{"pid": "abc", "sock": ""}')
+        self._write(home, os.getpid())
+        assert [s["id"] for s in run.sessions()] == [f"wrap:{os.getpid()}"]
+
+    def test_a_registry_entry_that_is_not_an_object_is_skipped(self, home, monkeypatch):
+        monkeypatch.setattr(run, "claude_session", lambda pty: {})
+        (home / f"{run.PREFIX}bad.json").write_text('"half a write"')
+        self._write(home, os.getpid())
+        assert [s["id"] for s in run.sessions()] == [f"wrap:{os.getpid()}"]
+
     def test_a_live_session_is_described(self, home, monkeypatch):
         monkeypatch.setattr(run, "claude_session", lambda pty: {})
         self._write(home, os.getpid())

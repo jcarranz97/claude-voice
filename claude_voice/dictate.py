@@ -34,7 +34,6 @@ import json
 import os
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
 
@@ -57,7 +56,10 @@ CFG = _config.load()
 BASE = _config.BASE
 PANE_CFG = BASE / "pane.json"
 RECPID = BASE / "dictate.pid"
-RECWAV = Path(tempfile.gettempdir()) / "cv-dictation.wav"
+# Under the config home, not in the shared temp directory. A fixed name in
+# /tmp means two people dictating on one machine overwrite each other, and
+# either can read what the other said.
+RECWAV = BASE / "dictation.wav"
 
 # Set stt.device by NAME, not index: ALSA card numbers reorder on reconnect or
 # reboot. A setup pinned to plughw:4,0 silently started recording from a webcam
@@ -226,20 +228,30 @@ def deliver(text: str) -> bool:
         log(f"refusing to send: {why}")
         return False
     target = current()
+    dest = find(target)
     sent = False
     try:
-        sent = _mod("run").deliver(find(target), text)
+        sent = _mod("run").deliver(dest, text)
     except Exception as e:
         log(f"delivery failed: {e}")
         return False
     if not sent:
         log(f"delivery failed: {target} did not take it")
         return False
-    log(f"delivered to {target}: {text[:60]}")
+    # The terminal, not just the handle. "delivered to wrap:447378" cannot be
+    # checked against the window the text appeared in; a pts number can.
+    log(f"delivered to {target} on {dest.get('pane_id', '?')}: {text[:60]}")
     # This is the only place that knows a sentence was SPOKEN and not typed --
     # conversation mode lands here too -- so it is where your side of the
     # spoken log gets written, under the session it went to.
-    _mod("spokenlog").record("in", text, session=target_session())
+    #
+    # Guarded, because the sentence has already landed by now. Under --toggle
+    # a failure here was caught and logged; called from the conversation
+    # daemon it took the whole loop down after a successful delivery.
+    try:
+        _mod("spokenlog").record("in", text, session=target_session())
+    except Exception as e:
+        log(f"delivered, but not logged: {e}")
     return True
 
 
@@ -292,12 +304,15 @@ def start() -> bool:
 
 
 def stop_and_send() -> None:
+    signalled = False
     try:
         os.kill(int(RECPID.read_text().strip()), 15)
+        signalled = True
     except (ProcessLookupError, ValueError, PermissionError, OSError):
         pass
     RECPID.unlink(missing_ok=True)
-    time.sleep(0.35)  # let arecord close the WAV header
+    if signalled:
+        time.sleep(0.35)  # let arecord close the WAV header
 
     if not RECWAV.exists() or RECWAV.stat().st_size < 4000:
         log("nothing captured")

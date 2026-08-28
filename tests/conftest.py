@@ -71,21 +71,6 @@ def home(monkeypatch):
     config.load(reload=True)
 
 
-@pytest.fixture(autouse=True)
-def _defaults_intact():
-    """Put ``config.DEFAULTS`` back the way it was found.
-
-    ``_compose`` writes the composed preset name through into the shared
-    defaults when neither the language pack nor the config file defines a
-    ``[general]`` table -- a real bug, recorded in ``tests/test_config.py``.
-    Until it is fixed, one test resolving a preset would change what every
-    later test considers the default language.
-    """
-    general = dict(config.DEFAULTS.get("general", {}))
-    yield
-    config.DEFAULTS["general"] = general
-
-
 @pytest.fixture
 def cfg(home):
     """The freshly loaded configuration, for a test that wants to read a key."""

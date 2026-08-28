@@ -293,12 +293,34 @@ class TestUnknownRoutes:
         assert r.status == 404
         assert r.json() == {"ok": False, "msg": "no such action"}
 
-    def test_a_body_nobody_read_is_left_in_the_connection(self):
-        # Recorded rather than approved. Only `/act` reads the request body,
-        # so every other POST leaves it in the socket, and the keep-alive
-        # connection then reads those bytes as the next request line.
+    def test_the_body_is_drained_even_when_the_route_is_unknown(self):
+        # We speak HTTP/1.1 and the page posts a body on every action. A route
+        # that answers without draining leaves those bytes to be read as the
+        # next request line, and the following action on that connection got a
+        # 400 it did nothing to earn.
         r = serve_one(build("POST", "/nope", headers=acting(), body=b"{}"))
-        assert b"400" in r.tail
+        assert r.status == 404
+        assert b"400" not in r.tail
+
+    def test_the_body_is_drained_when_the_action_is_refused(self, monkeypatch):
+        monkeypatch.setattr(hudweb.Handler, "_may_act", lambda self: False)
+        r = serve_one(build("POST", "/act", headers=acting(), body=b'{"action": "dictate"}'))
+        assert r.status == 403
+        assert b"400" not in r.tail
+
+    def test_a_content_length_that_is_not_a_number_is_not_an_error(self):
+        raw = (
+            b"POST /nope HTTP/1.1\r\nHost: " + HOST.encode() + b"\r\n"
+            b"X-CV-Token: " + hudweb.TOKEN.encode() + b"\r\n"
+            b"Content-Length: banana\r\n\r\n"
+        )
+        assert serve_one(raw).status == 404
+
+    def test_the_body_is_drained_on_the_way_out(self, monkeypatch):
+        monkeypatch.setattr(hudweb, "quit_now", lambda: None)
+        r = serve_one(build("POST", "/quit", headers=acting(), body=b"{}"))
+        assert r.status == 200
+        assert b"400" not in r.tail
 
 
 class TestABrokenPipe:

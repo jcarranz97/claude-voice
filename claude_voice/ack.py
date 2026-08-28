@@ -222,7 +222,13 @@ def generic() -> tuple:
     if not files:
         return None, ""
     last = BASE / "last-ack"
-    prev = last.read_text().strip() if last.exists() else ""
+    # Guarded, not merely existence-checked. This is the fallback that speaks
+    # when the model could not be reached, so it is the one function here with
+    # nothing underneath it to catch a stray IsADirectoryError.
+    try:
+        prev = last.read_text().strip()
+    except Exception:
+        prev = ""
     pick = random.choice([f for f in files if f.name != prev] or files)
     try:
         last.write_text(pick.name)

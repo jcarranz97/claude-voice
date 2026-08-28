@@ -502,12 +502,26 @@ class TestRun:
         ear.play("12s 7q")
         assert (home / "listen-stranded").read_text() == "no Claude Code session"
 
-    def test_a_transcriber_that_raises_ends_the_loop(self, ear):
-        # Documented, not endorsed: there is no guard around transcribe(), so a
-        # Whisper failure leaves run() and takes the daemon with it.
+    def test_a_transcriber_that_raises_loses_the_sentence_not_the_daemon(self, ear):
+        # One sentence that will not transcribe is one sentence lost. It used
+        # to leave run() and end the conversation with a traceback, under a
+        # window that still said "listening".
         ear.whisper.error = RuntimeError("ct2 failed")
-        with pytest.raises(RuntimeError):
-            ear.play("12s 7q")
+        ear.play("12s 7q")
+        assert ear.dictate.sent == []
+        assert "transcription failed" in (home_log := listen.LOG.read_text())
+        assert "ct2 failed" in home_log
+
+    def test_a_model_that_will_not_load_stops_before_the_microphone(self, ear, monkeypatch):
+        # The offline machine with nothing cached. Saying so and stopping is a
+        # failure; a traceback under a HUD that reads "listening" is a mystery.
+        def _boom():
+            raise OSError("could not reach huggingface")
+
+        monkeypatch.setattr(listen, "SmartTurn", _boom)
+        listen.run()
+        assert (listen.BASE / "listen-stranded").read_text() == ("the speech model would not load")
+        assert "cannot start" in listen.LOG.read_text()
 
 
 class TestCheck:

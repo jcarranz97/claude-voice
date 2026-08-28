@@ -82,6 +82,11 @@ def read(session: str) -> dict:
         d = json.loads(path(session).read_text())
     except Exception:
         return dict(IDLE)
+    # Valid JSON is not the same as our JSON. A truncated write can land on a
+    # bare string or a list, and every other reader here answers a default
+    # rather than raising into whatever drew the HUD.
+    if not isinstance(d, dict):
+        return dict(IDLE)
     d.setdefault("session", session or "")
     return d
 
@@ -96,12 +101,15 @@ def newest() -> dict:
     """
     best, best_ts = dict(IDLE), -1.0
     for p in files():
+        # The timestamp is read inside the guard, not after it: one file of the
+        # wrong shape should be skipped, not take the whole sweep down.
         try:
             d = json.loads(p.read_text())
+            ts = float(d.get("ts", 0))
         except Exception:
             continue
-        if float(d.get("ts", 0)) > best_ts:
-            best, best_ts = d, float(d.get("ts", 0))
+        if ts > best_ts:
+            best, best_ts = d, ts
     return best
 
 

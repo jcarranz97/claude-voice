@@ -354,6 +354,29 @@ class TestMain:
         assert narrate.main() == 0
         assert fake_speak[0].synthesized == []
 
+    def test_a_notice_file_missing_its_keys_is_a_default(
+        self, feed_stdin, fake_speak, no_subprocess
+    ):
+        # Valid JSON, interrupted mid-write. The recovery that exists for a
+        # corrupt file did not exist for an incomplete one, and st["n"] was a
+        # KeyError out of main().
+        speak, audioq = fake_speak
+        narrate.turn_state("p1").parent.mkdir(parents=True, exist_ok=True)
+        narrate.turn_state("p1").write_text("{}")
+        feed_stdin(self._payload())
+        assert narrate.main() == 0
+        assert len(audioq.queued) == 1
+
+    def test_a_notice_file_that_is_not_an_object_is_a_default(
+        self, feed_stdin, fake_speak, no_subprocess
+    ):
+        speak, audioq = fake_speak
+        narrate.turn_state("p1").parent.mkdir(parents=True, exist_ok=True)
+        narrate.turn_state("p1").write_text('"idle"')
+        feed_stdin(self._payload())
+        assert narrate.main() == 0
+        assert len(audioq.queued) == 1
+
     def test_a_payload_that_is_not_json_says_nothing(self, feed_stdin, fake_speak):
         feed_stdin("not json at all")
         assert narrate.main() == 0

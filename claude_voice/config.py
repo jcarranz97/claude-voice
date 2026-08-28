@@ -239,6 +239,15 @@ def _merge(base: dict, over: dict) -> dict:
     for k, v in (over or {}).items():
         if isinstance(v, dict) and isinstance(out.get(k), dict):
             out[k] = _merge(out[k], v)
+        elif isinstance(v, dict):
+            # Copy, never alias. `dict(base)` is shallow, so assigning a table
+            # straight through would leave the composed configuration sharing
+            # that table with the layer it came from -- and the bottom layer is
+            # DEFAULTS, which _compose then writes the preset name into. One
+            # `resolve()` for a language pack with no [general] table was
+            # enough to change what the whole process considered the default
+            # language.
+            out[k] = _merge({}, v)
         else:
             out[k] = v
     return out

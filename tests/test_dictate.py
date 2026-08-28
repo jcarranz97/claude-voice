@@ -281,6 +281,20 @@ class TestDelivery:
         assert dictate.deliver("run the tests") is False
         assert "delivery failed: socket is gone" in dictate.LOG.read_text()
 
+    def test_a_spoken_log_that_fails_does_not_undo_a_delivered_sentence(self, wired, monkeypatch):
+        # The sentence has already landed by this point. Under --toggle the
+        # failure was caught; from the conversation daemon it ended the loop
+        # after a successful delivery.
+        wired.run.live = [session("wrap:100")]
+
+        def _boom(*a, **kw):
+            raise OSError("read-only state directory")
+
+        monkeypatch.setattr(wired.spoken, "record", _boom)
+        assert dictate.deliver("run the tests") is True
+        assert wired.run.typed == [("wrap:100", "run the tests")]
+        assert "delivered, but not logged" in dictate.LOG.read_text()
+
 
 class TestRecordingState:
     """A pid file is only believed while the pid behind it is alive."""

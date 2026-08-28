@@ -128,11 +128,15 @@ def sessions() -> list:
     except Exception:
         return []
     for f in files:
+        # The pid is converted inside the guard. Outside it, one entry with a
+        # non-numeric pid raised out of the whole sweep -- and this is what the
+        # HUD and `--sessions` both call.
         try:
             d = json.loads(f.read_text())
+            pid = int(d.get("pid", 0))
         except Exception:
             continue
-        if not _alive(int(d.get("pid", 0))):
+        if not _alive(pid):
             for p in (f, Path(d.get("sock", ""))):
                 try:
                     p.unlink(missing_ok=True)

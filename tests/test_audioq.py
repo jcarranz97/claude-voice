@@ -127,10 +127,15 @@ class TestEnqueue:
         # The wav went with the meta, rather than being left to accumulate.
         assert not (audioq.QUEUE / "00000001.wav").exists()
 
-    def test_flush_drops_the_lines_nobody_claimed(self, home):
+    def test_flush_leaves_the_lines_nobody_claimed(self, home):
+        # A line with no session came from the CLI, or from a hook that never
+        # knew which session it was in. It is not this window's to discard.
         queue_item(1, text="an unattributed line", session="")
         audioq.enqueue(wav(home), text="Done.", flush_pending=True, session="s1")
-        assert sorted(p.name for p in audioq.QUEUE.glob("*.json")) == ["00000002.json"]
+        assert sorted(p.name for p in audioq.QUEUE.glob("*.json")) == [
+            "00000001.json",
+            "00000002.json",
+        ]
 
     def test_flush_leaves_another_windows_narration_alone(self, home):
         queue_item(1, text="another window is talking", session="s2")
@@ -338,15 +343,17 @@ class TestDrain:
         assert audioq.drain() == 0
 
     def test_it_removes_every_wav_and_meta(self, home, no_subprocess):
+        # Two queued lines are four files. The count is of lines, because that
+        # is what "queue drained (n items)" means to whoever reads it.
         queue_item(1, text="one")
         queue_item(2, text="two")
-        assert audioq.drain() == 4
+        assert audioq.drain() == 2
         assert list(audioq.QUEUE.iterdir()) == []
 
     def test_something_it_cannot_remove_does_not_stop_the_rest(self, home, no_subprocess):
         queue_item(1, text="one")
         (audioq.QUEUE / "stray").mkdir()
-        assert audioq.drain() == 2
+        assert audioq.drain() == 1
 
     def test_it_cuts_whatever_is_playing(self, home, monkeypatch, no_subprocess):
         signalled = []

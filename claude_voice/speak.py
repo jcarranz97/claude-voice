@@ -206,7 +206,9 @@ def mixed_phonemes(ph, text: str, cfg=None) -> list:
             continue
         if bare not in terms:
             # "logs", "hooks", "branches" -- try the singular before giving up
-            singular = bare[:-2] if bare.endswith("es") else bare.rstrip("s")
+            # removesuffix, not rstrip: rstrip takes EVERY trailing s, so a
+            # term like "css" was looked up as "c".
+            singular = bare[:-2] if bare.endswith("es") else bare.removesuffix("s")
             if singular in terms and singular != bare:
                 bare = singular + ("es" if word.lower().strip(STRIP).endswith("es") else "s")
             else:

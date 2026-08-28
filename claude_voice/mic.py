@@ -204,6 +204,11 @@ def sweep_orphans() -> int:
     import os as _os
     import signal
 
+    if daemon_alive():
+        # The owner is right there. Killing its capture stops a conversation
+        # that is working, which is the opposite of what "orphan" means -- and
+        # it is what `x` in the HUD did to a live listener.
+        return 0
     killed = 0
     me = _os.getpid()
     # Ours by signature -- the configured node, or the exact raw capture flags

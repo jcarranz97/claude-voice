@@ -174,7 +174,11 @@ def main() -> int:
     try:
         st = json.loads(st_path.read_text())
     except Exception:
-        st = {"n": 0, "last": 0, "said": []}
+        st = {}
+    # Filled rather than trusted: a file interrupted mid-write can be valid
+    # JSON and still be missing the keys below, and every other reader in this
+    # package answers a default rather than raising.
+    st = {"n": 0, "last": 0, "said": [], **(st if isinstance(st, dict) else {})}
 
     _, max_turn = cfg()
     h = hashlib.sha1(text.encode()).hexdigest()[:10]

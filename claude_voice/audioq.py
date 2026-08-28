@@ -71,7 +71,11 @@ def enqueue(wav: Path, text: str = "", flush_pending: bool = False, session: str
         for old in QUEUE.glob("*.json"):
             try:
                 meta = json.loads(old.read_text())
-                if session and meta.get("session", "") not in (session, ""):
+                # Only this session's, as the docstring says. The blank used to
+                # be swept too, so a line enqueued by the CLI or by a hook that
+                # never knew its session was discarded by an unrelated window
+                # finishing a turn.
+                if session and meta.get("session", "") != session:
                     continue
                 Path(meta["wav"]).unlink(missing_ok=True)
                 old.unlink(missing_ok=True)
@@ -252,8 +256,11 @@ def drain() -> int:
     n = 0
     for f in list(QUEUE.glob("*")) if QUEUE.exists() else []:
         try:
+            # One queued line is two files, the wav and its metadata. Counting
+            # files reported "2 items" for a single pending notice.
+            if f.suffix == ".json":
+                n += 1
             f.unlink(missing_ok=True)
-            n += 1
         except Exception:
             pass
     try:

@@ -218,6 +218,15 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self._host_ok():
             return self._send(421, b"wrong host", "text/plain")
+        # Read the body before deciding anything. We speak HTTP/1.1 and the
+        # page posts a JSON body on every action, so a path that answers
+        # without draining leaves those bytes in the socket to be read as the
+        # next request line: the following action on that connection got a 400
+        # it did nothing to earn, and the window showed it as "no answer".
+        try:
+            body = self.rfile.read(int(self.headers.get("Content-Length", 0) or 0))
+        except Exception:
+            body = b""
         if not self._may_act():
             return self._json(403, {"ok": False, "msg": "refused"})
         path = self.path.partition("?")[0]
@@ -229,8 +238,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/act":
             try:
-                n = int(self.headers.get("Content-Length", 0))
-                name = json.loads(self.rfile.read(n) or b"{}").get("action", "")
+                name = json.loads(body or b"{}").get("action", "")
             except Exception:
                 name = ""
             ok, msg = core.act(name)

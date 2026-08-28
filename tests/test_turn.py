@@ -108,6 +108,33 @@ class TestWriteAndRead:
         assert not list(home.glob("turn-*.json"))
 
 
+class TestAStateFileOfTheWrongShape:
+    """Valid JSON is not the same as our JSON.
+
+    A truncated write can land on a bare string or a list. Every reader here
+    answers a default rather than raising into whatever drew the HUD -- these
+    two did not, and one non-dict file took the window down.
+    """
+
+    def test_a_bare_string_reads_as_idle(self, home):
+        turn.path("s1").write_text('"idle"')
+        assert turn.read("s1") == dict(turn.IDLE)
+
+    def test_a_list_reads_as_idle(self, home):
+        turn.path("s1").write_text("[]")
+        assert turn.read("s1") == dict(turn.IDLE)
+
+    def test_newest_skips_it_rather_than_failing(self, home):
+        turn.path("bad").write_text('"idle"')
+        turn.write("good", "thinking")
+        assert turn.newest().get("session") == "good"
+
+    def test_newest_skips_a_timestamp_that_is_not_a_number(self, home):
+        turn.path("bad").write_text('{"state": "thinking", "ts": "soon"}')
+        turn.write("good", "thinking")
+        assert turn.newest().get("session") == "good"
+
+
 class TestNewest:
     """The fallback for a reader that cannot say which session it is watching."""
 

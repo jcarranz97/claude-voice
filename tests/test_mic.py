@@ -416,6 +416,16 @@ class TestSweepOrphans:
         monkeypatch.setattr(os, "kill", _gone)
         assert mic.sweep_orphans() == 0
 
+    def test_a_capture_with_a_live_owner_is_not_an_orphan(self, monkeypatch, no_subprocess):
+        # The whole distinction the word carries. Sweeping here stopped a
+        # conversation that was working, which is what `x` in the HUD did.
+        sent = []
+        monkeypatch.setattr(mic, "daemon_alive", lambda: True)
+        monkeypatch.setattr(mic, "our_captures", lambda: [8801, 8802])
+        monkeypatch.setattr(os, "kill", lambda pid, sig: sent.append(pid))
+        assert mic.sweep_orphans() == 0
+        assert sent == []
+
 
 class TestStartedAndComm:
     """The pid alone is not an identity; the kernel start time completes it."""

@@ -193,7 +193,17 @@ def silence_all() -> int:
             cmd = (proc / "cmdline").read_bytes().decode("utf-8", "ignore")
         except Exception:
             continue
-        mine = "thinking.py" in cmd or ("aplay" in cmd and ("/cv-" in cmd or str(BASE) in cmd))
+        # Match the argv, not the string. `"thinking.py" in cmd` also matches
+        # an editor with the file open, a grep across the repo, or any shell
+        # whose command line happens to name it -- all of which then got a
+        # SIGTERM. A run of ours is an interpreter whose first argument is our
+        # own copy of the script, and nothing else looks like that.
+        argv = [a for a in cmd.split("\0") if a]
+        mine = (
+            len(argv) > 1
+            and Path(argv[0]).name.startswith("python")
+            and argv[1] == str(HERE / "thinking.py")
+        ) or (bool(argv) and Path(argv[0]).name == "aplay" and ("/cv-" in cmd or str(BASE) in cmd))
         if not mine:
             continue
         try:

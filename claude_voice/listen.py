@@ -273,10 +273,18 @@ def run() -> None:
     from faster_whisper import WhisperModel
 
     log("loading models")
-    vad, turn = Vad(), SmartTurn()
-    asr = WhisperModel(
-        ASR_MODEL, device="cpu", compute_type="int8", cpu_threads=os.cpu_count() or 4
-    )
+    try:
+        vad, turn = Vad(), SmartTurn()
+        asr = WhisperModel(
+            ASR_MODEL, device="cpu", compute_type="int8", cpu_threads=os.cpu_count() or 4
+        )
+    except Exception as e:
+        # An offline machine with nothing cached reaches here, and so does a
+        # broken runtime. Saying so and stopping is a failure; a traceback
+        # under a HUD that still reads "listening" is a mystery.
+        log(f"cannot start: {e}")
+        set_stranded("the speech model would not load")
+        return
     log(f"listening (end of turn between {FLOOR_MS:.0f} and {CEIL_MS:.0f} ms)")
     next_check = time.time() + TARGET_CHECK_S
     stranded = ""
@@ -351,7 +359,10 @@ def run() -> None:
         if not speaking:
             pre.append(frame)
             if p > ON:
-                frames = list(pre) + [frame]
+                # `pre` already ends with this frame. Appending it again put
+                # 32 ms of duplicated audio at the head of every utterance and
+                # counted one frame too many toward the length cap.
+                frames = list(pre)
                 pre.clear()
                 speaking, silence_ms, asked = True, 0.0, 0.0
                 set_speaking(True)
@@ -392,15 +403,25 @@ def run() -> None:
         if speech_ms < MIN_SPEECH_MS:
             continue
 
-        segs, _ = asr.transcribe(
-            audio,
-            language=LANGUAGE,
-            beam_size=5,
-            initial_prompt=dictate.GLOSSARY or None,
-            vad_filter=True,
-            no_speech_threshold=0.6,
-        )
-        text = " ".join(s.text.strip() for s in segs).strip()
+        # One sentence that will not transcribe is one sentence lost, not the
+        # end of the conversation. Unguarded, any ctranslate2 or ONNX error
+        # left main() -- which catches only KeyboardInterrupt -- to end the
+        # daemon with a traceback while the window still said "listening".
+        # dictate.py already wraps the same work; this is that asymmetry
+        # closed.
+        try:
+            segs, _ = asr.transcribe(
+                audio,
+                language=LANGUAGE,
+                beam_size=5,
+                initial_prompt=dictate.GLOSSARY or None,
+                vad_filter=True,
+                no_speech_threshold=0.6,
+            )
+            text = " ".join(s.text.strip() for s in segs).strip()
+        except Exception as e:
+            log(f"transcription failed: {e}")
+            continue
         low = text.lower()
         if not text or any(h in low for h in HALLUCINATIONS):
             continue

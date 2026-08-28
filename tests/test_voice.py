@@ -315,11 +315,46 @@ class TestSilenceAll:
 
     def test_an_orphaned_heartbeat_is_swept_by_process(self, home, signals, procs, monkeypatch):
         stub_mods(monkeypatch, audioq=fake_audioq())
-        procs("101", "python\x00/x/thinking.py\x00")
+        # Our own copy of the script, run by an interpreter. Nothing else is
+        # a heartbeat, however much it looks like one from a distance.
+        procs("101", f"python\x00{voice.HERE / 'thinking.py'}\x00--session\x00s1\x00")
         procs("102", f"aplay\x00-q\x00{tempfile.gettempdir()}/cv-ack-1.wav\x00")
         procs("103", f"aplay\x00-q\x00{voice.BASE}/tick.wav\x00")
         assert voice.silence_all() == 3
         assert {p for _, p, _ in signals} == {101, 102, 103}
+
+    def test_a_heartbeat_that_exits_first_is_not_a_failure(self, home, procs, monkeypatch):
+        def _gone(pid, sig):
+            raise ProcessLookupError(pid)
+
+        stub_mods(monkeypatch, audioq=fake_audioq())
+        monkeypatch.setattr(
+            voice,
+            "os",
+            types.SimpleNamespace(environ=os.environ, getpid=os.getpid, kill=_gone, killpg=_gone),
+        )
+        procs("105", f"python\x00{voice.HERE / 'thinking.py'}\x00")
+        assert voice.silence_all() == 0
+
+    def test_a_heartbeat_from_another_install_is_not_ours(self, home, signals, procs, monkeypatch):
+        # Same filename, somebody else's copy. Their sweep, not ours.
+        stub_mods(monkeypatch, audioq=fake_audioq())
+        procs("104", "python\x00/opt/elsewhere/claude_voice/thinking.py\x00")
+        assert voice.silence_all() == 0
+        assert signals == []
+
+    def test_a_process_that_merely_names_the_file_is_left_alone(
+        self, home, signals, procs, monkeypatch
+    ):
+        # The reason this rule exists: matching the whole command line meant an
+        # editor with the file open, or a grep across the repo, got a SIGTERM.
+        stub_mods(monkeypatch, audioq=fake_audioq())
+        script = voice.HERE / "thinking.py"
+        procs("301", f"nvim\x00{script}\x00")
+        procs("302", f"grep\x00-n\x00tick\x00{script}\x00")
+        procs("303", f"bash\x00-c\x00python {script} --build\x00")
+        assert voice.silence_all() == 0
+        assert signals == []
 
     def test_it_leaves_other_applications_alone(self, home, signals, procs, monkeypatch):
         stub_mods(monkeypatch, audioq=fake_audioq())

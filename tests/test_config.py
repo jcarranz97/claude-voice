@@ -20,12 +20,12 @@ _PRISTINE_GENERAL = dict(config.DEFAULTS["general"])
 def defaults_intact():
     """Put ``DEFAULTS["general"]`` back the way it shipped, either side.
 
-    ``_merge({}, DEFAULTS)`` copies only the top level, so the composed table
-    holds the very same ``general`` dict as DEFAULTS whenever no layer defines
-    one -- and ``_compose`` then writes the preset name straight into it. One
-    ``resolve("es")`` therefore leaves every later lookup believing the config
-    file names "es". That is a bug in the module, not in the tests; restoring
-    on both sides keeps it from spreading between them.
+    Belt and braces now that ``_merge`` copies nested tables rather than
+    aliasing them: composing a preset no longer writes the composed name into
+    the shared defaults. Kept because it costs nothing and because the failure
+    it guards against -- one test quietly changing what every later test
+    considers the default language -- is miserable to diagnose from the
+    symptom.
     """
     config.DEFAULTS["general"].update(_PRISTINE_GENERAL)
     yield
@@ -414,18 +414,27 @@ class TestLayering:
         assert cfg.primary_voice == "mine"
         assert cfg.preset == ""
 
-    @pytest.mark.xfail(
-        reason="_compose writes the preset name into the general table it shares with DEFAULTS",
-        strict=True,
-    )
     def test_resolving_does_not_switch(self, home, user_preset):
-        # Asking what zz WOULD look like currently leaves the process believing
-        # the config file names zz, because the composed general table is the
-        # one inside DEFAULTS. Remove the xfail when _compose stops writing
-        # through it -- and the defaults_intact fixture above with it.
+        # Asking what zz WOULD look like must not leave the process believing
+        # the config file names zz. It did, until _merge stopped handing the
+        # composed table the very dict DEFAULTS holds.
         user_preset("zz", "")
         config.resolve("zz")
         assert config.active_preset() == ("en", "default")
+
+    def test_composing_leaves_the_defaults_alone(self, home, user_preset):
+        # The narrow statement of the same thing, at the layer that was wrong:
+        # a language pack with no [general] table used to have its name written
+        # straight into DEFAULTS.
+        user_preset("zz", "")
+        before = dict(config.DEFAULTS["general"])
+        config.resolve("zz")
+        assert config.DEFAULTS["general"] == before
+
+    def test_a_composed_table_is_not_shared_with_the_defaults(self, home):
+        composed = config.resolve("").as_dict()
+        assert composed["general"] is not config.DEFAULTS["general"]
+        assert composed["tts"] is not config.DEFAULTS["tts"]
 
 
 class TestLoad:
