@@ -80,8 +80,9 @@ BROWSERS = (
 
 PROBE = (
     "import gi; gi.require_version('Gtk', '3.0');"
+    "gi.require_version('Gdk', '3.0');"
     "gi.require_version('WebKit2', '4.1');"
-    "from gi.repository import Gtk, WebKit2"
+    "from gi.repository import Gdk, Gtk, WebKit2"
 )
 
 
@@ -221,7 +222,11 @@ def _save_geometry(g: dict) -> None:
 def run_webview(url: str) -> int:
     import gi
 
+    # Gdk is pinned as well as Gtk. Without it, gi resolves Gdk to the newest
+    # typelib on the machine -- Gdk 4.0 wherever anything GTK4 is installed --
+    # and then Gtk 3.0 asks for Gdk 3.0 and finds 4.0 already loaded.
     gi.require_version("Gtk", "3.0")
+    gi.require_version("Gdk", "3.0")
     gi.require_version("WebKit2", "4.1")
     from gi.repository import Gdk, Gtk, WebKit2
 
