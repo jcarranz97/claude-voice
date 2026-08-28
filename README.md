@@ -76,27 +76,41 @@ Linux only for now, and not by preference. The parts that are tied to it are the
 
 | Runtime | Supported | Notes |
 |---|:---:|---|
-| 🤖 **Claude Code** | ✅ | hooks for the voice, a tmux pane for dictation |
+| 🤖 **Claude Code** | ✅ | hooks for the voice, a wrapped pty for dictation |
 | 🧩 **OpenCode** | 🚧 | planned |
 | 🧩 other agent runtimes | 🚧 | planned |
 
-The voice attaches through Claude Code's hooks — `SessionStart`, `UserPromptSubmit`, `MessageDisplay` and `Stop` — and dictation delivers into a tmux pane running `claude`. Nothing below that layer is Claude Code's: the synthesis, the ear, the HUD and the state files are all runtime-agnostic already, so a second runtime is a matter of another way in, not another implementation.
+The voice attaches through Claude Code's hooks — `SessionStart`, `UserPromptSubmit`, `MessageDisplay` and `Stop` — and dictation delivers into the pty that `claude-voice run` holds open. The delivery half is already runtime-agnostic: the wrapper never inspects what it started, so `claude-voice run <anything>` gives that thing the ear. Nothing below the hook layer is Claude Code's either — the synthesis, the ear, the HUD and the state files are all agnostic already, so a second runtime is a matter of another way in, not another implementation.
 
 ### Do I have to run Claude Code inside tmux?
 
-**Only if you want to talk to it.** The half that speaks does not care where Claude Code is running.
+**No.** Start the session with `claude-voice` instead of `claude` and everything works in whatever terminal you already use — GNOME Terminal, Konsole, kitty, Alacritty, the one in VS Code.
 
-| | Needs tmux? | |
+If you *like* tmux, keep it: run the same command inside a pane. A wrapper in a pane is still a wrapper, its pty is inside that pane, and delivery does not go through tmux at all. tmux stops being a requirement without becoming a problem.
+
+```bash
+claude-voice                         # the ear works, the HUD opens if none is up
+claude-voice --model opus            # arguments are passed straight through
+claude-voice run claude              # the same thing, spelled out
+```
+
+**The bare name is the session.** `claude-voice` with nothing after it is `claude-voice run claude`, because starting a session is the thing you type every day and two words for it is one too many. Anything beginning with a dash belongs to claude, since no subcommand here starts with one: `claude-voice --resume`, `claude-voice -c`, `claude-voice --model opus`. Everything else is a verb of ours — `on`, `off`, `status`, `hud`, `dictate`, `doctor` — and they are typed in full, `status` included; the bare name starts a session rather than reporting on one.
+
+Arguments are handed to the child untouched, so `--resume`, `-c`, `--add-dir` and anything Claude Code grows later work without this knowing they exist. That is why the wrapper has no flags of its own beyond `--sessions` — one more would collide the day the child grew the same name. `run` is the long form and takes any command at all, not just claude: `claude-voice run <anything>` gives that thing the ear, and `claude-voice run -- claude --sessions` is how you would pass down the one name that is taken.
+
+| | Works without tmux? | |
 |---|:---:|---|
-| speaking, narration, the acknowledgement, the heartbeat | ❌ | works in any terminal |
-| the HUD — reactor, meters, history, agents | ❌ | but see below |
-| `d` dictate, `c` conversation mode | ✅ | text is delivered with `tmux send-keys` |
-| `f` focus — mute every session but one | ✅ | a focus is filed under a pane, not a session |
-| `t` switch which session receives dictation | ✅ | it lists the panes running `claude` |
+| speaking, narration, the acknowledgement, the heartbeat | ✅ | works in any terminal, always did |
+| the HUD — reactor, meters, history, agents | ✅ | |
+| `d` dictate, `c` conversation mode | ✅ | inside a session started with `run` |
+| `f` focus — mute every session but one | ✅ | filed under the pty instead of the pane |
+| `t` switch which session receives dictation | ✅ | it lists the sessions `run` started |
 
-Delivery is the whole reason. There is no supported way to push text into an already-started interactive session, and `tmux send-keys` does it without special permissions and without stealing focus. So dictation needs the Claude Code session to be sitting in a pane it can type into.
+**Why a wrapper and not something cleverer.** There is no way into a session that is already running: its stdin belongs to the terminal emulator, which holds the pty master, and writing to `/dev/pts/N` paints the screen rather than feeding the program. `TIOCSTI` was the old trick and the kernel disabled it in 6.2 — and even alive it only ever reached the caller's *own* controlling terminal, which a dictation process never is. `ydotool`, `wtype` and `xdotool` type into whichever window has focus, which is not a session and cannot be checked, and they want uinput permissions to do it. Terminal remote control is real but narrow: WezTerm out of the box, kitty and Konsole with configuration, nothing at all from GNOME Terminal, Alacritty or foot.
 
-Outside tmux the HUD still works, with one honest degradation: it cannot tell *which* session it is looking at, so it shows the liveliest one. With a single session open that is the right answer anyway; with three, it will follow whichever spoke last rather than the one you are watching.
+So the text has to come from something that was present at launch. `claude-voice run` forks the real command onto a pty it holds the master of and pumps bytes both ways; writing into that master is indistinguishable from typing, because it is the same file the keyboard's bytes travel down. It is what tmux does, minus living in tmux. The cost is a longer word on the command line — `claude-voice` where you used to type `claude` — alias it away if you like.
+
+**One HUD, however many sessions.** `run` opens a window only if none is open, so the second and third terminals attach to the first one's. `claude-voice hud` still opens it explicitly if you would rather do that first.
 
 ---
 
@@ -189,13 +203,13 @@ Python is **not** among them: [uv](https://docs.astral.sh/uv/) brings its own.
 
 ```bash
 # Debian / Ubuntu
-sudo apt install alsa-utils pipewire-bin tmux python3-gi gir1.2-webkit2-4.1
+sudo apt install alsa-utils pipewire-bin python3-gi gir1.2-webkit2-4.1
 
 # Fedora
-sudo dnf install alsa-utils pipewire-utils tmux python3-gobject webkit2gtk4.1
+sudo dnf install alsa-utils pipewire-utils python3-gobject webkit2gtk4.1
 
 # Arch
-sudo pacman -S alsa-utils pipewire tmux python-gobject webkit2gtk-4.1
+sudo pacman -S alsa-utils pipewire python-gobject webkit2gtk-4.1
 ```
 
 What each one is for, so you can leave out what you do not want:
@@ -204,12 +218,14 @@ What each one is for, so you can leave out what you do not want:
 |---|---|:---:|
 | `alsa-utils` | `aplay` to play, `arecord` to record | ✅ always |
 | `pipewire-bin` | `pw-record`, for conversation mode | ⚠️ the ear |
-| `tmux` | delivering dictated text into a running session — and Claude Code has to run inside it | ⚠️ the ear |
 | `python3-gi` + `gir1.2-webkit2-4.1` | the frameless HUD window | ➖ optional |
 
 Without the last two the HUD falls back to a Chromium app window, which needs
 nothing installed and renders identically — it just keeps a title bar. Without
-`pipewire-bin` and `tmux` the voice still works; the microphone does not — see
+`pipewire-bin` the voice still works; conversation mode does not.
+
+tmux is deliberately absent from that list. Dictation types into a session
+started with `claude-voice`, which needs nothing installed — see
 [Do I have to run Claude Code inside tmux?](#do-i-have-to-run-claude-code-inside-tmux)
 
 ### 2. The program
@@ -261,7 +277,7 @@ Updating an existing install? Print the snippet again and compare — it gains h
 
 | Hook | Command | What it does |
 |---|---|---|
-| `SessionStart` | `claude-voice hook session-start` | Notes which tmux pane the conversation is in, before it has said anything |
+| `SessionStart` | `claude-voice hook session-start` | Notes which terminal the conversation is in — a tmux pane, or the pty it was started on — before it has said anything |
 | `UserPromptSubmit` | `claude-voice hook user-prompt-submit` | Injects the TTS instruction, plays an acknowledgement, starts the heartbeat |
 | `MessageDisplay` | `claude-voice hook message-display` | Speaks progress between tool calls (optional) |
 | `Stop` | `claude-voice hook stop` | Speaks the `<!-- TTS: -->` line, stops the heartbeat |
@@ -307,7 +323,17 @@ stumble:
 | | who starts it | where it lives |
 |---|---|---|
 | **The voice** (speaking, narration, tick) | Claude Code, via the hooks | inside your Claude session — but only while a HUD is open |
-| **The HUD** | **you** | a long-lived process in its own terminal |
+| **The HUD** | **you**, or the first session you start | a long-lived process of its own, one for every session |
+
+The short version of all of it:
+
+```bash
+claude-voice
+```
+
+That starts the session, opens a HUD if none is open, and gives the ear
+somewhere to type. Run it in a second terminal and the second session attaches
+to the same window — there is only ever one.
 
 The HUD is the application. While one is open, the hooks speak; while none is,
 nothing of ours runs at all — nothing spoken, no acknowledgement, no heartbeat,
@@ -330,6 +356,9 @@ to Claude gets spoken back.
 ### Day to day
 
 ```bash
+claude-voice                               # start a session the ear can type into
+claude-voice --model opus                  # ... arguments go straight to claude
+claude-voice sessions                      # what each open session is doing right now
 claude-voice on                            # start speaking (off is the default)
 claude-voice off                           # stop, and silence anything playing now
 claude-voice focus                         # only this session speaks, the rest go quiet
@@ -386,14 +415,20 @@ session, and `claude-voice focus` aims dictation at the pane it was run in — s
 the window you talk to and the window that answers out loud are one window, not
 two settings that happen to agree.
 
-It is filed under the tmux pane rather than the session id, which is what makes
+It is filed under the terminal rather than the session id, which is what makes
 it survive: closing a conversation and starting another one in the same window
 keeps the voice where you put it, and so does quitting the HUD, and so does a
 reboot. A session id would not — a restarted session is a new one, and the
 focus would quietly fall off it, which is the moment every other window starts
 talking again.
 
-Two consequences worth knowing. A focus left on a pane you have since closed
+"The terminal" is the tmux pane (`%12`) for a session in one, and the
+controlling pty (`pts:/dev/pts/3`) for a session started with `claude-voice
+run`. A hook inside the session finds its own either way — `$TMUX_PANE` when
+there is one, and otherwise `$CLAUDE_PID` read back through `/proc`, because a
+hook has no controlling terminal of its own to ask about.
+
+Two consequences worth knowing. A focus left on a window you have since closed
 means nothing speaks anywhere; the HUD says so on its bottom line and `f`
 clears it. And because pane ids belong to a tmux server, a focus set under a
 server that has since been restarted is ignored rather than applied to whatever
@@ -612,10 +647,14 @@ A pane is joined to its conversation by its title, which Claude Code only sets
 once it has named the conversation — so a fresh window still says `Claude Code`
 and cannot be matched. There the panel shows the liveliest conversation **of
 that pane's project**, and nothing at all when that project has said nothing
-yet. Only outside tmux, with no pane to point at, does it fall back to the
-liveliest session on the machine. A blank panel beside a new window is the
-honest answer; showing whichever window spoke last is how a per-session log
-still looks shared.
+yet. A blank panel beside a new window is the honest answer; showing whichever
+window spoke last is how a per-session log still looks shared.
+
+A wrapped session has no such gap. `claude-voice run` knows the pty it started
+the session on, and Claude Code lists every live session under
+`~/.claude/sessions/`, so the join is exact from the first moment — including
+for the dictated line that opens the conversation, which is precisely the one
+a title lookup could never match.
 
 Resuming a conversation with `--continue` or `--resume` comes back with a new
 session id, so the panel starts blank even though the conversation did not. The
@@ -629,15 +668,24 @@ reads, which falls back to seeing only the prompt.
 
 ### 🎙️ Dictation and conversation mode
 
-Both deliver text into a **running** Claude Code session, which needs tmux:
-there is no supported way to push text into an already-started interactive
-session, and `tmux send-keys` does it without special permissions and without
-stealing focus. Run `claude` inside tmux, then:
+Both deliver text into a **running** Claude Code session. There is no
+supported way to push text into a session that has already started, so the
+session has to be started through the wrapper, which holds its pty:
 
 ```bash
-claude-voice dictate --panes        # list panes running claude
-claude-voice dictate --pane 0:0.0   # pick one (or press t in the HUD)
+claude-voice                        # then talk to it
 ```
+
+With one session there is nothing to pick. With several:
+
+```bash
+claude-voice dictate --panes        # list what text can be sent to
+claude-voice dictate --pane wrap:12 # pick one (or press t in the HUD)
+```
+
+A `claude` you started directly, without the wrapper, cannot be dictated into
+— there is no way into a session that is already running, which is the whole
+reason the wrapper exists. Restart it through `claude-voice`.
 
 Sending is **refused** unless the target pane is running `claude`. In a shell,
 a bad transcription would execute as a command.
@@ -925,8 +973,9 @@ someone else's stream, and `x` deliberately will not try; quitting that app
 releases it. The line exists so a lit tray icon has an explanation instead of
 being a thing you learn to ignore.
 
-**Dictation records but nothing arrives.** Delivery is refused unless the
-target tmux pane is running `claude`; check `claude-voice dictate --panes` and
+**Dictation records but nothing arrives.** There has to be a session started
+through the wrapper: a `claude` launched directly cannot be reached. Start one
+with `claude-voice`, then check `claude-voice dictate --panes` and
 `~/.config/claude-voice/dictate.log`. `claude-voice dictate --can-send` answers
 the same question in one line, and exits non-zero when nothing can receive text. If it records silence, the device is
 wrong — `arecord -L`, and set `stt.device` by name.
@@ -936,8 +985,8 @@ session — the one `t` points at, the same one dictation goes to — and every
 session keeps its own state, so another window (or a bot answering messages on
 the same machine) finishing its turn no longer speaks for yours. If it still
 happens, `claude-voice sessions` prints what each one is doing, and the HUD's
-target has to be resolvable: it is found by tmux pane title, so a session
-running outside tmux falls back to showing the liveliest one.
+target has to be resolvable. A session started through the wrapper always
+is; anything else falls back to showing the liveliest one.
 
 **It still speaks the old language after switching.** Something above the
 preset is pinning it. `claude-voice config` prints the preset in effect and
@@ -969,7 +1018,7 @@ It caps itself, or `claude-voice silence` ends it now.
 | 👂 STT | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) — local, CPU |
 | ⏱️ Turn-taking | [smart-turn-v3](https://huggingface.co/pipecat-ai/smart-turn-v3) |
 | 🖥️ Window | WebKitGTK via the system PyGObject for the frameless HUD; falls back to a Chromium app window, which needs nothing installed |
-| 🪟 tmux | only for the ear — dictation delivers into a pane, so Claude Code has to run inside one. The voice does not need it |
+| 🪟 tmux | optional and unused by anything here. Run `claude-voice` inside a pane if you like tmux; delivery goes through the wrapper either way |
 | ➕ Optional | an Anthropic credential for contextual acknowledgements |
 
 The contextual acknowledgement — a one-line "Checking the disk space" spoken
@@ -1009,7 +1058,8 @@ claude_voice/
   web/                  the page: one html, one css, one js, no build step
   mic.py                who holds the microphone; the watchdog timer
   spokenlog.py          the log of what was said out loud, both sides
-  dictate.py            push-to-talk, and delivery into tmux
+  run.py                the pty wrapper: the bare `claude-voice`
+  dictate.py            push-to-talk, and delivery into a session
   listen.py             conversation mode: VAD + turn detection
   pron.py               pronunciation workbench
   presets/              language packs that ship

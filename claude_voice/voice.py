@@ -349,7 +349,8 @@ def main() -> int:
         if not pane:
             # Nothing durable to hang it on: the session uuid changes when the
             # window is restarted, which is the one thing focus must survive.
-            print("  no tmux pane here — focus needs tmux, like dictation does")
+            print("  cannot tell which terminal this is — start the session")
+            print("  with `claude-voice`, or run it inside tmux")
             return 1
         name = ""
         try:
@@ -361,7 +362,7 @@ def main() -> int:
             # conversation in it is silence EVERYWHERE, and the pane it was
             # typed in is the last place anyone would look for the cause. Same
             # rule dictation already follows about panes it does not recognise.
-            print(f"  no claude running in this pane ({pane})")
+            print(f"  no claude running here ({pane})")
             print("  run it inside the session you want to hear, or press f in the HUD")
             return 1
         _focus.set_pane(pane, name)

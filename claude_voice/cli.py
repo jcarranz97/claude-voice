@@ -18,9 +18,13 @@ HERE = Path(__file__).resolve().parent
 
 USAGE = """claude-voice — local voice, ear and HUD for Claude Code
 
+  Start your session with `claude-voice` and everything works: the HUD opens
+  if it is not open already, and the ear has somewhere to type. The bare name
+  is `claude-voice run claude`, so `claude-voice --resume` reaches claude.
+
   The HUD is the application: while one is open Claude Code speaks through
   the hooks, and while none is, nothing of ours runs at all -- no voice, no
-  microphone, no heartbeat. Open one and leave it up: claude-voice hud
+  microphone, no heartbeat. One HUD serves every session.
 
 Switch
   claude-voice on                 start speaking (off is the default)
@@ -56,8 +60,14 @@ Speech
   claude-voice pron say "…"       hear a phrase, with a level sanity check
   claude-voice pron list          the active pronunciation rules
 
-Input (needs tmux)
-  claude-voice dictate --panes    list panes running claude
+Run
+  claude-voice                    start a session the ear can type into
+  claude-voice --model opus       ... arguments pass straight through
+  claude-voice run claude         ... the same thing, spelled out
+  claude-voice --sessions         the wrapped sessions that are live
+
+Input
+  claude-voice dictate --panes    list the sessions text can be sent to
   claude-voice dictate --pane ID  pick the one dictation goes to
   claude-voice dictate --toggle   start recording / stop and send
   claude-voice dictate --can-send is there a session to send to?
@@ -82,6 +92,9 @@ ROUTES = {
     # Always dry: an acknowledgement belongs to a prompt, and there is no
     # prompt here. What this is for is reading the line -- and its cost -- back.
     "ack":         ("ack.py", ["--dry-run"]),
+    # Everything after `run` is the child's: no parsing here, no flags of
+    # our own, so a `--model` or a `--resume` reaches claude untouched.
+    "run":         ("run.py", []),
     "dictate":     ("dictate.py", []),
     "listen":      ("listen.py", []),
     "pron":        ("pron.py", []),
@@ -148,12 +161,22 @@ def _exec(module: str, args) -> "NoReturn":
 
 def main() -> int:
     argv = sys.argv[1:]
-    cmd = argv[0] if argv else "status"
-    rest = argv[1:]
 
-    if cmd in ("-h", "--help", "help"):
+    if argv and argv[0] in ("-h", "--help", "help"):
         print(USAGE, end="")
         return 0
+
+    # The bare name starts a session, because that is the thing typed every
+    # day and `run claude` is two words nobody should have to remember. A
+    # leading flag belongs to the child for the same reason: no verb of ours
+    # begins with a dash, so `claude-voice --resume` can only have meant
+    # claude. `status` kept the bare name until it turned out to be the one
+    # command you type when something is already wrong, which is rare.
+    if not argv or argv[0].startswith("-"):
+        _exec("run.py", argv)
+
+    cmd = argv[0]
+    rest = argv[1:]
 
     if cmd == "status":
         _exec("voice.py", rest)

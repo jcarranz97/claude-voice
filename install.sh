@@ -52,14 +52,10 @@ if [ ${#missing[@]} -gt 0 ]; then
 fi
 echo "  ok"
 
-# Not fatal, either of them. Dictation without tmux and the frameless window
-# without WebKitGTK both have a working fallback -- but a silent downgrade is
-# how you end up wondering why the HUD has a title bar, or why `d` refuses.
-command -v tmux >/dev/null || cat <<'EOF'
-  note: no tmux — dictation has nowhere to deliver text, so `d` and `c` will
-        refuse. The voice works without it.
-        Debian/Ubuntu: sudo apt install tmux
-EOF
+# Not fatal. The frameless window without WebKitGTK has a working fallback --
+# but a silent downgrade is how you end up wondering why the HUD has a title
+# bar. tmux is not checked for any more: dictation types into a session
+# started with `claude-voice`, and needs nothing installed.
 if ! python3 -c "import gi; gi.require_version('Gtk','3.0'); gi.require_version('WebKit2','4.1'); from gi.repository import Gtk, WebKit2" 2>/dev/null; then
   cat <<'EOF'
   note: no WebKitGTK for Python — the HUD will open in a Chromium app window
