@@ -51,15 +51,14 @@ from pathlib import Path
 
 try:
     import tomllib
-except ModuleNotFoundError:          # Python 3.10 and older
+except ModuleNotFoundError:  # Python 3.10 and older
     tomllib = None
 
 HERE = Path(__file__).resolve().parent
 
 # Everything mutable lives here: state, logs, queue, cached acks, tuned values.
 # Overridable so several profiles can coexist on one machine.
-BASE = Path(os.environ.get("CLAUDE_VOICE_HOME",
-                           Path.home() / ".config" / "claude-voice"))
+BASE = Path(os.environ.get("CLAUDE_VOICE_HOME", Path.home() / ".config" / "claude-voice"))
 
 CONFIG = BASE / "config.toml"
 # The language switch: a name, or absent. A marker file next to `enabled` and
@@ -77,8 +76,8 @@ USER_PRESETS = BASE / "presets"
 # these values run -- in English, with a voice install.sh downloads by default.
 DEFAULTS = {
     "general": {
-        "name": "Claude",          # shown in the HUD banner
-        "preset": "en",            # which presets/<name>.toml to layer in
+        "name": "Claude",  # shown in the HUD banner
+        "preset": "en",  # which presets/<name>.toml to layer in
         # How this preset names its own language, on screen. Written in the
         # language itself -- "Espanol", not "Spanish" -- because it labels the
         # key that switches INTO it, and that key is read by whoever wants it.
@@ -86,9 +85,9 @@ DEFAULTS = {
     },
     "tts": {
         "voice_model": "~/.local/share/piper-voices/en_US-amy-medium.onnx",
-        "length_scale": 1.0,       # >1 is slower; butler pacing lives near 1.06
+        "length_scale": 1.0,  # >1 is slower; butler pacing lives near 1.06
         "primary_voice": "en-us",  # espeak-ng code for the bulk of the text
-        "foreign_voice": "",       # blank disables the mixed-phoneme pass
+        "foreign_voice": "",  # blank disables the mixed-phoneme pass
         "max_chars": 400,
     },
     "instruction": {
@@ -96,26 +95,26 @@ DEFAULTS = {
         # the model write the spoken line at all, so it is a config value, not
         # a constant: the register belongs to the user, not to the tool.
         "enabled": True,
-        "text": "",                # blank -> built from the preset
+        "text": "",  # blank -> built from the preset
     },
     "narrate": {
         "enabled": True,
-        "word_limit": 50,          # spoken whole below this; trimmed above
+        "word_limit": 50,  # spoken whole below this; trimmed above
         "max_per_turn": 12,
         "min_words": 3,
     },
     "thinking": {
         "enabled": True,
-        "delay": 1.75,             # nothing sounds before this
+        "delay": 1.75,  # nothing sounds before this
         "interval": 2.45,
-        "style": "soft",           # soft | double | low
+        "style": "soft",  # soft | double | low
         "max_run": 150,
         "agent_interval": 4.0,
         "agent_max_run": 1800,
     },
     "ack": {
         "enabled": True,
-        "contextual": True,        # ask a small model what to say; else canned
+        "contextual": True,  # ask a small model what to say; else canned
         "model": "claude-haiku-4-5",
         "max_words": 9,
         "timeout": 3.0,
@@ -132,23 +131,23 @@ DEFAULTS = {
         # this on, the model answers SILENT for that and nothing is played --
         # not even the cached phrase. False acknowledges every prompt.
         "skip_quick": True,
-        "phrases": [],             # blank -> from the preset
-        "system": "",              # blank -> from the preset
-        "context_system": "",      # blank -> from the preset; used only with context
-        "quick_system": "",        # blank -> from the preset; used only with skip_quick
+        "phrases": [],  # blank -> from the preset
+        "system": "",  # blank -> from the preset
+        "context_system": "",  # blank -> from the preset; used only with context
+        "quick_system": "",  # blank -> from the preset; used only with skip_quick
     },
     "stt": {
         "enabled": True,
-        "model": "small",          # base mishears technical vocabulary
+        "model": "small",  # base mishears technical vocabulary
         "language": "en",
-        "device": "default",       # ALSA device for push-to-talk dictation
-        "node": "",                # PipeWire node for conversation mode
+        "device": "default",  # ALSA device for push-to-talk dictation
+        "node": "",  # PipeWire node for conversation mode
         "max_secs": 120,
         "glossary": "",
-        "hallucinations": [],      # phrases Whisper invents over near-silence
+        "hallucinations": [],  # phrases Whisper invents over near-silence
     },
     "listen": {
-        "floor_ms": 700,           # min silence before asking smart-turn
+        "floor_ms": 700,  # min silence before asking smart-turn
         "ceil_ms": 2500,
         "complete": 0.55,
         "min_speech_ms": 300,
@@ -160,9 +159,9 @@ DEFAULTS = {
         # worth catching is precisely the one where nothing is open.
         "watch": {
             "enabled": True,
-            "interval": 60,        # seconds between ticks, for --watch
-            "after": 300,          # held this long before the first word
-            "repeat": 1800,        # and at most this often after that
+            "interval": 60,  # seconds between ticks, for --watch
+            "after": 300,  # held this long before the first word
+            "repeat": 1800,  # and at most this often after that
             # Process names never worth announcing. Left empty on purpose: an
             # allow-list written in advance hides the one leak you did not
             # predict, and the threshold already absorbs ordinary use.
@@ -170,8 +169,8 @@ DEFAULTS = {
         },
     },
     "pronunciation": {
-        "foreign_terms": [],       # words to phonemize with foreign_voice
-        "overrides": {},           # word -> raw espeak IPA, verbatim
+        "foreign_terms": [],  # words to phonemize with foreign_voice
+        "overrides": {},  # word -> raw espeak IPA, verbatim
     },
     "history": {
         # The spoken log behind the HUD's history pane: what was said out
@@ -180,13 +179,13 @@ DEFAULTS = {
         # reads for context, so turning it off costs that pane AND leaves the
         # acknowledgement seeing only the prompt.
         "enabled": True,
-        "cap": 400,                # entries kept per session; older ones trimmed
-        "show": 200,               # entries the panel reads back
-        "position": "left",        # left, right or bottom of the HUD window
+        "cap": 400,  # entries kept per session; older ones trimmed
+        "show": 200,  # entries the panel reads back
+        "position": "left",  # left, right or bottom of the HUD window
         # A log outlives the turn that produced it, so this clock is days and
         # not turn.py's hours: a conversation you come back to tomorrow still
         # has its history.
-        "keep_days": 7,            # a session silent this long is swept away
+        "keep_days": 7,  # a session silent this long is swept away
     },
     "hud": {
         # The HUD is the application: with no window open, the hooks make no
@@ -202,7 +201,7 @@ DEFAULTS = {
         # False is for a machine that opens its window some other way.
         "autostart": True,
         # Spaced out on purpose: the HUD letterspaces them as a title.
-        "title": "",               # blank -> general.name
+        "title": "",  # blank -> general.name
         "thinking": "T H I N K I N G",
         "speaking": "S P E A K I N G",
         "listening": "L I S T E N I N G",
@@ -227,9 +226,9 @@ DEFAULTS = {
         #   browser  Chrome or Chromium in --app mode, its own profile
         #   none     print the address and open nothing
         "shell": "auto",
-        "on_top": True,        # keep the window above the rest; needs XWayland
-        "decorated": False,    # a title bar would be a second, worse one
-        "devtools": False,     # right-click -> Inspect, in the webview
+        "on_top": True,  # keep the window above the rest; needs XWayland
+        "decorated": False,  # a title bar would be a second, worse one
+        "devtools": False,  # right-click -> Inspect, in the webview
     },
 }
 
@@ -240,6 +239,15 @@ def _merge(base: dict, over: dict) -> dict:
     for k, v in (over or {}).items():
         if isinstance(v, dict) and isinstance(out.get(k), dict):
             out[k] = _merge(out[k], v)
+        elif isinstance(v, dict):
+            # Copy, never alias. `dict(base)` is shallow, so assigning a table
+            # straight through would leave the composed configuration sharing
+            # that table with the layer it came from -- and the bottom layer is
+            # DEFAULTS, which _compose then writes the preset name into. One
+            # `resolve()` for a language pack with no [general] table was
+            # enough to change what the whole process considered the default
+            # language.
+            out[k] = _merge({}, v)
         else:
             out[k] = v
     return out
@@ -274,8 +282,8 @@ def voice_like(model: Path) -> Path:
     so the choice is stable rather than whatever the directory listed first.
     A voice missing its .onnx.json is not a candidate: Piper cannot load it.
     """
-    locale = model.name.split("-")[0]              # en_US
-    lang = locale.split("_")[0]                    # en
+    locale = model.name.split("-")[0]  # en_US
+    lang = locale.split("_")[0]  # en
     found = []
     try:
         candidates = list(model.parent.glob("*.onnx"))
@@ -288,8 +296,7 @@ def voice_like(model: Path) -> Path:
         if cloc.split("_")[0] != lang:
             continue
         quality = cand.name.removesuffix(".onnx").rsplit("-", 1)[-1]
-        found.append((0 if cloc == locale else 1,
-                      _QUALITY.get(quality, 3), cand.name, cand))
+        found.append((0 if cloc == locale else 1, _QUALITY.get(quality, 3), cand.name, cand))
     return min(found)[3] if found else model
 
 
@@ -390,8 +397,7 @@ def presets() -> list:
 def configured_preset() -> str:
     """The preset the config file itself names, switch or no switch."""
     user = _read(CONFIG)
-    name = (user.get("general", {}) or {}).get(
-        "preset", DEFAULTS["general"]["preset"])
+    name = (user.get("general", {}) or {}).get("preset", DEFAULTS["general"]["preset"])
     return str(name or DEFAULTS["general"]["preset"])
 
 
@@ -467,28 +473,44 @@ def show() -> None:
     print(f"  config file : {CONFIG}{'' if CONFIG.exists() else '  (absent, using defaults)'}")
     print(f"  state dir   : {BASE}")
     name, source = active_preset()
-    origin = {"switch": f"switched, {PRESET_FILE.name} file",
-              "config": "from the config file",
-              "default": "built-in default"}[source]
+    origin = {
+        "switch": f"switched, {PRESET_FILE.name} file",
+        "config": "from the config file",
+        "default": "built-in default",
+    }[source]
     others = [p for p in presets() if p != name]
-    print(f"  preset      : {name} — {cfg.language} ({origin})"
-          + (f"; also on disk: {', '.join(others)}" if others else ""))
+    print(
+        f"  preset      : {name} — {cfg.language} ({origin})"
+        + (f"; also on disk: {', '.join(others)}" if others else "")
+    )
     named = cfg.voice_model_named
-    print(f"  voice model : {cfg.voice_model}"
-          + ("" if cfg.voice_model.exists() else "   MISSING")
-          + (f"   (standing in for {named.name}, not downloaded)"
-             if cfg.voice_model != named else ""))
-    print(f"  speech      : {cfg.primary_voice}"
-          + (f" + {cfg.foreign_voice} for {len(cfg.foreign_terms)} terms"
-             if cfg.foreign_voice else " (single language)"))
-    print(f"  narrate     : {cfg.get('narrate.word_limit')} words, "
-          f"max {cfg.get('narrate.max_per_turn')} per turn")
-    print(f"  dictation   : {cfg.get('stt.model')} / {cfg.get('stt.language')} "
-          f"on {cfg.get('stt.device')}")
-    print(f"  history     : {'on' if cfg.get('history.enabled', True) else 'off'} "
-          f"({cfg.get('history.position')}), "
-          f"last {cfg.get('history.cap')} spoken lines per session, "
-          f"kept {cfg.get('history.keep_days')} days")
+    print(
+        f"  voice model : {cfg.voice_model}"
+        + ("" if cfg.voice_model.exists() else "   MISSING")
+        + (f"   (standing in for {named.name}, not downloaded)" if cfg.voice_model != named else "")
+    )
+    print(
+        f"  speech      : {cfg.primary_voice}"
+        + (
+            f" + {cfg.foreign_voice} for {len(cfg.foreign_terms)} terms"
+            if cfg.foreign_voice
+            else " (single language)"
+        )
+    )
+    print(
+        f"  narrate     : {cfg.get('narrate.word_limit')} words, "
+        f"max {cfg.get('narrate.max_per_turn')} per turn"
+    )
+    print(
+        f"  dictation   : {cfg.get('stt.model')} / {cfg.get('stt.language')} "
+        f"on {cfg.get('stt.device')}"
+    )
+    print(
+        f"  history     : {'on' if cfg.get('history.enabled', True) else 'off'} "
+        f"({cfg.get('history.position')}), "
+        f"last {cfg.get('history.cap')} spoken lines per session, "
+        f"kept {cfg.get('history.keep_days')} days"
+    )
 
 
 if __name__ == "__main__":

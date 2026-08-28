@@ -34,18 +34,18 @@ import json
 import os
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import config as _config                              # noqa: E402
+import config as _config  # noqa: E402
 
 
 def _mod(name: str):
     """Load a sibling module by path: these files are scripts, not a package."""
     import importlib.util
+
     spec = importlib.util.spec_from_file_location(name, HERE / f"{name}.py")
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
@@ -56,13 +56,16 @@ CFG = _config.load()
 BASE = _config.BASE
 PANE_CFG = BASE / "pane.json"
 RECPID = BASE / "dictate.pid"
-RECWAV = Path(tempfile.gettempdir()) / "cv-dictation.wav"
+# Under the config home, not in the shared temp directory. A fixed name in
+# /tmp means two people dictating on one machine overwrite each other, and
+# either can read what the other said.
+RECWAV = BASE / "dictation.wav"
 
 # Set stt.device by NAME, not index: ALSA card numbers reorder on reconnect or
 # reboot. A setup pinned to plughw:4,0 silently started recording from a webcam
 # mic -- digital silence -- the day a card moved.
 DEVICE = CFG.get("stt.device", "default")
-MODEL = CFG.get("stt.model", "small")        # base mishears technical vocabulary
+MODEL = CFG.get("stt.model", "small")  # base mishears technical vocabulary
 LANGUAGE = CFG.get("stt.language", "en")
 MAX_SECS = int(CFG.get("stt.max_secs", 120))  # a forgotten recording can't grow forever
 GLOSSARY = CFG.get("stt.glossary", "") or ""
@@ -116,7 +119,7 @@ def pane_is_claude(target: str) -> bool:
 def describe(target: str) -> str:
     p = find(target)
     if p:
-        return f'{p["dir"]} · {p["title"]}'
+        return f"{p['dir']} · {p['title']}"
     return target or "(not set)"
 
 
@@ -199,7 +202,7 @@ def aim_at_pane_id(pane_id: str) -> str:
         return ""
     BASE.mkdir(parents=True, exist_ok=True)
     PANE_CFG.write_text(json.dumps({"pane": p["id"]}))
-    return f'{p["dir"]} · {p["title"]}'.strip(" ·")
+    return f"{p['dir']} · {p['title']}".strip(" ·")
 
 
 def target_session() -> str:
@@ -225,20 +228,30 @@ def deliver(text: str) -> bool:
         log(f"refusing to send: {why}")
         return False
     target = current()
+    dest = find(target)
     sent = False
     try:
-        sent = _mod("run").deliver(find(target), text)
+        sent = _mod("run").deliver(dest, text)
     except Exception as e:
         log(f"delivery failed: {e}")
         return False
     if not sent:
         log(f"delivery failed: {target} did not take it")
         return False
-    log(f"delivered to {target}: {text[:60]}")
+    # The terminal, not just the handle. "delivered to wrap:447378" cannot be
+    # checked against the window the text appeared in; a pts number can.
+    log(f"delivered to {target} on {dest.get('pane_id', '?')}: {text[:60]}")
     # This is the only place that knows a sentence was SPOKEN and not typed --
     # conversation mode lands here too -- so it is where your side of the
     # spoken log gets written, under the session it went to.
-    _mod("spokenlog").record("in", text, session=target_session())
+    #
+    # Guarded, because the sentence has already landed by now. Under --toggle
+    # a failure here was caught and logged; called from the conversation
+    # daemon it took the whole loop down after a successful delivery.
+    try:
+        _mod("spokenlog").record("in", text, session=target_session())
+    except Exception as e:
+        log(f"delivered, but not logged: {e}")
     return True
 
 
@@ -267,38 +280,58 @@ def start() -> bool:
     BASE.mkdir(parents=True, exist_ok=True)
     RECWAV.unlink(missing_ok=True)
     proc = subprocess.Popen(
-        ["arecord", "-D", DEVICE, "-f", "S16_LE", "-r", "16000", "-c", "1",
-         "-d", str(MAX_SECS), str(RECWAV)],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        start_new_session=True)
+        [
+            "arecord",
+            "-D",
+            DEVICE,
+            "-f",
+            "S16_LE",
+            "-r",
+            "16000",
+            "-c",
+            "1",
+            "-d",
+            str(MAX_SECS),
+            str(RECWAV),
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
     RECPID.write_text(str(proc.pid))
     log("recording")
     return True
 
 
 def stop_and_send() -> None:
+    signalled = False
     try:
         os.kill(int(RECPID.read_text().strip()), 15)
+        signalled = True
     except (ProcessLookupError, ValueError, PermissionError, OSError):
         pass
     RECPID.unlink(missing_ok=True)
-    time.sleep(0.35)                       # let arecord close the WAV header
+    if signalled:
+        time.sleep(0.35)  # let arecord close the WAV header
 
     if not RECWAV.exists() or RECWAV.stat().st_size < 4000:
         log("nothing captured")
         return
 
     from faster_whisper import WhisperModel
+
     t0 = time.time()
-    model = WhisperModel(MODEL, device="cpu", compute_type="int8",
-                         cpu_threads=os.cpu_count() or 4)
+    model = WhisperModel(MODEL, device="cpu", compute_type="int8", cpu_threads=os.cpu_count() or 4)
     segments, _ = model.transcribe(
-        str(RECWAV), language=LANGUAGE, beam_size=5,
+        str(RECWAV),
+        language=LANGUAGE,
+        beam_size=5,
         initial_prompt=GLOSSARY or None,
-        vad_filter=True,                   # without this the glossary hallucinates
-        no_speech_threshold=0.6)
+        vad_filter=True,  # without this the glossary hallucinates
+        no_speech_threshold=0.6,
+    )
     text = " ".join(s.text.strip() for s in segments).strip()
-    log(f"transcribed in {time.time()-t0:.1f}s: {text or '(silence)'}")
+    log(f"transcribed in {time.time() - t0:.1f}s: {text or '(silence)'}")
 
     if text:
         deliver(text)
@@ -313,7 +346,7 @@ def main() -> int:
         print("  Claude sessions:")
         for p in panes:
             mark = "  <- target" if p["id"] == cur else ""
-            print(f'    {p["id"]:16} {p["dir"]:14} {p["title"][:40]}{mark}')
+            print(f"    {p['id']:16} {p['dir']:14} {p['title'][:40]}{mark}")
         if not panes:
             print("    none — start one with: claude-voice")
     elif arg == "--target":
@@ -354,8 +387,10 @@ def main() -> int:
     else:
         ok, why = target_status()
         print(f"  recording : {'yes' if recording() else 'no'}")
-        print(f"  target    : {describe(current())}"
-              + ("" if ok else f"   ({why}: dictation disabled)"))
+        print(
+            f"  target    : {describe(current())}"
+            + ("" if ok else f"   ({why}: dictation disabled)")
+        )
         print(f"  device    : {DEVICE}")
     return 0
 

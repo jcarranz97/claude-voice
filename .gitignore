@@ -9,3 +9,11 @@ config.toml
 dist/
 *.egg-info/
 uv.lock
+
+# Lint and test artefacts
+.pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/

@@ -59,8 +59,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import config as _config                              # noqa: E402
-import presence as _presence                          # noqa: E402
+import config as _config  # noqa: E402
+import presence as _presence  # noqa: E402
 
 BASE = _config.BASE
 PREFIX = "run-"
@@ -102,6 +102,7 @@ def _sock_dir() -> Path:
 
 # --------------------------------------------------------------- the registry
 
+
 def _alive(pid: int) -> bool:
     try:
         os.kill(pid, 0)
@@ -109,7 +110,7 @@ def _alive(pid: int) -> bool:
     except (ProcessLookupError, ValueError):
         return False
     except PermissionError:
-        return True            # somebody else's process, but a process
+        return True  # somebody else's process, but a process
 
 
 def sessions() -> list:
@@ -127,11 +128,15 @@ def sessions() -> list:
     except Exception:
         return []
     for f in files:
+        # The pid is converted inside the guard. Outside it, one entry with a
+        # non-numeric pid raised out of the whole sweep -- and this is what the
+        # HUD and `--sessions` both call.
         try:
             d = json.loads(f.read_text())
+            pid = int(d.get("pid", 0))
         except Exception:
             continue
-        if not _alive(int(d.get("pid", 0))):
+        if not _alive(pid):
             for p in (f, Path(d.get("sock", ""))):
                 try:
                     p.unlink(missing_ok=True)
@@ -165,7 +170,7 @@ def claude_session(pty_path: str) -> dict:
             if os.readlink(f"/proc/{pid}/fd/0") == pty_path:
                 return d
         except OSError:
-            continue           # exited between the glob and the readlink
+            continue  # exited between the glob and the readlink
     return {}
 
 
@@ -186,11 +191,11 @@ def describe(d: dict) -> dict:
     title = cc.get("name") or cmd[:60] or "(untitled)"
     return {
         "kind": "wrap",
-        "id": f'wrap:{d.get("pid")}',
+        "id": f"wrap:{d.get('pid')}",
         # What the SESSION knows itself by, the way `%12` is inside tmux: the
         # pty it was started on. focus.py writes the same string from inside
         # the session, so a focus and a dictation target still meet.
-        "pane_id": f'pts:{d.get("pty", "")}',
+        "pane_id": f"pts:{d.get('pty', '')}",
         "dir": Path(path).name or path,
         "path": path,
         "title": title,
@@ -227,6 +232,7 @@ def deliver(sess: dict, text: str) -> bool:
 
 # ------------------------------------------------------------------ the window
 
+
 def _hud_is_up() -> bool:
     try:
         return bool(_presence.windows())
@@ -248,11 +254,13 @@ def ensure_hud() -> bool:
     if _hud_is_up():
         return True
     try:
-        subprocess.Popen([sys.executable, str(HERE / "hudweb.py")],
-                         stdin=subprocess.DEVNULL,
-                         stdout=subprocess.DEVNULL,
-                         stderr=subprocess.DEVNULL,
-                         start_new_session=True)
+        subprocess.Popen(
+            [sys.executable, str(HERE / "hudweb.py")],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
     except Exception:
         return False
     # Waited for, not fired and forgotten: the hooks consult presence the
@@ -267,6 +275,7 @@ def ensure_hud() -> bool:
 
 
 # ------------------------------------------------------------------ the wrapper
+
 
 def _winsize(fd: int) -> bytes:
     try:
@@ -294,8 +303,8 @@ def _spawn(cmd: list) -> tuple:
     if pid == 0:
         try:
             os.close(master)
-            os.setsid()                    # a session of its own, so that
-            fcntl.ioctl(slave, termios.TIOCSCTTY, 0)   # this pty is its tty
+            os.setsid()  # a session of its own, so that
+            fcntl.ioctl(slave, termios.TIOCSCTTY, 0)  # this pty is its tty
             for target in (0, 1, 2):
                 os.dup2(slave, target)
             if slave > 2:
@@ -345,16 +354,25 @@ def wrap(cmd: list) -> int:
     sock_path = _sock_dir() / f"{PREFIX}{os.getpid()}.sock"
     reg = BASE / f"{PREFIX}{os.getpid()}.json"
     lis = _listener(sock_path)
-    reg.write_text(json.dumps({
-        "pid": os.getpid(), "child": pid, "pty": ptyname, "cmd": cmd,
-        "cwd": os.getcwd(), "sock": str(sock_path), "started": time.time(),
-    }))
+    reg.write_text(
+        json.dumps(
+            {
+                "pid": os.getpid(),
+                "child": pid,
+                "pty": ptyname,
+                "cmd": cmd,
+                "cwd": os.getcwd(),
+                "sock": str(sock_path),
+                "started": time.time(),
+            }
+        )
+    )
 
     stdin_fd = sys.stdin.fileno()
     saved = None
     if sys.stdin.isatty():
         saved = termios.tcgetattr(stdin_fd)
-        tty.setraw(stdin_fd)               # every key belongs to the child,
+        tty.setraw(stdin_fd)  # every key belongs to the child,
         # including the ones that would otherwise be ours: Ctrl-C reaches the
         # child's own session through its pty and raises there, which is what
         # makes the wrapper invisible rather than a thing to escape from.
@@ -371,7 +389,7 @@ def wrap(cmd: list) -> int:
     except Exception:
         pass
 
-    enter_at = 0.0                         # when the pending Enter is due
+    enter_at = 0.0  # when the pending Enter is due
     try:
         while True:
             watch = [master, lis]
@@ -381,7 +399,7 @@ def wrap(cmd: list) -> int:
             try:
                 ready, _, _ = select.select(watch, [], [], timeout)
             except InterruptedError:
-                continue                   # a window resize, not an error
+                continue  # a window resize, not an error
             except OSError:
                 break
 
@@ -398,7 +416,7 @@ def wrap(cmd: list) -> int:
                 except OSError:
                     data = b""
                 if not data:
-                    break                  # the child closed its end: it exited
+                    break  # the child closed its end: it exited
                 os.write(sys.stdout.fileno(), data)
 
             if stdin_fd in ready:

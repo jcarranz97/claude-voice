@@ -60,3 +60,83 @@ packages = ["claude_voice"]
 
 [tool.hatch.build.targets.sdist]
 include = ["claude_voice", "README.md", "LICENSE", "install.sh", "skills"]
+
+# ---------------------------------------------------------------------------
+# Lint, format, test.
+#
+# A contributor should be able to run `ruff check`, `ruff format` and `pytest`
+# with no arguments and get exactly what CI runs. Nothing here is duplicated in
+# the workflow file; the workflow calls these tools and this is where they are
+# configured.
+# ---------------------------------------------------------------------------
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.14",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["dist", ".venv"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # import sorting
+    "UP",   # pyupgrade -- we are 3.11+, say so
+    "B",    # bugbear
+    "C4",   # comprehensions
+    "SIM",  # simplify
+]
+# Every module here is also a hook entry point the host agent runs directly.
+# A hook that raises is a hook that breaks somebody's editor, so the broad
+# `except Exception` is the design, not an oversight -- BLE001 and friends stay
+# unselected. E402 likewise: the sibling-module import has to follow the
+# sys.path insert.
+ignore = [
+    "E402",  # module import not at top of file -- see above
+    "E501",  # line length is the formatter's job, not a second opinion
+    "E741",  # `l` reads fine in a two-line comprehension
+    "B008",  # call in a default argument, used deliberately for config lookups
+    "SIM105",  # `try/except: pass` reads better here than importing contextlib
+               # into a module that must stay cheap to import
+]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = []
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]
+# The closure is built and called inside the same iteration of the redraw loop,
+# so the late binding B023 warns about cannot happen.
+"claude_voice/hud.py" = ["B023"]
+# The handle is deliberately long-lived: it is the stderr a child process is
+# spawned with, and closing it at the end of the block would close the log.
+"claude_voice/hudcore.py" = ["SIM115"]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+filterwarnings = ["error::DeprecationWarning:claude_voice.*"]
+
+[tool.coverage.run]
+source = ["claude_voice"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]

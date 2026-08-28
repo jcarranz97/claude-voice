@@ -81,8 +81,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import config as _config                              # noqa: E402
-import turn as _turn                                  # noqa: E402
+import config as _config  # noqa: E402
+import turn as _turn  # noqa: E402
 
 CFG = _config.load()
 BASE = _config.BASE
@@ -139,14 +139,19 @@ def record(side: str, text: str, session: str = "") -> None:
         BASE.mkdir(parents=True, exist_ok=True)
         log = path(session)
         first = not log.exists()
-        line = json.dumps({"t": time.time(),
-                           "side": "in" if side == "in" else "out",
-                           "session": session or "",
-                           "text": text}, ensure_ascii=False)
+        line = json.dumps(
+            {
+                "t": time.time(),
+                "side": "in" if side == "in" else "out",
+                "session": session or "",
+                "text": text,
+            },
+            ensure_ascii=False,
+        )
         with log.open("a", encoding="utf-8") as f:
             f.write(line + "\n")
         if first:
-            sweep()           # once per session, not once per line
+            sweep()  # once per session, not once per line
         elif log.stat().st_size > cap() * _AVG * 2:
             _trim(log)
     except Exception:
@@ -157,7 +162,7 @@ def _trim(log: Path) -> None:
     """Keep the last `cap` entries. Written aside and renamed, so a reader
     never sees a half-written log."""
     try:
-        lines = log.read_text(encoding="utf-8").splitlines()[-cap():]
+        lines = log.read_text(encoding="utf-8").splitlines()[-cap() :]
         tmp = log.with_suffix(".jsonl.tmp")
         tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
         os.replace(tmp, log)
@@ -174,7 +179,7 @@ def files() -> list:
 
 def sessions() -> list:
     """Every session we have logged a spoken line for."""
-    return [p.name[len(PREFIX):-len(".jsonl")] for p in files()]
+    return [p.name[len(PREFIX) : -len(".jsonl")] for p in files()]
 
 
 _newest = {"t": 0.0, "key": None, "sid": ""}
@@ -192,11 +197,11 @@ def newest_session(among: list = None) -> str:
     """
     key = tuple(among) if among is not None else None
     if time.time() - _newest["t"] < 2.0 and key == _newest["key"]:
-        return _newest["sid"]                # the HUD asks 20 times a second
+        return _newest["sid"]  # the HUD asks 20 times a second
     allow = {_turn.safe_session(s) for s in among} if among is not None else None
     best, best_m = "", -1.0
     for p in files():
-        sid = p.name[len(PREFIX):-len(".jsonl")]
+        sid = p.name[len(PREFIX) : -len(".jsonl")]
         if allow is not None and sid not in allow:
             continue
         try:
@@ -215,16 +220,20 @@ def _entries(log: Path, n: int) -> list:
     except Exception:
         return []
     out = []
-    for line in raw[-max(1, n):]:
+    for line in raw[-max(1, n) :]:
         try:
             d = json.loads(line)
             if d.get("text"):
-                out.append({"t": float(d.get("t", 0)),
-                            "side": "in" if d.get("side") == "in" else "out",
-                            "session": str(d.get("session", "")),
-                            "text": str(d["text"])})
+                out.append(
+                    {
+                        "t": float(d.get("t", 0)),
+                        "side": "in" if d.get("side") == "in" else "out",
+                        "session": str(d.get("session", "")),
+                        "text": str(d["text"]),
+                    }
+                )
         except Exception:
-            continue          # one malformed line must not lose the rest
+            continue  # one malformed line must not lose the rest
     return out
 
 
@@ -250,7 +259,7 @@ def tail_all(n: int = 200) -> list:
     for log in files() + ([LEGACY] if LEGACY.exists() else []):
         out.extend(_entries(log, n))
     out.sort(key=lambda e: e["t"])
-    return out[-max(1, n):]
+    return out[-max(1, n) :]
 
 
 def mtime(session: str = "") -> float:
@@ -290,6 +299,7 @@ def _mod(name: str):
     """A sibling module, loaded late: these are the readers' paths, and
     record() -- which runs inside a hook -- must not pay for them."""
     import importlib.util
+
     spec = importlib.util.spec_from_file_location(name, HERE / f"{name}.py")
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
@@ -326,8 +336,7 @@ def target() -> tuple:
     """(session, directory) of the pane dictation reaches, for the CLI."""
     try:
         d = _mod("dictate")
-        pane = next((p for p in d.claude_panes()
-                     if p["id"] == d.cfg().get("pane")), {})
+        pane = next((p for p in d.claude_panes() if p["id"] == d.cfg().get("pane")), {})
         return d.target_session(), pane.get("path", "")
     except Exception:
         return "", ""
@@ -341,7 +350,7 @@ def main() -> int:
     if "--session" in args:
         i = args.index("--session")
         session = args[i + 1] if len(args) > i + 1 else ""
-        del args[i:i + 2]
+        del args[i : i + 2]
     try:
         n = int(args[0])
     except (IndexError, ValueError):
@@ -361,8 +370,8 @@ def main() -> int:
         when = time.strftime("%H:%M", time.localtime(e["t"])) if e["t"] else "     "
         # Only --all can show two conversations at once, so only --all has to
         # say whose line it is.
-        who = f' {(e["session"] or "-")[:8]:>8}' if every else ""
-        print(f'  {when}{who}  {"you  ›" if e["side"] == "in" else "said ‹"} {e["text"]}')
+        who = f" {(e['session'] or '-')[:8]:>8}" if every else ""
+        print(f"  {when}{who}  {'you  ›' if e['side'] == 'in' else 'said ‹'} {e['text']}")
     return 0
 
 

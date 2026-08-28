@@ -42,8 +42,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import presence as _presence                          # noqa: E402
-import hudcore as core                                # noqa: E402
+import hudcore as core  # noqa: E402
+import presence as _presence  # noqa: E402
 
 WEB = HERE / "web"
 TOKEN = secrets.token_urlsafe(24)
@@ -71,8 +71,12 @@ GRACE = 6.0
 # be what keeps the voice alive.
 FIRST_CONNECT = 45.0
 
-TYPES = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
-         ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml"}
+TYPES = {
+    ".html": "text/html; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".svg": "image/svg+xml",
+}
 
 
 class World:
@@ -97,7 +101,7 @@ class World:
         while not self.stop.is_set():
             try:
                 data = json.dumps(core.snapshot(), separators=(",", ":"))
-            except Exception as e:                     # a stale frame, not a dead window
+            except Exception as e:  # a stale frame, not a dead window
                 data = json.dumps({"error": str(e)})
             with self.cond:
                 if data != self.data:
@@ -109,7 +113,7 @@ class World:
         with self.cond:
             self.clients += 1
             self.ever = True
-        return self.seq - 1          # so the first wait returns immediately
+        return self.seq - 1  # so the first wait returns immediately
 
     def leave(self):
         with self.cond:
@@ -143,7 +147,7 @@ class Handler(BaseHTTPRequestHandler):
     sys_version = ""
 
     def log_message(self, *a):
-        pass                                    # the HUD is the log
+        pass  # the HUD is the log
 
     # --- the gate ---------------------------------------------------------
 
@@ -199,7 +203,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, html.encode(), TYPES[".html"])
 
         if path.startswith("/static/"):
-            f = (WEB / path[len("/static/"):]).resolve()
+            f = (WEB / path[len("/static/") :]).resolve()
             if WEB.resolve() not in f.parents or not f.is_file():
                 return self._send(404, b"no", "text/plain")
             return self._send(200, f.read_bytes(), TYPES.get(f.suffix, "text/plain"))
@@ -214,6 +218,15 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self._host_ok():
             return self._send(421, b"wrong host", "text/plain")
+        # Read the body before deciding anything. We speak HTTP/1.1 and the
+        # page posts a JSON body on every action, so a path that answers
+        # without draining leaves those bytes in the socket to be read as the
+        # next request line: the following action on that connection got a 400
+        # it did nothing to earn, and the window showed it as "no answer".
+        try:
+            body = self.rfile.read(int(self.headers.get("Content-Length", 0) or 0))
+        except Exception:
+            body = b""
         if not self._may_act():
             return self._json(403, {"ok": False, "msg": "refused"})
         path = self.path.partition("?")[0]
@@ -225,8 +238,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/act":
             try:
-                n = int(self.headers.get("Content-Length", 0))
-                name = json.loads(self.rfile.read(n) or b"{}").get("action", "")
+                name = json.loads(body or b"{}").get("action", "")
             except Exception:
                 name = ""
             ok, msg = core.act(name)
@@ -276,7 +288,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(out.encode())
                 self.wfile.flush()
         except (BrokenPipeError, ConnectionResetError, OSError):
-            pass                                   # you closed the window
+            pass  # you closed the window
         finally:
             WORLD.leave()
             self.close_connection = True
@@ -298,9 +310,11 @@ def shutdown() -> None:
     _presence.leave()
     if not _presence.last_one_out():
         return
-    for step in (lambda: core.conversation_alive() and core.conversation_stop(),
-                 lambda: core.run("voice.py", "silence"),
-                 core.sweep_orphans):
+    for step in (
+        lambda: core.conversation_alive() and core.conversation_stop(),
+        lambda: core.run("voice.py", "silence"),
+        core.sweep_orphans,
+    ):
         try:
             step()
         except Exception:
@@ -322,6 +336,7 @@ def main(argv: list) -> int:
         print(url, flush=True)
     else:
         import hudshell
+
         shell = hudshell.open_window(url, argv)
 
     _presence.enter()

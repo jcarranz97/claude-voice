@@ -39,41 +39,43 @@ import numpy as np
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import config as _config                              # noqa: E402
-import level as LEVEL                                 # noqa: E402
-import presence as _presence                          # noqa: E402
+import config as _config  # noqa: E402
+import level as LEVEL  # noqa: E402
+import presence as _presence  # noqa: E402
 
 CFG = _config.load()
 BASE = _config.BASE
 PIDFILE = BASE / "listen.pid"
 LOG = BASE / "listen.log"
 
-SR, FRAME = 16000, 512          # 512 samples is mandatory for Silero, not a choice
-FRAME_MS = FRAME / SR * 1000    # 32 ms
+SR, FRAME = 16000, 512  # 512 samples is mandatory for Silero, not a choice
+FRAME_MS = FRAME / SR * 1000  # 32 ms
 
-ON, OFF = 0.60, 0.35            # hysteresis: entering costs more than leaving
-PREROLL_MS = 500                # the trigger lands ~160 ms late; without this the first syllable is clipped
-MIN_SPEECH_MS = int(CFG.get("listen.min_speech_ms", 300))   # coughs, key clicks
+ON, OFF = 0.60, 0.35  # hysteresis: entering costs more than leaving
+PREROLL_MS = 500  # the trigger lands ~160 ms late; without this the first syllable is clipped
+MIN_SPEECH_MS = int(CFG.get("listen.min_speech_ms", 300))  # coughs, key clicks
 # 350 ms was too little: with a thinking pause, smart-turn had already ruled
 # "finished" before you picked the sentence back up. Waiting longer before
 # asking costs latency, but it is the only thing protecting the pause.
-FLOOR_MS = float(CFG.get("listen.floor_ms", 700))   # min silence before asking smart-turn
-CEIL_MS = float(CFG.get("listen.ceil_ms", 2500))    # cap: if smart-turn insists "incomplete", send anyway
+FLOOR_MS = float(CFG.get("listen.floor_ms", 700))  # min silence before asking smart-turn
+CEIL_MS = float(
+    CFG.get("listen.ceil_ms", 2500)
+)  # cap: if smart-turn insists "incomplete", send anyway
 COMPLETE = float(CFG.get("listen.complete", 0.55))  # probability above which it counts as finished
 # Note: measured on real speech, a cut-off phrase scored 0.71 and a complete
 # one 0.59. The model does NOT separate the two cases well in every language,
 # so the silence floor does more work than the threshold. Do not raise
 # COMPLETE blindly.
 MAX_UTT_S = float(CFG.get("listen.max_utterance_s", 30))
-GATE_TAIL_MS = 250              # stay deaf a little longer after speaking, for the DAC tail
-TARGET_CHECK_S = 3.0            # how often to confirm there is still a session to talk to
+GATE_TAIL_MS = 250  # stay deaf a little longer after speaking, for the DAC tail
+TARGET_CHECK_S = 3.0  # how often to confirm there is still a session to talk to
 
 # What the HUD's reactor moves to while you talk. Tuned by ear against a
 # normal speaking voice at a normal distance: it is a picture of the room,
 # not a measurement of it, so it is allowed to clip at the top -- shouting
 # and speaking up should both look like the reactor is full.
 LEVEL_GAIN = 8.0
-LEVEL_CURVE = 0.7               # lifts the quiet half; consonants are quiet
+LEVEL_CURVE = 0.7  # lifts the quiet half; consonants are quiet
 
 # PipeWire node to capture from. Empty = the system default source.
 MIC_NODE = CFG.get("stt.node", "") or ""
@@ -96,6 +98,7 @@ def log(msg: str) -> None:
 
 def _mod(name: str):
     import importlib.util
+
     spec = importlib.util.spec_from_file_location(name, HERE / f"{name}.py")
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
@@ -106,13 +109,15 @@ class Vad:
     """Silero v6, the one faster-whisper already ships. No torch."""
 
     def __init__(self):
-        import onnxruntime as ort
         import faster_whisper
+        import onnxruntime as ort
+
         path = Path(faster_whisper.__file__).parent / "assets" / "silero_vad_v6.onnx"
         opts = ort.SessionOptions()
         opts.inter_op_num_threads = opts.intra_op_num_threads = 1
-        self.s = ort.InferenceSession(str(path), sess_options=opts,
-                                      providers=["CPUExecutionProvider"])
+        self.s = ort.InferenceSession(
+            str(path), sess_options=opts, providers=["CPUExecutionProvider"]
+        )
         self.reset()
 
     def reset(self) -> None:
@@ -135,17 +140,18 @@ class SmartTurn:
 
     def __init__(self):
         import onnxruntime as ort
-        from huggingface_hub import hf_hub_download
         from faster_whisper.feature_extractor import FeatureExtractor
+        from huggingface_hub import hf_hub_download
+
         path = hf_hub_download("pipecat-ai/smart-turn-v3", "smart-turn-v3.2-cpu.onnx")
         opts = ort.SessionOptions()
         opts.inter_op_num_threads = opts.intra_op_num_threads = 2
-        self.s = ort.InferenceSession(str(path), sess_options=opts,
-                                      providers=["CPUExecutionProvider"])
+        self.s = ort.InferenceSession(
+            str(path), sess_options=opts, providers=["CPUExecutionProvider"]
+        )
         # faster-whisper's extractor produces the same log-mel as HF's, which
         # saves us a dependency on transformers.
-        self.fx = FeatureExtractor(feature_size=80, hop_length=160,
-                                   chunk_length=8, n_fft=400)
+        self.fx = FeatureExtractor(feature_size=80, hop_length=160, chunk_length=8, n_fft=400)
 
     def complete(self, audio: np.ndarray) -> float:
         # Model contract: at most 8 s, aligned to the END, zero-padded in
@@ -164,8 +170,18 @@ def capture():
     cmd = ["stdbuf", "-o0", "pw-record"]
     if MIC_NODE:
         cmd += ["--target", MIC_NODE]
-    cmd += ["--rate", str(SR), "--channels", "1", "--format", "s16",
-            "--latency", str(FRAME), "--raw", "-"]
+    cmd += [
+        "--rate",
+        str(SR),
+        "--channels",
+        "1",
+        "--format",
+        "s16",
+        "--latency",
+        str(FRAME),
+        "--raw",
+        "-",
+    ]
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     try:
         while True:
@@ -257,9 +273,18 @@ def run() -> None:
     from faster_whisper import WhisperModel
 
     log("loading models")
-    vad, turn = Vad(), SmartTurn()
-    asr = WhisperModel(ASR_MODEL, device="cpu", compute_type="int8",
-                       cpu_threads=os.cpu_count() or 4)
+    try:
+        vad, turn = Vad(), SmartTurn()
+        asr = WhisperModel(
+            ASR_MODEL, device="cpu", compute_type="int8", cpu_threads=os.cpu_count() or 4
+        )
+    except Exception as e:
+        # An offline machine with nothing cached reaches here, and so does a
+        # broken runtime. Saying so and stopping is a failure; a traceback
+        # under a HUD that still reads "listening" is a mystery.
+        log(f"cannot start: {e}")
+        set_stranded("the speech model would not load")
+        return
     log(f"listening (end of turn between {FLOOR_MS:.0f} and {CEIL_MS:.0f} ms)")
     next_check = time.time() + TARGET_CHECK_S
     stranded = ""
@@ -301,7 +326,9 @@ def run() -> None:
                 # half a phrase said while nobody was listening is not the
                 # beginning of the first one that will be delivered.
                 frames, speaking, silence_ms = [], False, 0.0
-                pre.clear(); vad.reset(); set_speaking(False)
+                pre.clear()
+                vad.reset()
+                set_speaking(False)
             elif not ok and why != stranded:
                 log(f"stranded: {why} -- listening, but delivering nowhere")
                 stranded = why
@@ -323,7 +350,8 @@ def run() -> None:
             # Discard anything half-captured and clear the recurrent state:
             # otherwise the first phrase after I speak comes out contaminated.
             frames, speaking, silence_ms = [], False, 0.0
-            pre.clear(); vad.reset()
+            pre.clear()
+            vad.reset()
             continue
 
         p = vad(frame)
@@ -331,7 +359,10 @@ def run() -> None:
         if not speaking:
             pre.append(frame)
             if p > ON:
-                frames = list(pre) + [frame]
+                # `pre` already ends with this frame. Appending it again put
+                # 32 ms of duplicated audio at the head of every utterance and
+                # counted one frame too many toward the length cap.
+                frames = list(pre)
                 pre.clear()
                 speaking, silence_ms, asked = True, 0.0, 0.0
                 set_speaking(True)
@@ -365,15 +396,32 @@ def run() -> None:
         audio = np.concatenate(frames)
         speech_ms = dur_s * 1000 - silence_ms
         frames, speaking, silence_ms = [], False, 0.0
-        pre.clear(); vad.reset(); set_speaking(False)
+        pre.clear()
+        vad.reset()
+        set_speaking(False)
 
         if speech_ms < MIN_SPEECH_MS:
             continue
 
-        segs, _ = asr.transcribe(audio, language=LANGUAGE, beam_size=5,
-                                 initial_prompt=dictate.GLOSSARY or None,
-                                 vad_filter=True, no_speech_threshold=0.6)
-        text = " ".join(s.text.strip() for s in segs).strip()
+        # One sentence that will not transcribe is one sentence lost, not the
+        # end of the conversation. Unguarded, any ctranslate2 or ONNX error
+        # left main() -- which catches only KeyboardInterrupt -- to end the
+        # daemon with a traceback while the window still said "listening".
+        # dictate.py already wraps the same work; this is that asymmetry
+        # closed.
+        try:
+            segs, _ = asr.transcribe(
+                audio,
+                language=LANGUAGE,
+                beam_size=5,
+                initial_prompt=dictate.GLOSSARY or None,
+                vad_filter=True,
+                no_speech_threshold=0.6,
+            )
+            text = " ".join(s.text.strip() for s in segs).strip()
+        except Exception as e:
+            log(f"transcription failed: {e}")
+            continue
         low = text.lower()
         if not text or any(h in low for h in HALLUCINATIONS):
             continue
@@ -389,20 +437,24 @@ def run() -> None:
 
 def check() -> None:
     log("checking")
-    t0 = time.time(); vad = Vad(); log(f"Silero loaded in {time.time()-t0:.2f}s")
-    t0 = time.time(); turn = SmartTurn(); log(f"smart-turn loaded in {time.time()-t0:.2f}s")
+    t0 = time.time()
+    vad = Vad()
+    log(f"Silero loaded in {time.time() - t0:.2f}s")
+    t0 = time.time()
+    turn = SmartTurn()
+    log(f"smart-turn loaded in {time.time() - t0:.2f}s")
 
     frame = np.zeros(FRAME, dtype=np.float32)
     t0 = time.time()
     for _ in range(100):
         vad(frame)
-    log(f"Silero: {(time.time()-t0)*10:.3f} ms per 32 ms frame")
+    log(f"Silero: {(time.time() - t0) * 10:.3f} ms per 32 ms frame")
 
     audio = np.zeros(SR * 4, dtype=np.float32)
     t0 = time.time()
     for _ in range(10):
         turn.complete(audio)
-    log(f"smart-turn: {(time.time()-t0)*100:.1f} ms per decision")
+    log(f"smart-turn: {(time.time() - t0) * 100:.1f} ms per decision")
 
 
 def main() -> int:

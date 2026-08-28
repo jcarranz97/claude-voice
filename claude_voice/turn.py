@@ -31,7 +31,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import config as _config                              # noqa: E402
+import config as _config  # noqa: E402
 
 BASE = _config.BASE
 PREFIX = "turn-"
@@ -61,11 +61,17 @@ def write(session: str, state: str, text: str = "", secs: float = 0.0) -> None:
     """Publish one session's state. Best effort: never worth breaking a hook."""
     try:
         BASE.mkdir(parents=True, exist_ok=True)
-        path(session).write_text(json.dumps({
-            "state": state, "text": text,
-            "until": time.time() + secs if secs else 0,
-            "ts": time.time(), "session": session or "",
-        }))
+        path(session).write_text(
+            json.dumps(
+                {
+                    "state": state,
+                    "text": text,
+                    "until": time.time() + secs if secs else 0,
+                    "ts": time.time(),
+                    "session": session or "",
+                }
+            )
+        )
     except Exception:
         return
     sweep()
@@ -75,6 +81,11 @@ def read(session: str) -> dict:
     try:
         d = json.loads(path(session).read_text())
     except Exception:
+        return dict(IDLE)
+    # Valid JSON is not the same as our JSON. A truncated write can land on a
+    # bare string or a list, and every other reader here answers a default
+    # rather than raising into whatever drew the HUD.
+    if not isinstance(d, dict):
         return dict(IDLE)
     d.setdefault("session", session or "")
     return d
@@ -90,12 +101,15 @@ def newest() -> dict:
     """
     best, best_ts = dict(IDLE), -1.0
     for p in files():
+        # The timestamp is read inside the guard, not after it: one file of the
+        # wrong shape should be skipped, not take the whole sweep down.
         try:
             d = json.loads(p.read_text())
+            ts = float(d.get("ts", 0))
         except Exception:
             continue
-        if float(d.get("ts", 0)) > best_ts:
-            best, best_ts = d, float(d.get("ts", 0))
+        if ts > best_ts:
+            best, best_ts = d, ts
     return best
 
 
@@ -108,7 +122,7 @@ def files() -> list:
 
 def sessions() -> list:
     """Every session id we have ever written state for."""
-    return [p.stem[len(PREFIX):] for p in files()]
+    return [p.stem[len(PREFIX) :] for p in files()]
 
 
 def sweep(max_age: float = STALE) -> None:
@@ -156,7 +170,7 @@ def main() -> int:
     now = time.time()
     for sid, d in sorted(rows, key=lambda r: -r[1].get("ts", 0)):
         ago = now - d.get("ts", 0)
-        print(f"  {sid[:8]}  {d['state']:<10} {ago:6.0f}s ago  {d.get('text','')[:40]}")
+        print(f"  {sid[:8]}  {d['state']:<10} {ago:6.0f}s ago  {d.get('text', '')[:40]}")
     return 0
 
 

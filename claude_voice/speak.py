@@ -34,9 +34,9 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import config as _config                              # noqa: E402
-import focus as _focus                                # noqa: E402
-import presence as _presence                          # noqa: E402
+import config as _config  # noqa: E402
+import focus as _focus  # noqa: E402
+import presence as _presence  # noqa: E402
 
 CFG = _config.load()
 BASE = _config.BASE
@@ -54,6 +54,7 @@ def audio_available() -> bool:
 
 def _turn():
     import importlib.util
+
     spec = importlib.util.spec_from_file_location("turn", HERE / "turn.py")
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
@@ -84,8 +85,11 @@ def stop_background(session: str = "") -> None:
     """
     turn = _turn()
     for kind, group in (("thinking", True), ("ack", False)):
-        for pidfile in ({turn.pidfile(kind, session), turn.pidfile(kind, "")}
-                        if session else {turn.pidfile(kind, "")}):
+        for pidfile in (
+            {turn.pidfile(kind, session), turn.pidfile(kind, "")}
+            if session
+            else {turn.pidfile(kind, "")}
+        ):
             try:
                 if not pidfile.exists():
                     continue
@@ -137,15 +141,13 @@ def extract_spoken(text: str) -> str:
     # inline `<!-- TTS: -->` used as a noun even extracts to empty, so the turn
     # goes silent with no clue why. The real marker is the last one by
     # construction: the injected instruction says to end the response with it.
-    m = None
-    for m in re.finditer(r"<!--\s*TTS:\s*(.*?)\s*-->", text, re.DOTALL | re.IGNORECASE):
-        pass
-    if not m:
+    found = re.findall(r"<!--\s*TTS:\s*(.*?)\s*-->", text, re.DOTALL | re.IGNORECASE)
+    if not found:
         return ""
-    line = " ".join(m.group(1).split())
+    line = " ".join(found[-1].split())
     if line.upper() in ("SILENT", "NONE", "SKIP"):
         return ""
-    return line[:int(CFG.get("tts.max_chars", 400))]
+    return line[: int(CFG.get("tts.max_chars", 400))]
 
 
 def mixed_phonemes(ph, text: str, cfg=None) -> list:
@@ -175,7 +177,7 @@ def mixed_phonemes(ph, text: str, cfg=None) -> list:
     foreign = cfg.foreign_voice
     terms, overrides = cfg.foreign_terms, cfg.overrides
     if not overrides and not (foreign and terms):
-        return flat                      # single-language setup: nothing to do
+        return flat  # single-language setup: nothing to do
 
     segments, cur = [], []
     for p in flat:
@@ -204,7 +206,9 @@ def mixed_phonemes(ph, text: str, cfg=None) -> list:
             continue
         if bare not in terms:
             # "logs", "hooks", "branches" -- try the singular before giving up
-            singular = bare[:-2] if bare.endswith("es") else bare.rstrip("s")
+            # removesuffix, not rstrip: rstrip takes EVERY trailing s, so a
+            # term like "css" was looked up as "c".
+            singular = bare[:-2] if bare.endswith("es") else bare.removesuffix("s")
             if singular in terms and singular != bare:
                 bare = singular + ("es" if word.lower().strip(STRIP).endswith("es") else "s")
             else:
@@ -242,14 +246,14 @@ def synthesize(text: str, path: Path, cfg=None) -> bool:
         return False
 
     ids = voice.phonemes_to_ids(phonemes)
-    audio = voice.phoneme_ids_to_audio(
-        ids, SynthesisConfig(length_scale=cfg.length_scale))
+    audio = voice.phoneme_ids_to_audio(ids, SynthesisConfig(length_scale=cfg.length_scale))
 
     # phoneme_ids_to_audio returns float32 normalized to -1..1, NOT int16.
     # Writing those bytes straight into a 16-bit WAV yields full-scale white
     # noise. Convert explicitly, and clip so a hot sample can't wrap around
     # into a click.
     import numpy as np
+
     pcm = np.clip(audio, -1.0, 1.0)
     pcm = (pcm * 32767.0).astype("<i2")
 
@@ -269,7 +273,8 @@ def play_detached(path: Path) -> None:
     """
     subprocess.Popen(
         ["aplay", "-q", str(path)],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
         start_new_session=True,
     )
 
@@ -320,6 +325,7 @@ def main() -> int:
     tmp = Path(tempfile.gettempdir()) / f"cv-speak-{os.getpid()}.wav"
     if synthesize(text, tmp):
         import importlib.util
+
         spec = importlib.util.spec_from_file_location("audioq", HERE / "audioq.py")
         audioq = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(audioq)
