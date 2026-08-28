@@ -24,176 +24,56 @@ And a HUD — a frameless window that shows all of it at a glance, and answers t
 
 Everything runs on your machine. No audio leaves it.
 
-## ✨ What it looks like
+## 🚀 Quickstart
 
-The reactor carries the state, and only the state: the instrument panel around it never changes colour, because a window whose chrome dims when nothing is happening reads as a window that is broken.
-
-**Speaking.** Amber, and the reactor moves to the voice itself — it swells on a vowel, spikes on a stressed syllable and falls into the gaps between words, so a two-word answer and a long one no longer look the same. The line it is saying is written underneath.
-
-![Speaking](docs/hud-speaking.jpg)
-
-**Listening.** Conversation mode is armed — the dashed ring — and you are talking right now, with the reactor following how loudly. The microphone badge has its own colour, because the ear being open is not a state of Claude's, and confusing the two is how you end up talking to a window that stopped listening ten minutes ago.
-
-![Listening](docs/hud-listening.jpg)
-
-**Armed and quiet.** The same ring, the badge reading `ready to listen`. This is the state that used to be invisible: microphone open, nothing arriving, indistinguishable from the mode being off.
-
-![Conversation mode, waiting](docs/hud-conversation.jpg)
-
-**How it follows the voice.** The two directions are not the same problem, and only one of them is hard. A line being spoken is a finished file before a sample of it is played, so its shape is known in advance: the player measures it once, publishes the envelope with the moment playback started, and every window draws it off the clock. Nothing is streamed and nothing can drift — a window opened mid-sentence catches up on the right syllable. The microphone has no such luxury, so its level is published as it is heard, about twenty-five times a second, and the reactor rises fast and falls slowly the way an ear does rather than the way a graph does. Both are advisory: a window that cannot read either still animates, it just animates blind, which is what it did before.
-
-**Agents.** Waiting on subagents looks the same as thinking from the inside, but it is not the same thing — if agents are out, the wait has an owner. Each one gets a small reactor of its own, in orbit around the main one, so the count is something you read rather than something you tally; the panel beside it names what each is doing.
-
-![Subagents running](docs/hud-agents.jpg)
-
-There is a second surface for the same HUD, drawn out of ring glyphs in a terminal, for a machine with no desktop:
-
-```
-                          C L A U D E
-                          VOICE ON
-  m: turn OFF and silence · d: dictate · c: conversation · l: Español · h: history · q: quit
-
-                              ·  ·  ·
-                        ○              ○
-                    ◦     T H I N K I N G    ◦
-                        ○              ○
-                              ·  ·  ·
-                     ▁▂▅▇▆▃▂▁▂▄▆▇▅▃▁▂▃▅▄▂▁
-
-                        dictation → myrepo · fixing the parser
-                   «Done, the tests pass.»
-```
-
-Both read the same module, so they cannot disagree about what is on screen — only about how it is drawn.
-
-## 💻 Where it runs
-
-| OS | Supported | Notes |
-|---|:---:|---|
-| 🐧 **Linux** | ✅ | PipeWire for capture, PulseAudio or ALSA for playback; X11 and Wayland both |
-| 🍎 **macOS** | ❌ | not yet — no CoreAudio capture path, and no window |
-| 🪟 **Windows** | ❌ | not yet — same, plus no systemd for the microphone watchdog |
-
-Linux only for now, and not by preference. The parts that are tied to it are the ones that touch the machine directly: PipeWire and ALSA for capture, `/proc` and `/sys` for the system and GPU meters, systemd for the microphone watchdog, and WebKitGTK for the window. None of that is unportable in principle; none of it is written yet.
-
-| Runtime | Supported | Notes |
-|---|:---:|---|
-| 🤖 **Claude Code** | ✅ | hooks for the voice, a wrapped pty for dictation |
-| 🧩 **OpenCode** | 🚧 | planned |
-| 🧩 other agent runtimes | 🚧 | planned |
-
-The voice attaches through Claude Code's hooks — `SessionStart`, `UserPromptSubmit`, `MessageDisplay` and `Stop` — and dictation delivers into the pty that `claude-voice run` holds open. The delivery half is already runtime-agnostic: the wrapper never inspects what it started, so `claude-voice run <anything>` gives that thing the ear. Nothing below the hook layer is Claude Code's either — the synthesis, the ear, the HUD and the state files are all agnostic already, so a second runtime is a matter of another way in, not another implementation.
-
-### Do I have to run Claude Code inside tmux?
-
-**No.** Start the session with `claude-voice` instead of `claude` and everything works in whatever terminal you already use — GNOME Terminal, Konsole, kitty, Alacritty, the one in VS Code.
-
-If you *like* tmux, keep it: run the same command inside a pane. A wrapper in a pane is still a wrapper, its pty is inside that pane, and delivery does not go through tmux at all. tmux stops being a requirement without becoming a problem.
+Linux only for now ([why](#where-it-runs)). Five steps, then one command you type every day.
 
 ```bash
-claude-voice                         # the ear works, the HUD opens if none is up
-claude-voice --model opus            # arguments are passed straight through
-claude-voice run claude              # the same thing, spelled out
+# 1. system packages — yours to install; nothing here runs sudo for you
+sudo apt install alsa-utils pipewire-bin python3-gi gir1.2-webkit2-4.1
+#   Fedora:  sudo dnf install alsa-utils pipewire-utils python3-gobject webkit2gtk4.1
+#   Arch:    sudo pacman -S alsa-utils pipewire python-gobject webkit2gtk-4.1
+
+# 2. the program — voice and ear both, nothing behind a flag
+uv tool install claude-voice
+
+# 3. a voice — it does not arrive with one
+git clone https://github.com/jcarranz97/claude-voice
+cd claude-voice && ./install.sh          # ./install.sh --preset es for Spanish
+
+# 4. the hooks — printed, never installed for you
+claude-voice hooks                       # paste into ~/.claude/settings.json
+
+# 5. turn it on — off is the default, always
+claude-voice on
 ```
 
-**The bare name is the session.** `claude-voice` with nothing after it is `claude-voice run claude`, because starting a session is the thing you type every day and two words for it is one too many. Anything beginning with a dash belongs to claude, since no subcommand here starts with one: `claude-voice --resume`, `claude-voice -c`, `claude-voice --model opus`. Everything else is a verb of ours — `on`, `off`, `status`, `hud`, `dictate`, `doctor` — and they are typed in full, `status` included; the bare name starts a session rather than reporting on one.
+Then start your session with `claude-voice` instead of `claude`:
 
-Arguments are handed to the child untouched, so `--resume`, `-c`, `--add-dir` and anything Claude Code grows later work without this knowing they exist. That is why the wrapper has no flags of its own beyond `--sessions` — one more would collide the day the child grew the same name. `run` is the long form and takes any command at all, not just claude: `claude-voice run <anything>` gives that thing the ear, and `claude-voice run -- claude --sessions` is how you would pass down the one name that is taken.
+```bash
+claude-voice                 # opens the HUD, and gives the ear somewhere to type
+claude-voice --model opus    # arguments go straight through to claude
+```
 
-| | Works without tmux? | |
-|---|:---:|---|
-| speaking, narration, the acknowledgement, the heartbeat | ✅ | works in any terminal, always did |
-| the HUD — reactor, meters, history, agents | ✅ | |
-| `d` dictate, `c` conversation mode | ✅ | inside a session started with `run` |
-| `f` focus — mute every session but one | ✅ | filed under the pty instead of the pane |
-| `t` switch which session receives dictation | ✅ | it lists the sessions `run` started |
+That is all of it. No tmux, no aliases, no configuration to write first.
 
-**Why a wrapper and not something cleverer.** There is no way into a session that is already running: its stdin belongs to the terminal emulator, which holds the pty master, and writing to `/dev/pts/N` paints the screen rather than feeding the program. `TIOCSTI` was the old trick and the kernel disabled it in 6.2 — and even alive it only ever reached the caller's *own* controlling terminal, which a dictation process never is. `ydotool`, `wtype` and `xdotool` type into whichever window has focus, which is not a session and cannot be checked, and they want uinput permissions to do it. Terminal remote control is real but narrow: WezTerm out of the box, kitty and Konsole with configuration, nothing at all from GNOME Terminal, Alacritty or foot.
+When something is wrong, `claude-voice doctor` says what — it checks the voice model, the audio session, and every hook.
 
-So the text has to come from something that was present at launch. `claude-voice run` forks the real command onto a pty it holds the master of and pumps bytes both ways; writing into that master is indistinguishable from typing, because it is the same file the keyboard's bytes travel down. It is what tmux does, minus living in tmux. The cost is a longer word on the command line — `claude-voice` where you used to type `claude` — alias it away if you like.
-
-**One HUD, however many sessions.** `run` opens a window only if none is open, so the second and third terminals attach to the first one's. `claude-voice hud` still opens it explicitly if you would rather do that first.
-
----
-
-## 🧭 Why the design is the way it is
-
-Most "make the LLM talk" setups read the response aloud and get abandoned in a
-week. Markdown, diffs and file paths are unlistenable, and nobody wants to hear
-"slash home slash user slash repos". The decisions that make this one liveable:
-
-**It speaks the model's own summary, never the response.** While the voice is
-on, a hook injects an instruction telling the model to end each response with
-`<!-- TTS: one short spoken sentence -->`. That marker is what gets spoken. No
-marker, no sound. The model writes for the ear on purpose — result, not
-procedure; "the config file", not the path.
-
-**A summary of an answer is not an answer.** Writing for the ear pulls towards
-the gist, and the gist is wrong when the question had an exact answer in it.
-Ask which services failed to start and the screen lists three names while the
-voice says "three, one more than yesterday" — true, and useless to somebody who
-asked *which*. So the instruction overrides its own word limit for a concrete
-answer: a number, a name, a short list, a yes or no gets said out loud, at
-whatever length that takes. Past six items it says how many, names the first
-few, and hands the rest to the screen — the one thing a screen is better at.
-
-**The switch controls both ends, which is what makes it cheap.** While the
-voice is off the hook injects nothing, so the model never writes the marker and
-you spend no tokens on spoken summaries nobody will hear. Turning it on is what
-makes the instruction appear.
-
-**One audio queue, one player.** Acknowledgement, narration, final answer and
-tick all enqueue and return immediately — a slow hook stalls the session. A
-single locked player process plays them in order, one at a time.
-
-**The acknowledgement is shown the last few turns, not just the prompt.** The
-line spoken the instant you hit enter comes from its own small model call, and
-that call used to see one thing: the sentence just submitted. Handed six words
-it can only hand six back, so "try it again with the flag" came back as
-"Retrying with the flag" — a sentence with no content in it. Worse, a word
-dictation got wrong was repeated with total confidence, because there was
-nothing to notice it against. It now reads the last `ack.context` turns of the
-spoken log first, which is enough to name the actual work and to quietly read
-"bump" where the microphone heard "pump".
-
-**And it decides whether to speak at all.** Say hello and the answer arrives in
-about the time an acknowledgement of it takes to play, so you were told twice
-that nothing was happening. The same call now answers `SILENT` for anything it
-could simply answer — a greeting, a yes or no, a question with no work behind
-it — and nothing plays: not the line, not the cached phrase. What still gets an
-acknowledgement is the turn that would otherwise open with a minute of silence,
-which is the turn it was written for. The test is how long the *answer* takes,
-not how short the request was: "run the tests" is three words and several
-minutes. A failed call is not a decline — if the model times out the cached
-phrase plays as before. `ack.skip_quick = false` acknowledges every prompt.
-
-**Per session, except what is genuinely shared.** You will have several
-sessions open, and a machine can be running a bot on the same hooks. What a
-*session* is doing — thinking, done — is one file each, and so are the
-heartbeat's pidfiles; otherwise the first window to finish writes "ready" over
-everyone and its `Stop` hook kills the tick of a window that is still working.
-What the *speaker* is doing stays global, because there is one pair of them.
-The HUD reads the session it is pointed at and lays the speaker over it.
-
-**Foreign technical terms get their own phonemizer.** espeak takes one language
-per utterance, so in Spanish "merge" comes out MER-je and "queue" becomes
-KE-u-e. The primary language phonemizes the whole line (correct prosody,
-correct word boundaries), then the configured foreign terms are re-phonemized
-and spliced in. Piper voices share one IPA alphabet, so it works; the acoustic
-model never trained on those phonemes, so they come out accented — which is
-exactly how a bilingual developer actually says them.
-
-**Silence detection is not enough for turn-taking.** A fixed silence threshold
-forces a choice between cutting people off and being slow: at 600 ms, LiveKit's
-open benchmark measures 21.7% mid-sentence cuts, and you need 1600 ms to reach
-5%. Conversation mode runs Silero VAD per 32 ms frame, and when it hears
-silence, asks a small model whether the phrase *sounds finished*.
-
-**It fails silent, always.** A broken voice must never break coding.
+| If you want | Go to |
+|---|---|
+| what each install step actually does | [Install, in detail](#install) |
+| the commands you will use daily | [Running it](#running) |
+| the window, dictation, conversation mode | [The HUD](#hud) |
+| to change the voice, language or panels | [Configuration](#config) |
+| it installed but says nothing | [Troubleshooting](#troubleshooting) |
+| screenshots | [What it looks like](#screenshots) |
+| why any of it is built this way | [Why the design is the way it is](#design) |
 
 ---
 
-## 📦 Install
+<a id="install"></a>
+
+## 📦 Install, in detail
 
 ### 1. System packages
 
@@ -317,6 +197,8 @@ Silence means the install matches your working tree, and the command above is th
 
 ---
 
+<a id="running"></a>
+
 ## ▶️ Running it
 
 There are **two separate things**, and confusing them is the usual first
@@ -327,15 +209,9 @@ stumble:
 | **The voice** (speaking, narration, tick) | Claude Code, via the hooks | inside your Claude session — but only while a HUD is open |
 | **The HUD** | **you**, or the first session you start | a long-lived process of its own, one for every session |
 
-The short version of all of it:
-
-```bash
-claude-voice
-```
-
-That starts the session, opens a HUD if none is open, and gives the ear
-somewhere to type. Run it in a second terminal and the second session attaches
-to the same window — there is only ever one.
+`claude-voice` starts the session, opens a HUD if none is open, and gives the
+ear somewhere to type. Run it in a second terminal and the second session
+attaches to the same window — there is only ever one.
 
 The HUD is the application. While one is open, the hooks speak; while none is,
 nothing of ours runs at all — nothing spoken, no acknowledgement, no heartbeat,
@@ -351,9 +227,6 @@ last window going away.
 
 Closing does not turn the voice **off**, it suspends it. Open a HUD again and it
 picks up where the switch left it, with no keys pressed.
-
-Install the hooks, run `claude-voice on`, open a HUD, and the next thing you say
-to Claude gets spoken back.
 
 ### Day to day
 
@@ -435,6 +308,8 @@ means nothing speaks anywhere; the HUD says so on its bottom line and `f`
 clears it. And because pane ids belong to a tmux server, a focus set under a
 server that has since been restarted is ignored rather than applied to whatever
 pane inherited the number.
+
+<a id="hud"></a>
 
 ### 🖥️ The HUD
 
@@ -781,6 +656,54 @@ having it at all.
 
 ---
 
+<a id="screenshots"></a>
+
+## ✨ What it looks like
+
+The reactor carries the state, and only the state: the instrument panel around it never changes colour, because a window whose chrome dims when nothing is happening reads as a window that is broken.
+
+**Speaking.** Amber, and the reactor moves to the voice itself — it swells on a vowel, spikes on a stressed syllable and falls into the gaps between words, so a two-word answer and a long one no longer look the same. The line it is saying is written underneath.
+
+![Speaking](docs/hud-speaking.jpg)
+
+**Listening.** Conversation mode is armed — the dashed ring — and you are talking right now, with the reactor following how loudly. The microphone badge has its own colour, because the ear being open is not a state of Claude's, and confusing the two is how you end up talking to a window that stopped listening ten minutes ago.
+
+![Listening](docs/hud-listening.jpg)
+
+**Armed and quiet.** The same ring, the badge reading `ready to listen`. This is the state that used to be invisible: microphone open, nothing arriving, indistinguishable from the mode being off.
+
+![Conversation mode, waiting](docs/hud-conversation.jpg)
+
+**How it follows the voice.** The two directions are not the same problem, and only one of them is hard. A line being spoken is a finished file before a sample of it is played, so its shape is known in advance: the player measures it once, publishes the envelope with the moment playback started, and every window draws it off the clock. Nothing is streamed and nothing can drift — a window opened mid-sentence catches up on the right syllable. The microphone has no such luxury, so its level is published as it is heard, about twenty-five times a second, and the reactor rises fast and falls slowly the way an ear does rather than the way a graph does. Both are advisory: a window that cannot read either still animates, it just animates blind, which is what it did before.
+
+**Agents.** Waiting on subagents looks the same as thinking from the inside, but it is not the same thing — if agents are out, the wait has an owner. Each one gets a small reactor of its own, in orbit around the main one, so the count is something you read rather than something you tally; the panel beside it names what each is doing.
+
+![Subagents running](docs/hud-agents.jpg)
+
+There is a second surface for the same HUD, drawn out of ring glyphs in a terminal, for a machine with no desktop:
+
+```
+                          C L A U D E
+                          VOICE ON
+  m: turn OFF and silence · d: dictate · c: conversation · l: Español · h: history · q: quit
+
+                              ·  ·  ·
+                        ○              ○
+                    ◦     T H I N K I N G    ◦
+                        ○              ○
+                              ·  ·  ·
+                     ▁▂▅▇▆▃▂▁▂▄▆▇▅▃▁▂▃▅▄▂▁
+
+                        dictation → myrepo · fixing the parser
+                   «Done, the tests pass.»
+```
+
+Both read the same module, so they cannot disagree about what is on screen — only about how it is drawn.
+
+---
+
+<a id="config"></a>
+
 ## ⚙️ Configuration
 
 Everything lives in `~/.config/claude-voice/config.toml`. Values fall back, key
@@ -929,6 +852,8 @@ product names, acronyms — where you write the IPA by hand.
 
 ---
 
+<a id="troubleshooting"></a>
+
 ## 🩺 Troubleshooting
 
 Start with `claude-voice doctor` — it covers most of what follows. The rest is
@@ -1005,6 +930,137 @@ while it is there.
 **The tick keeps going after the answer.** The `Stop` hook is what kills it, so
 a session that died mid-turn (out of tokens, a hang, Ctrl-C) leaves it running.
 It caps itself, or `claude-voice silence` ends it now.
+
+---
+
+<a id="where-it-runs"></a>
+
+## 💻 Where it runs
+
+| OS | Supported | Notes |
+|---|:---:|---|
+| 🐧 **Linux** | ✅ | PipeWire for capture, PulseAudio or ALSA for playback; X11 and Wayland both |
+| 🍎 **macOS** | ❌ | not yet — no CoreAudio capture path, and no window |
+| 🪟 **Windows** | ❌ | not yet — same, plus no systemd for the microphone watchdog |
+
+Linux only for now, and not by preference. The parts that are tied to it are the ones that touch the machine directly: PipeWire and ALSA for capture, `/proc` and `/sys` for the system and GPU meters, systemd for the microphone watchdog, and WebKitGTK for the window. None of that is unportable in principle; none of it is written yet.
+
+| Runtime | Supported | Notes |
+|---|:---:|---|
+| 🤖 **Claude Code** | ✅ | hooks for the voice, a wrapped pty for dictation |
+| 🧩 **OpenCode** | 🚧 | planned |
+| 🧩 other agent runtimes | 🚧 | planned |
+
+The voice attaches through Claude Code's hooks — `SessionStart`, `UserPromptSubmit`, `MessageDisplay` and `Stop` — and dictation delivers into the pty that `claude-voice run` holds open. The delivery half is already runtime-agnostic: the wrapper never inspects what it started, so `claude-voice run <anything>` gives that thing the ear. Nothing below the hook layer is Claude Code's either — the synthesis, the ear, the HUD and the state files are all agnostic already, so a second runtime is a matter of another way in, not another implementation.
+
+### Do I have to run Claude Code inside tmux?
+
+**No.** Start the session with `claude-voice` instead of `claude` and everything works in whatever terminal you already use — GNOME Terminal, Konsole, kitty, Alacritty, the one in VS Code.
+
+If you *like* tmux, keep it: run the same command inside a pane. A wrapper in a pane is still a wrapper, its pty is inside that pane, and delivery does not go through tmux at all. tmux stops being a requirement without becoming a problem.
+
+```bash
+claude-voice                         # the ear works, the HUD opens if none is up
+claude-voice --model opus            # arguments are passed straight through
+claude-voice run claude              # the same thing, spelled out
+```
+
+**The bare name is the session.** `claude-voice` with nothing after it is `claude-voice run claude`, because starting a session is the thing you type every day and two words for it is one too many. Anything beginning with a dash belongs to claude, since no subcommand here starts with one: `claude-voice --resume`, `claude-voice -c`, `claude-voice --model opus`. Everything else is a verb of ours — `on`, `off`, `status`, `hud`, `dictate`, `doctor` — and they are typed in full, `status` included; the bare name starts a session rather than reporting on one.
+
+Arguments are handed to the child untouched, so `--resume`, `-c`, `--add-dir` and anything Claude Code grows later work without this knowing they exist. That is why the wrapper has no flags of its own beyond `--sessions` — one more would collide the day the child grew the same name. `run` is the long form and takes any command at all, not just claude: `claude-voice run <anything>` gives that thing the ear, and `claude-voice run -- claude --sessions` is how you would pass down the one name that is taken.
+
+| | Works without tmux? | |
+|---|:---:|---|
+| speaking, narration, the acknowledgement, the heartbeat | ✅ | works in any terminal, always did |
+| the HUD — reactor, meters, history, agents | ✅ | |
+| `d` dictate, `c` conversation mode | ✅ | inside a session started with `run` |
+| `f` focus — mute every session but one | ✅ | filed under the pty instead of the pane |
+| `t` switch which session receives dictation | ✅ | it lists the sessions `run` started |
+
+**Why a wrapper and not something cleverer.** There is no way into a session that is already running: its stdin belongs to the terminal emulator, which holds the pty master, and writing to `/dev/pts/N` paints the screen rather than feeding the program. `TIOCSTI` was the old trick and the kernel disabled it in 6.2 — and even alive it only ever reached the caller's *own* controlling terminal, which a dictation process never is. `ydotool`, `wtype` and `xdotool` type into whichever window has focus, which is not a session and cannot be checked, and they want uinput permissions to do it. Terminal remote control is real but narrow: WezTerm out of the box, kitty and Konsole with configuration, nothing at all from GNOME Terminal, Alacritty or foot.
+
+So the text has to come from something that was present at launch. `claude-voice run` forks the real command onto a pty it holds the master of and pumps bytes both ways; writing into that master is indistinguishable from typing, because it is the same file the keyboard's bytes travel down. It is what tmux does, minus living in tmux. The cost is a longer word on the command line — `claude-voice` where you used to type `claude` — alias it away if you like.
+
+**One HUD, however many sessions.** `run` opens a window only if none is open, so the second and third terminals attach to the first one's. `claude-voice hud` still opens it explicitly if you would rather do that first.
+
+---
+
+<a id="design"></a>
+
+## 🧭 Why the design is the way it is
+
+Most "make the LLM talk" setups read the response aloud and get abandoned in a
+week. Markdown, diffs and file paths are unlistenable, and nobody wants to hear
+"slash home slash user slash repos". The decisions that make this one liveable:
+
+**It speaks the model's own summary, never the response.** While the voice is
+on, a hook injects an instruction telling the model to end each response with
+`<!-- TTS: one short spoken sentence -->`. That marker is what gets spoken. No
+marker, no sound. The model writes for the ear on purpose — result, not
+procedure; "the config file", not the path.
+
+**A summary of an answer is not an answer.** Writing for the ear pulls towards
+the gist, and the gist is wrong when the question had an exact answer in it.
+Ask which services failed to start and the screen lists three names while the
+voice says "three, one more than yesterday" — true, and useless to somebody who
+asked *which*. So the instruction overrides its own word limit for a concrete
+answer: a number, a name, a short list, a yes or no gets said out loud, at
+whatever length that takes. Past six items it says how many, names the first
+few, and hands the rest to the screen — the one thing a screen is better at.
+
+**The switch controls both ends, which is what makes it cheap.** While the
+voice is off the hook injects nothing, so the model never writes the marker and
+you spend no tokens on spoken summaries nobody will hear. Turning it on is what
+makes the instruction appear.
+
+**One audio queue, one player.** Acknowledgement, narration, final answer and
+tick all enqueue and return immediately — a slow hook stalls the session. A
+single locked player process plays them in order, one at a time.
+
+**The acknowledgement is shown the last few turns, not just the prompt.** The
+line spoken the instant you hit enter comes from its own small model call, and
+that call used to see one thing: the sentence just submitted. Handed six words
+it can only hand six back, so "try it again with the flag" came back as
+"Retrying with the flag" — a sentence with no content in it. Worse, a word
+dictation got wrong was repeated with total confidence, because there was
+nothing to notice it against. It now reads the last `ack.context` turns of the
+spoken log first, which is enough to name the actual work and to quietly read
+"bump" where the microphone heard "pump".
+
+**And it decides whether to speak at all.** Say hello and the answer arrives in
+about the time an acknowledgement of it takes to play, so you were told twice
+that nothing was happening. The same call now answers `SILENT` for anything it
+could simply answer — a greeting, a yes or no, a question with no work behind
+it — and nothing plays: not the line, not the cached phrase. What still gets an
+acknowledgement is the turn that would otherwise open with a minute of silence,
+which is the turn it was written for. The test is how long the *answer* takes,
+not how short the request was: "run the tests" is three words and several
+minutes. A failed call is not a decline — if the model times out the cached
+phrase plays as before. `ack.skip_quick = false` acknowledges every prompt.
+
+**Per session, except what is genuinely shared.** You will have several
+sessions open, and a machine can be running a bot on the same hooks. What a
+*session* is doing — thinking, done — is one file each, and so are the
+heartbeat's pidfiles; otherwise the first window to finish writes "ready" over
+everyone and its `Stop` hook kills the tick of a window that is still working.
+What the *speaker* is doing stays global, because there is one pair of them.
+The HUD reads the session it is pointed at and lays the speaker over it.
+
+**Foreign technical terms get their own phonemizer.** espeak takes one language
+per utterance, so in Spanish "merge" comes out MER-je and "queue" becomes
+KE-u-e. The primary language phonemizes the whole line (correct prosody,
+correct word boundaries), then the configured foreign terms are re-phonemized
+and spliced in. Piper voices share one IPA alphabet, so it works; the acoustic
+model never trained on those phonemes, so they come out accented — which is
+exactly how a bilingual developer actually says them.
+
+**Silence detection is not enough for turn-taking.** A fixed silence threshold
+forces a choice between cutting people off and being slow: at 600 ms, LiveKit's
+open benchmark measures 21.7% mid-sentence cuts, and you need 1600 ms to reach
+5%. Conversation mode runs Silero VAD per 32 ms frame, and when it hears
+silence, asks a small model whether the phrase *sounds finished*.
+
+**It fails silent, always.** A broken voice must never break coding.
 
 ---
 
