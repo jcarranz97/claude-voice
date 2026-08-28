@@ -26,7 +26,7 @@ Everything runs on your machine. No audio leaves it.
 
 ## 🚀 Quickstart
 
-Linux only for now ([why](#where-it-runs)). Five steps, then one command you type every day.
+Linux only for now ([why](#where-it-runs)). Three commands.
 
 ```bash
 # 1. system packages — yours to install; nothing here runs sudo for you
@@ -34,17 +34,11 @@ sudo apt install alsa-utils pipewire-bin python3-gi gir1.2-webkit2-4.1
 #   Fedora:  sudo dnf install alsa-utils pipewire-utils python3-gobject webkit2gtk4.1
 #   Arch:    sudo pacman -S alsa-utils pipewire python-gobject webkit2gtk-4.1
 
-# 2. the program — voice and ear both, nothing behind a flag
-uv tool install claude-voice
+# 2. everything else: the program, a voice, the config, the hooks
+curl -fsSL https://raw.githubusercontent.com/jcarranz97/claude-voice/main/install.sh | bash
+#   ... | bash -s -- --preset es      for Spanish (es_MX)
 
-# 3. a voice — it does not arrive with one
-git clone https://github.com/jcarranz97/claude-voice
-cd claude-voice && ./install.sh          # ./install.sh --preset es for Spanish
-
-# 4. the hooks — printed, never installed for you
-claude-voice hooks                       # paste into ~/.claude/settings.json
-
-# 5. turn it on — off is the default, always
+# 3. turn the voice on — off is the default, always
 claude-voice on
 ```
 
@@ -55,7 +49,9 @@ claude-voice                 # opens the HUD, and gives the ear somewhere to typ
 claude-voice --model opus    # arguments go straight through to claude
 ```
 
-That is all of it. No tmux, no aliases, no configuration to write first.
+That is all of it. No clone, no tmux, no configuration to write first, and nothing to paste into `~/.claude/settings.json` — the script merges the four hooks in and keeps whatever was already there.
+
+Two things it deliberately does not do: install system packages, which is step 1 above and stays yours to run, and turn the voice on, which is step 3 and stays a thing you ask for.
 
 When something is wrong, `claude-voice doctor` says what — it checks the voice model, the audio session, and every hook.
 
@@ -66,8 +62,53 @@ When something is wrong, `claude-voice doctor` says what — it checks the voice
 | the window, dictation, conversation mode | [The HUD](#hud) |
 | to change the voice, language or panels | [Configuration](#config) |
 | it installed but says nothing | [Troubleshooting](#troubleshooting) |
-| screenshots | [What it looks like](#screenshots) |
 | why any of it is built this way | [Why the design is the way it is](#design) |
+
+---
+
+<a id="screenshots"></a>
+
+## ✨ What it looks like
+
+The reactor carries the state, and only the state: the instrument panel around it never changes colour, because a window whose chrome dims when nothing is happening reads as a window that is broken.
+
+**Speaking.** Amber, and the reactor moves to the voice itself — it swells on a vowel, spikes on a stressed syllable and falls into the gaps between words, so a two-word answer and a long one no longer look the same. The line it is saying is written underneath.
+
+![Speaking](docs/hud-speaking.jpg)
+
+**Listening.** Conversation mode is armed — the dashed ring — and you are talking right now, with the reactor following how loudly. The microphone badge has its own colour, because the ear being open is not a state of Claude's, and confusing the two is how you end up talking to a window that stopped listening ten minutes ago.
+
+![Listening](docs/hud-listening.jpg)
+
+**Armed and quiet.** The same ring, the badge reading `ready to listen`. This is the state that used to be invisible: microphone open, nothing arriving, indistinguishable from the mode being off.
+
+![Conversation mode, waiting](docs/hud-conversation.jpg)
+
+**How it follows the voice.** The two directions are not the same problem, and only one of them is hard. A line being spoken is a finished file before a sample of it is played, so its shape is known in advance: the player measures it once, publishes the envelope with the moment playback started, and every window draws it off the clock. Nothing is streamed and nothing can drift — a window opened mid-sentence catches up on the right syllable. The microphone has no such luxury, so its level is published as it is heard, about twenty-five times a second, and the reactor rises fast and falls slowly the way an ear does rather than the way a graph does. Both are advisory: a window that cannot read either still animates, it just animates blind, which is what it did before.
+
+**Agents.** Waiting on subagents looks the same as thinking from the inside, but it is not the same thing — if agents are out, the wait has an owner. Each one gets a small reactor of its own, in orbit around the main one, so the count is something you read rather than something you tally; the panel beside it names what each is doing.
+
+![Subagents running](docs/hud-agents.jpg)
+
+There is a second surface for the same HUD, drawn out of ring glyphs in a terminal, for a machine with no desktop:
+
+```
+                          C L A U D E
+                          VOICE ON
+  m: turn OFF and silence · d: dictate · c: conversation · l: Español · h: history · q: quit
+
+                              ·  ·  ·
+                        ○              ○
+                    ◦     T H I N K I N G    ◦
+                        ○              ○
+                              ·  ·  ·
+                     ▁▂▅▇▆▃▂▁▂▄▆▇▅▃▁▂▃▅▄▂▁
+
+                        dictation → myrepo · fixing the parser
+                   «Done, the tests pass.»
+```
+
+Both read the same module, so they cannot disagree about what is on screen — only about how it is drawn.
 
 ---
 
@@ -79,7 +120,8 @@ When something is wrong, `claude-voice doctor` says what — it checks the voice
 
 Nothing here is installed for you — these are your package manager's, and a
 script that runs `sudo` on your behalf is not a thing this project does.
-`install.sh` checks for them and tells you which are missing.
+The script checks for them and names the ones you are missing, with the
+command for your distribution, before it does anything else.
 
 Python is **not** among them: [uv](https://docs.astral.sh/uv/) brings its own.
 
@@ -110,49 +152,50 @@ tmux is deliberately absent from that list. Dictation types into a session
 started with `claude-voice`, which needs nothing installed — see
 [Do I have to run Claude Code inside tmux?](#do-i-have-to-run-claude-code-inside-tmux)
 
-### 2. The program
+### 2. Everything else
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jcarranz97/claude-voice/main/install.sh | bash
+```
+
+One command, from any directory, with nothing cloned. It installs `uv` if you do not have it, installs the program, downloads a Piper voice, writes a starter config, synthesizes the cached acknowledgements and the heartbeat sounds, and merges the hooks into `~/.claude/settings.json`. Everything it does is to your home directory; it never asks for `sudo`, which is why step 1 is a step of yours.
+
+```bash
+curl -fsSL .../install.sh | bash -s -- --preset es    # Spanish (es_MX)
+curl -fsSL .../install.sh | bash -s -- --no-hooks     # print them, do not install them
+```
+
+Run it again whenever you like: an existing config is left alone, a voice already downloaded is not fetched twice, and hooks already installed are reported rather than added again.
+
+**The program on its own**, if you would rather do the rest by hand:
 
 ```bash
 uv tool install claude-voice
 ```
 
-That is the whole program, voice and ear both. It is an application on your machine, not a checkout: nothing is left pointing at a source tree, and you can use it in any directory. Installing from a checkout instead of PyPI changes nothing about that — it is still a copy, so [step 5](#5-installing-it-again-from-your-own-checkout) is how you replace it later.
+That is the whole program, voice and ear both. It is an application on your machine, not a checkout: nothing is left pointing at a source tree, and you can use it in any directory. What it does *not* get you is a voice — Piper does not ship one inside the package, and without one there is nothing to speak with. `claude-voice lang --fetch en` downloads it, which is the part of the script worth having.
 
 **There is nothing behind a flag.** The ear used to be an `stt` extra, and `claude-voice[stt]` still works so that anything written down against it keeps working — it just installs what the bare name installs. The extra bought a smaller install and sold a failure worth more than the disk it saved: extras are not remembered across reinstalls, so one that forgot to name it took the microphone away silently, and the program went on speaking until the next time you pressed `c` and it said there was no module named faster_whisper.
 
-### 3. A voice
-
-It does not arrive with one, and a voice is what makes it useful. The script
-fetches one, writes a starter config and warms the caches — and installs `uv`
-first if you do not have it:
+**From a clone**, which is the one to use while changing something — it installs the working tree instead of the published package, and says which it did:
 
 ```bash
 git clone https://github.com/jcarranz97/claude-voice
-cd claude-voice
-./install.sh                 # English
-./install.sh --preset es     # Spanish (es_MX)
+cd claude-voice && ./install.sh
 ```
 
-One language is enough to start; a second one is two files, later, with no
-reinstall: `claude-voice lang --fetch es`.
+### 3. The hooks
 
-### 4. The hooks
+The script installs them. It **merges** rather than pastes: the four entries are added to `~/.claude/settings.json`, everything already in that file stays, and the copy it replaced is kept next to it with a timestamp. An event already hooked to us is left exactly as it is, so running it again after an upgrade adds only what is new. A settings file it cannot parse is refused rather than repaired — it prints the snippet instead and changes nothing.
 
-It does **not** touch your Claude settings — hooks are yours to install:
+Doing it yourself is still a supported path, and the only one for a project's `.claude/settings.json`:
 
 ```bash
-claude-voice hooks           # prints the snippet
+claude-voice hooks              # print the snippet, paste it yourself
+claude-voice hooks --install    # merge it into ~/.claude/settings.json
 ```
 
-Paste it into the `"hooks"` block of `~/.claude/settings.json` (or a project's
-`.claude/settings.json`), then:
-
-```bash
-claude-voice on              # off is the default, always
-claude-voice hud             # the status window
-```
-
-Updating an existing install? Print the snippet again and compare — it gains hooks over time, and a missing one costs you a feature rather than breaking the voice. `claude-voice doctor` names the one you are missing and what it does.
+Updating an existing install? Run `--install` again — the snippet gains hooks over time, and a missing one costs you a feature rather than breaking the voice. `claude-voice doctor` names the one you are missing and what it does.
 
 <details>
 <summary>What the hooks do</summary>
@@ -167,7 +210,9 @@ Updating an existing install? Print the snippet again and compare — it gains h
 The commands carry no paths, so reinstalling or upgrading does not break them.
 Older installs wrote an interpreter and a script path into each one; those
 still work, and `claude-voice doctor` will point them out rather than wait for
-the day a moved checkout makes them go quiet.
+the day a moved checkout makes them go quiet. `--install` counts them as
+installed and leaves them alone — adding ours beside one would run the hook
+twice, which for `Stop` means saying the same line twice.
 
 Drop the `MessageDisplay` entry if you only want the final line spoken.
 
@@ -175,9 +220,18 @@ Drop the `MessageDisplay` entry if you only want the final line spoken.
 
 </details>
 
-### 5. Installing it again, from your own checkout
+### 4. Turning it on
 
-`uv tool install` copies the code into the tool's own environment. It is not a link back to the source tree — that is the point of [The program](#2-the-program) above, and it is also the thing that catches you out the first time you edit the checkout and nothing changes. The installed program keeps running the code it was built from until you replace it, and replacing it takes both flags:
+```bash
+claude-voice on              # off is the default, always
+claude-voice                 # start a session; the HUD opens with it
+```
+
+The installer does not do this one. Off is the default the whole program is built around — while it is off the hook injects nothing, so a machine that installed this and never asked for it spends no tokens and makes no sound.
+
+### Installing it again, from your own checkout
+
+`uv tool install` copies the code into the tool's own environment. It is not a link back to the source tree — that is the point of [Everything else](#2-everything-else) above, and it is also the thing that catches you out the first time you edit the checkout and nothing changes. The installed program keeps running the code it was built from until you replace it, and replacing it takes both flags:
 
 ```bash
 uv tool install --force --refresh "$HOME/repos/claude-voice"   # wherever yours lives
@@ -267,7 +321,7 @@ speech-to-text pieces as notes rather than failures:
 [  ok  ] piper-tts — importable
 [  ok  ] voice model — en_US-amy-medium.onnx (63 MB)
 [ FAIL ] hook Stop — points at a missing file: /old/path/speak.py
-         fix: claude-voice hooks   (the checkout moved)
+         fix: claude-voice hooks   (the checkout moved — replace the old line)
 [ note ] switch — off
          fix: claude-voice on
 ```
@@ -656,52 +710,6 @@ having it at all.
 
 ---
 
-<a id="screenshots"></a>
-
-## ✨ What it looks like
-
-The reactor carries the state, and only the state: the instrument panel around it never changes colour, because a window whose chrome dims when nothing is happening reads as a window that is broken.
-
-**Speaking.** Amber, and the reactor moves to the voice itself — it swells on a vowel, spikes on a stressed syllable and falls into the gaps between words, so a two-word answer and a long one no longer look the same. The line it is saying is written underneath.
-
-![Speaking](docs/hud-speaking.jpg)
-
-**Listening.** Conversation mode is armed — the dashed ring — and you are talking right now, with the reactor following how loudly. The microphone badge has its own colour, because the ear being open is not a state of Claude's, and confusing the two is how you end up talking to a window that stopped listening ten minutes ago.
-
-![Listening](docs/hud-listening.jpg)
-
-**Armed and quiet.** The same ring, the badge reading `ready to listen`. This is the state that used to be invisible: microphone open, nothing arriving, indistinguishable from the mode being off.
-
-![Conversation mode, waiting](docs/hud-conversation.jpg)
-
-**How it follows the voice.** The two directions are not the same problem, and only one of them is hard. A line being spoken is a finished file before a sample of it is played, so its shape is known in advance: the player measures it once, publishes the envelope with the moment playback started, and every window draws it off the clock. Nothing is streamed and nothing can drift — a window opened mid-sentence catches up on the right syllable. The microphone has no such luxury, so its level is published as it is heard, about twenty-five times a second, and the reactor rises fast and falls slowly the way an ear does rather than the way a graph does. Both are advisory: a window that cannot read either still animates, it just animates blind, which is what it did before.
-
-**Agents.** Waiting on subagents looks the same as thinking from the inside, but it is not the same thing — if agents are out, the wait has an owner. Each one gets a small reactor of its own, in orbit around the main one, so the count is something you read rather than something you tally; the panel beside it names what each is doing.
-
-![Subagents running](docs/hud-agents.jpg)
-
-There is a second surface for the same HUD, drawn out of ring glyphs in a terminal, for a machine with no desktop:
-
-```
-                          C L A U D E
-                          VOICE ON
-  m: turn OFF and silence · d: dictate · c: conversation · l: Español · h: history · q: quit
-
-                              ·  ·  ·
-                        ○              ○
-                    ◦     T H I N K I N G    ◦
-                        ○              ○
-                              ·  ·  ·
-                     ▁▂▅▇▆▃▂▁▂▄▆▇▅▃▁▂▃▅▄▂▁
-
-                        dictation → myrepo · fixing the parser
-                   «Done, the tests pass.»
-```
-
-Both read the same module, so they cannot disagree about what is on screen — only about how it is drawn.
-
----
-
 <a id="config"></a>
 
 ## ⚙️ Configuration
@@ -873,9 +881,10 @@ for when it says everything is fine and you still hear nothing.
 - `audio=False` — no PipeWire/PulseAudio session. Expected over plain SSH and
   in systemd services; there is nothing to play through.
 - No line at all — the `Stop` hook is not installed or points at a bad path.
-  Re-run `claude-voice hooks` and compare.
+  `claude-voice hooks --install` adds what is missing; a hook frozen on an old
+  file path counts as installed, so that one is taken out by hand.
 
-**Edits to the checkout change nothing.** The install is a copy, not a link, and it keeps running the code it was built from. `uv tool install --force --refresh "$HOME/repos/claude-voice"` puts your working tree back in charge. Both flags: `--force` alone reinstalls uv's cached wheel and reports success while changing nothing. [Installing it again, from your own checkout](#5-installing-it-again-from-your-own-checkout) has the rest, including the one-line check for whether the two differ at all.
+**Edits to the checkout change nothing.** The install is a copy, not a link, and it keeps running the code it was built from. `uv tool install --force --refresh "$HOME/repos/claude-voice"` puts your working tree back in charge. Both flags: `--force` alone reinstalls uv's cached wheel and reports success while changing nothing. [Installing it again, from your own checkout](#installing-it-again-from-your-own-checkout) has the rest, including the one-line check for whether the two differ at all.
 
 **The HUD dies with `NameError` or `AttributeError`.** You are running a stale
 copy from an old path. This is what an alias frozen on `python .../hud.py`
@@ -1099,6 +1108,7 @@ own connection, since a late acknowledgement is worse than a vague one.
 claude_voice/
   cli.py                the only entry point you need
   config.py             layered configuration
+  hooks.py              the settings.json snippet, and the merge that installs it
   lang.py               the language switch: preset in, preset out
   voice.py              the switch; the UserPromptSubmit hook
   focus.py              which pane owns the voice when several are open
