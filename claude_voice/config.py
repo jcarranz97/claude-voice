@@ -72,6 +72,38 @@ PRESET_FILE = BASE / "preset"
 BUNDLED_PRESETS = HERE / "presets"
 USER_PRESETS = BASE / "presets"
 
+# The emotion tags a spoken line may carry. Read from Chatterbox Turbo's own
+# added_tokens.json rather than from any README -- `sarcastic` and `dramatic`
+# are real trained tokens that appear in no documentation.
+#
+# This lives here, and not in the provider that understands them, because the
+# list is needed most by the providers that DO NOT: an unrecognised tag reaches
+# Piper as ordinary words and is spoken aloud. Making the strip depend on
+# importing the expressive provider would mean a broken or absent provider
+# silently switched the stripping off, which is the one failure it exists to
+# prevent.
+TAG_VOCABULARY = (
+    "laugh",
+    "chuckle",
+    "sigh",
+    "groan",
+    "gasp",
+    "cough",
+    "sniff",
+    "shush",
+    "clear throat",
+    "sarcastic",
+    "dramatic",
+    "angry",
+    "happy",
+    "crying",
+    "fear",
+    "surprised",
+    "whispering",
+    "narration",
+    "advertisement",
+)
+
 # A complete, working configuration. If the user never writes a config file,
 # these values run -- in English, with a voice install.sh downloads by default.
 DEFAULTS = {
@@ -84,11 +116,29 @@ DEFAULTS = {
         "language": "English",
     },
     "tts": {
+        # Which engine speaks. `piper` is local, flat and always there;
+        # `chatterbox` is local, expressive and about a second slower. Piper
+        # stays the default and the fallback -- a voice that fails to a
+        # silence is worse than one that fails to a flat delivery.
+        "provider": "piper",
+        "threads": 8,  # measured optimum for chatterbox; 4 is slower, 32 thrashes
         "voice_model": "~/.local/share/piper-voices/en_US-amy-medium.onnx",
         "length_scale": 1.0,  # >1 is slower; butler pacing lives near 1.06
         "primary_voice": "en-us",  # espeak-ng code for the bulk of the text
         "foreign_voice": "",  # blank disables the mixed-phoneme pass
         "max_chars": 400,
+    },
+    "tags": {
+        # Emotion tags the model may write inline in the spoken line. They only
+        # reach a provider that understands them; everything else has them
+        # stripped before synthesis, because Piper reads an unknown tag aloud.
+        #
+        # Overriding the vocabulary here narrows or replaces TAG_VOCABULARY,
+        # for a preset whose register wants fewer of them -- or a provider
+        # with a different list.
+        "enabled": True,
+        "vocabulary": [],  # blank -> TAG_VOCABULARY above
+        "instruction": "",  # blank -> built from the vocabulary
     },
     "instruction": {
         # Injected into every prompt while the voice is on. This is what makes
@@ -365,9 +415,63 @@ class Config:
 
     @property
     def instruction(self) -> str:
-        """The prompt injection that makes the model write the spoken line."""
+        """The prompt injection that makes the model write the spoken line.
+
+        The tag guidance is appended rather than written into every preset's
+        instruction, because whether tags may be used at all depends on the
+        provider, and a preset should not have to know which engine is
+        speaking. A preset that wants different wording sets `tags.instruction`
+        and this leaves it alone.
+        """
         text = (self.get("instruction.text", "") or "").strip()
-        return text
+        extra = self.tag_instruction
+        return f"{text}\n\n{extra}" if extra else text
+
+    @property
+    def tag_vocabulary(self) -> list:
+        """Every tag that could ever appear in a line, whoever is speaking.
+
+        Ungated on purpose, and distinct from `tags` below: this is the list
+        used to *recognise* a tag, and recognising one matters most exactly
+        when the provider cannot hear it. Gating this by provider would mean
+        Piper stopped stripping the tags it most needs stripped.
+        """
+        return list(self.get("tags.vocabulary", []) or TAG_VOCABULARY)
+
+    @property
+    def tags(self) -> list:
+        """Emotion tags the model may write, or empty when none may be.
+
+        Empty whenever tags are switched off *or* the active provider cannot
+        hear them -- there is no point spending prompt on a vocabulary whose
+        every use would be stripped again before synthesis.
+        """
+        if not self.get("tags.enabled", True):
+            return []
+        if self.get("tts.provider", "piper") != "chatterbox":
+            return []
+        return self.tag_vocabulary
+
+    @property
+    def tag_instruction(self) -> str:
+        """How the model is told it may sigh. Blank when it may not."""
+        tags = self.tags
+        if not tags:
+            return ""
+        written = (self.get("tags.instruction", "") or "").strip()
+        if written:
+            return written
+        listed = ", ".join(f"[{t}]" for t in tags)
+        return (
+            "The voice can act. You may place at most one of these tags inline "
+            "in the spoken sentence, where the delivery should change:\n"
+            f"{listed}\n"
+            "Use one only when it genuinely carries meaning the words do not -- "
+            "a dry [sigh] at the fourth identical failure, a [chuckle] at "
+            "something actually funny. Most lines need none. A tag on a routine "
+            "result reads as a machine performing an emotion, which is worse "
+            "than saying it flat."
+        )
 
     def as_dict(self) -> dict:
         return self._d

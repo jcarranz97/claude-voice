@@ -67,6 +67,10 @@ theme:
     - search.share
     - search.suggest
     - toc.follow
+    # Ruff's shape: a page's own headings nest into the left sidebar
+    # instead of sitting in a second column. On a reference page with
+    # seventy settings that turns the nav into the index.
+    - toc.integrate
 
 extra_css:
   - assets/extra.css
@@ -165,6 +169,7 @@ nav:
   - Understanding:
       - Design decisions: design.md
       - Architecture: architecture.md
+      - Performance: performance.md
       - Security: security.md
   - Troubleshooting: troubleshooting.md
   - FAQ: faq.md

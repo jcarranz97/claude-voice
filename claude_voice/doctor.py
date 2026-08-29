@@ -49,6 +49,36 @@ def check_python() -> None:
         )
 
 
+def check_provider() -> None:
+    """Which engine speaks, and whether it can.
+
+    Reported as a note rather than a failure when the expressive provider is
+    not ready: it falls back to Piper, so the voice still works. A FAIL here
+    would say the install is broken when it is merely flat.
+    """
+    provider = CFG.get("tts.provider", "piper")
+    if provider == "piper":
+        report(OK, "provider", "piper — local, flat, always there")
+        return
+
+    if provider != "chatterbox":
+        report(BAD, "provider", f"unknown: {provider}", 'set tts.provider to "piper"')
+        return
+
+    try:
+        import chatterbox
+
+        ok, why = chatterbox.available(CFG.preset)
+    except Exception as exc:  # noqa: BLE001
+        report(WARN, "provider", f"chatterbox — not usable: {exc}", "claude-voice voice")
+        return
+
+    if ok:
+        report(OK, "provider", f"chatterbox — {len(CFG.tags)} tags, falls back to piper")
+    else:
+        report(WARN, "provider", f"chatterbox — {why}", "claude-voice voice --fetch")
+
+
 def check_tts() -> None:
     try:
         import piper  # noqa: F401
@@ -404,6 +434,7 @@ def main() -> int:
     print(f"\nclaude-voice doctor    state: {BASE}\n")
     check_python()
     check_config()
+    check_provider()
     check_tts()
     check_audio()
     check_hooks()

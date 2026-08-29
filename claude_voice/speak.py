@@ -227,13 +227,61 @@ def mixed_phonemes(ph, text: str, cfg=None) -> list:
     return out
 
 
-def synthesize(text: str, path: Path, cfg=None) -> bool:
-    """Speak `text` into `path`. A cfg other than the active one is how the
-    language switch warms the other preset's cache without adopting it."""
+def tag_pattern(cfg=None) -> re.Pattern:
+    """Matches the emotion tags the configured vocabulary knows about.
+
+    Deliberately not `\\[[^]]*\\]`. A spoken line may legitimately contain
+    brackets -- a version, a citation, a shell glob read aloud -- and eating
+    those would be a silent corruption that only shows up as a missing word.
+    Only known tags are removed.
+    """
+    cfg = cfg or CFG
+    tags = cfg.tag_vocabulary
+    if not tags:
+        return re.compile(r"(?!)")  # matches nothing, cheaper than a None check
+    alts = "|".join(re.escape(t) for t in sorted(tags, key=len, reverse=True))
+    return re.compile(rf"\[\s*(?:{alts})\s*\]", re.IGNORECASE)
+
+
+def strip_tags(text: str, cfg=None) -> str:
+    """Remove emotion tags, for a provider that cannot hear them.
+
+    This is not cosmetic. Piper has no concept of a tag, so it phonemizes one
+    as ordinary words -- `[sighs]` becomes `sˈaɪz` and it says "size" out loud,
+    adding most of a second. The moment a tag-aware provider is configured and
+    somebody switches back to Piper, every line gains a spoken junk word.
+    """
+    return " ".join(tag_pattern(cfg).sub(" ", text).split())
+
+
+def synthesize(text: str, path: Path, cfg=None, provider: str = "") -> bool:
+    """Speak `text` into `path`.
+
+    A cfg other than the active one is how the language switch warms the other
+    preset's cache without adopting it. An explicit `provider` is how the
+    Chatterbox clone gets a Piper reference to imitate without recursing.
+    """
+    cfg = cfg or CFG
+    provider = provider or cfg.get("tts.provider", "piper")
+
+    if provider == "chatterbox":
+        import chatterbox
+
+        if chatterbox.synthesize(text, path, cfg=cfg):
+            return True
+        # Falling back is a decision, not an exception handler: a voice that
+        # goes silent when a model file is missing is worse than one that
+        # sounds flat. Piper still cannot hear the tags, so they come out.
+        print("chatterbox unavailable, falling back to piper", file=sys.stderr)
+
+    return _piper(strip_tags(text, cfg), path, cfg)
+
+
+def _piper(text: str, path: Path, cfg) -> bool:
+    """The local default. Flat, fast, and always there."""
     from piper import PiperVoice, SynthesisConfig
     from piper.phonemize_espeak import EspeakPhonemizer
 
-    cfg = cfg or CFG
     model = cfg.voice_model
     if not model.exists():
         return False

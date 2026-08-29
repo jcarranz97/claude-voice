@@ -61,6 +61,10 @@ Speech
   claude-voice pron diag <word>…  why a word sounds wrong, and how to fix it
   claude-voice pron say "…"       hear a phrase, with a level sanity check
   claude-voice pron list          the active pronunciation rules
+  claude-voice voice              the expressive provider: is it ready?
+  claude-voice voice --fetch      download its weights (about 490 MB, once)
+  claude-voice voice --build      clone your own Piper voice for it to use
+  claude-voice voice --say "..."  hear one line, tags and all
 
 Run
   claude-voice                    start a session the ear can type into
@@ -101,6 +105,9 @@ ROUTES = {
     "dictate": ("dictate.py", []),
     "listen": ("listen.py", []),
     "pron": ("pron.py", []),
+    # The expressive provider: fetch its weights, clone the Piper voice
+    # it imitates, and hear one line without touching the switch.
+    "voice": ("chatterbox.py", []),
     "narrate": ("narrate.py", []),
     "queue": ("audioq.py", []),
     "config": ("config.py", []),

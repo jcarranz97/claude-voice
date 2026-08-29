@@ -17,6 +17,7 @@ claude_voice/
   presence.py           is a window open; nothing of ours runs while none is
   monitor.py            what holds the microphone and the speakers, anyone's
   speak.py              synthesis, phoneme mixing; the Stop hook
+  chatterbox.py         the expressive provider: tags, and the voice clone
   narrate.py            mid-turn progress; the MessageDisplay hook
   ack.py                the instant acknowledgement
   audioq.py             one sound at a time, in order
@@ -61,6 +62,7 @@ The CLI is a dispatch table and an `exec`, so argv, exit codes and signal handli
 | `mic` | `mic.py` |
 | `monitor` | `monitor.py` |
 | `lang` | `lang.py` |
+| `voice` | `chatterbox.py` |
 | `pron` | `pron.py` |
 | `config` | `config.py` |
 | `hooks` | `hooks.py` |
