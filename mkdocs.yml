@@ -85,6 +85,13 @@ markdown_extensions:
   - pymdownx.betterem
   - pymdownx.caret
   - pymdownx.details
+  # `:material-linux:` and friends. Without this they render as the literal
+  # text, which is how the platform tables shipped the first time. The icons
+  # come out as inline SVG that inherits the surrounding colour, so they follow
+  # the light/dark toggle and cost no request.
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - pymdownx.highlight:
       anchor_linenums: true
       line_spans: __span
