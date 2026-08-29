@@ -424,8 +424,8 @@ Not a browser tab. The page opens in one of these, in order:
 
 | shell | | what it is |
 |---|:---:|---|
-| `webview` | ⭐ | WebKitGTK through the system PyGObject — frameless, stays above other windows, paints in a quarter of a second |
-| `browser` | ✅ | Chrome or Chromium in `--app` mode with a profile of its own, so it is a window and not a tab in the browser you are using |
+| `browser` | ⭐ | Chrome or Chromium in `--app` mode with a profile of its own, so it is a window and not a tab in the browser you are using |
+| `webview` | ✅ | WebKitGTK through the system PyGObject — frameless, stays above other windows, but rasterizes on the CPU: seven times the load |
 | `none` | ➖ | print the address and open nothing — for a second screen, or a machine with no desktop |
 
 A frameless window has no title bar and no resize grips, so the page lends it

@@ -572,13 +572,17 @@ The only thing in this program besides the acknowledgement that talks to a netwo
 
 Which window the page opens in.
 
-`auto` tries `webview`, then `browser`, then `none`. **`webview` costs about seven times the CPU of `browser`**, because we take WebKit's GPU renderer away to stop it painting a blank white window on NVIDIA — see [Performance](../performance.md#the-window-browser-against-webview). It buys a frameless window in exchange.
+`auto` tries `browser`, then `webview`, then `none`.
+
+**`webview` costs about seven times the CPU of `browser`** — 97% of a core against 14% — because we take WebKit's GPU renderer away to stop it painting a blank white window on NVIDIA, leaving it to rasterize the reactor on the CPU. It buys a frameless window in exchange: no title bar, drag anywhere, stays above other windows. See [Performance](../performance.md#the-window-browser-against-webview).
+
+`webview` remains the fallback when no Chromium-based browser is installed.
 
 **Default**: `"auto"` · **Type**: `string` — `auto` | `webview` | `browser` | `none`
 
 ```toml
 [hud]
-shell = "browser"    # a title bar, and a seventh of the CPU
+shell = "webview"    # the frameless window, at seven times the CPU
 ```
 
 ### `hud.title`

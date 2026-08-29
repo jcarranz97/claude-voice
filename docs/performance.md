@@ -11,7 +11,7 @@ Two choices in this program cost real time and real CPU, and in both cases the o
 | Setting | Options | Default | Costs |
 |---|---|---|---|
 | `tts.provider` | `piper` · `chatterbox` | **`piper`** | Chatterbox is 1–2 s slower per line and 640 MB on disk, and can act |
-| `hud.shell` | `auto` · `webview` · `browser` · `none` | **`auto`**, which tries `webview` first | `webview` costs ~7× the CPU of `browser`, and is frameless |
+| `hud.shell` | `auto` · `webview` · `browser` · `none` | **`auto`**, which tries `browser` first | `webview` costs ~7× the CPU, and buys a frameless window |
 | `tags.enabled` | `true` · `false` | **`true`** | nothing — tags are only written when a provider can hear them |
 | `tts.threads` | any int | **`8`** | measured optimum; 4 is slower and 32 thrashes |
 
@@ -84,7 +84,7 @@ Measured over six seeds per tag, counting a hit as at least 0.25 s of extra voic
 
 ## The window: `browser` against `webview`
 
-| | `webview` (WebKitGTK) — **what `auto` picks** | `browser` (Chromium `--app`) |
+| | `webview` (WebKitGTK) | `browser` (Chromium `--app`) — **what `auto` picks** |
 |---|---|---|
 | `hud.shell` | `"auto"` or `"webview"` | `"browser"` |
 | CPU, idle **and** busy | **97% of a core** | **14–15%** total |
@@ -117,14 +117,14 @@ So "the HUD got slower" can have no cause other than a window that was resized w
 
 ### Choosing
 
-`browser` unless you specifically want the frameless window and have the headroom. On a laptop this is a battery question, not only a speed one — the HUD is on screen all day by design, so its idle cost is the one cost you pay continuously.
+`browser`, which is what `auto` gives you, unless you specifically want the frameless window and have the headroom. On a laptop this is a battery question, not only a speed one — the HUD is on screen all day by design, so its idle cost is the one cost you pay continuously.
 
 ```toml
 [hud]
 shell = "browser"
 ```
 
-`auto` still tries `webview` first, so this is a change you make rather than one that has been made for you.
+`auto` picks `browser` first, so this is what you already have. `webview` is one word away if you want the frameless window and have the headroom.
 
 The animation loop redrawing a stationary shape is a bug rather than a fact of life, and fixing it would make the frameless window cheap again. Until then, the title bar is the price of a seventh of the CPU.
 

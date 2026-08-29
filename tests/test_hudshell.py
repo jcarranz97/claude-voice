@@ -235,28 +235,35 @@ class TestOpenWindow:
         self.monkeypatch = monkeypatch
         return asked
 
-    def test_auto_tries_the_webview_first(self):
-        assert hudshell.open_window("u").kind == "webview"
-        assert self.asked == ["webview"]
+    def test_auto_tries_the_browser_first(self):
+        """Browser before webview, deliberately.
+
+        The frameless window is the nicer object, but we disable WebKit's GPU
+        renderer to stop it painting white on NVIDIA, and it then rasterizes
+        the reactor on the CPU -- 97% of a core against Chromium's 14%.
+        """
+        assert hudshell.open_window("u").kind == "browser"
+        assert self.asked == ["browser"]
 
     def test_a_flag_pins_one_shell(self):
         assert hudshell.open_window("u", ["--shell", "browser"]).kind == "browser"
         assert self.asked == ["browser"]
 
     def test_a_flag_with_nothing_after_it_is_ignored(self):
-        assert hudshell.open_window("u", ["--shell"]).kind == "webview"
+        assert hudshell.open_window("u", ["--shell"]).kind == "browser"
 
     def test_an_unknown_name_falls_back_to_the_usual_order(self):
-        assert hudshell.open_window("u", ["--shell", "wayland"]).kind == "webview"
+        assert hudshell.open_window("u", ["--shell", "wayland"]).kind == "browser"
 
     def test_the_config_picks_the_shell_when_no_flag_does(self, shell_config):
-        shell_config("[hud]\nshell = 'browser'\n")
-        assert hudshell.open_window("u").kind == "browser"
+        shell_config("[hud]\nshell = 'webview'\n")
+        assert hudshell.open_window("u").kind == "webview"
 
     def test_a_shell_that_will_not_open_falls_through_to_the_next(self):
-        self.monkeypatch.setitem(hudshell.SHELLS, "webview", self.maker("webview", fail=True))
-        assert hudshell.open_window("u").kind == "browser"
-        assert self.asked == ["webview", "browser"]
+        """A machine with no Chromium still gets the frameless window."""
+        self.monkeypatch.setitem(hudshell.SHELLS, "browser", self.maker("browser", fail=True))
+        assert hudshell.open_window("u").kind == "webview"
+        assert self.asked == ["browser", "webview"]
 
     def test_nothing_that_opens_still_says_where_the_hud_is(self, capsys):
         for name in ("webview", "browser", "none"):
@@ -265,7 +272,7 @@ class TestOpenWindow:
         assert hudshell.open_window("u").kind == "none"
         out = capsys.readouterr()
         assert "no window could be opened" in out.err
-        assert "webview: webview is not here" in out.err
+        assert "browser: browser is not here" in out.err
         assert out.out.strip() == "u"
 
 
