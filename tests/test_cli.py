@@ -148,14 +148,11 @@ class TestHud:
 
 
 class TestHooks:
-    """What Claude Code calls, and the snippet that installs it."""
+    """What Claude Code calls, and the module that installs it."""
 
-    def test_the_snippet_is_printed_not_dispatched(self, invoke):
-        r = invoke("hooks")
-        assert r.code == 0
-        assert r.handed == []
-        assert '"SessionStart"' in r.out
-        assert "claude-voice hook stop" in r.out
+    def test_the_word_reaches_the_hooks_module(self, invoke):
+        r = invoke("hooks", "--install")
+        assert (r.module, r.argv) == ("hooks.py", ["--install"])
 
     @pytest.mark.parametrize("event", sorted(cli.HOOKS))
     def test_each_event_reaches_its_module(self, invoke, event):

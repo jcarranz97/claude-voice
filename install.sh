@@ -1,29 +1,57 @@
 #!/usr/bin/env bash
-# Set up claude-voice: the package, a Piper voice, a config, and the caches.
+# Set up claude-voice: the package, a Piper voice, a config, the caches and
+# the hooks. One command, from anywhere, with no checkout:
+#
+#   curl -fsSL https://raw.githubusercontent.com/jcarranz97/claude-voice/main/install.sh | bash
+#   curl -fsSL .../install.sh | bash -s -- --preset es      Spanish (es_MX)
+#
+# Run from a clone instead and it installs that working tree rather than the
+# published package, which is what you want while changing something:
 #
 #   ./install.sh                 English, default voice
 #   ./install.sh --preset es     Spanish (es_MX)
 #
-# Nothing here is required. `uv tool install claude-voice` gets you the whole
-# program, ear included; this script exists to also fetch a voice and warm the
-# caches, which is the difference between installed and ready.
-#
 # It does NOT install system packages. It checks for them and names the ones
 # you are missing, with the command for your distribution -- running `sudo` on
-# somebody else's behalf is not a thing a setup script should do.
+# somebody else's behalf is not a thing a setup script should do, and a script
+# people pipe into bash is the last place to start.
 #
-# It does NOT edit ~/.claude/settings.json. Hooks are yours to install:
-# run `claude-voice hooks` afterwards and paste the snippet it prints.
+# Working on it? `./install.sh --editable` from your clone installs the
+# checkout itself, so an edit is live with nothing to reinstall.
+#
+# It DOES install the hooks, into ~/.claude/settings.json, merged rather than
+# pasted: the four entries are added and everything already in the file is
+# kept. `--no-hooks` skips it and prints the snippet to paste yourself.
+#
+# It does NOT turn the voice on. That is one word afterwards -- `claude-voice
+# on` -- and it stays a thing you ask for.
+
 set -euo pipefail
 
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Piped from curl there is no file and no directory to be in, so SOURCE is
+# something like /dev/fd/63. A checkout is the case that can be proven -- a
+# pyproject.toml next to the script -- and everything else installs from PyPI.
+SOURCE="${BASH_SOURCE[0]:-}"
+HERE=""
+if [ -n "$SOURCE" ] && [ -f "$SOURCE" ]; then
+  HERE="$(cd "$(dirname "$SOURCE")" && pwd)"
+  [ -f "$HERE/pyproject.toml" ] && [ -d "$HERE/claude_voice" ] || HERE=""
+fi
+
 VOICES="$HOME/.local/share/piper-voices"
 CONFIG_DIR="${CLAUDE_VOICE_HOME:-$HOME/.config/claude-voice}"
 
 PRESET="en"
+HOOKS=1
+EDITABLE=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --preset) PRESET="$2"; shift 2 ;;
+    --no-hooks) HOOKS=0; shift ;;
+    # For working on it: the installed tool runs the checkout itself, so an
+    # edit is live with nothing to reinstall. Only means anything from a
+    # checkout -- there is nothing to point at when this came down a pipe.
+    --editable) EDITABLE=1; shift ;;
     # --no-stt used to install without the ear. There is no such install any
     # more: an environment that had it and an environment that did not looked
     # identical until the microphone was needed.
@@ -32,7 +60,19 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-[ -f "$HERE/claude_voice/presets/$PRESET.toml" ] || { echo "no such preset: $PRESET" >&2; exit 2; }
+if [ "$EDITABLE" = "1" ] && [ -z "$HERE" ]; then
+  echo "--editable needs a checkout to point at; run it from your clone" >&2
+  exit 2
+fi
+
+# The preset is resolved to its voice here, before anything is installed: a
+# name with no voice behind it is an error rather than a quiet fall back to
+# English, and `--preset ex` typed for `es` should cost nothing to find out.
+case "$PRESET" in
+  es) MODEL="es_MX-ald-medium"; MODEL_PATH="es/es_MX/ald/medium" ;;
+  en) MODEL="en_US-amy-medium"; MODEL_PATH="en/en_US/amy/medium" ;;
+  *)  echo "no such preset: $PRESET (en, es)" >&2; exit 2 ;;
+esac
 
 say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 
@@ -83,15 +123,32 @@ fi
 # --- the package -------------------------------------------------------------
 say "Installing claude-voice"
 echo "  voice and ear (faster-whisper and onnxruntime — this one is big)"
-uv tool install --force --refresh "$HERE"
+if [ -n "$HERE" ]; then
+  # A checkout installs itself. --refresh is not optional: uv caches the wheel
+  # it built for a directory, so --force alone reinstalls the cached one and
+  # reports success having changed nothing.
+  if [ "$EDITABLE" = "1" ]; then
+    echo "  editable, from this checkout: $HERE"
+    uv tool install --force --refresh --editable "$HERE"
+  else
+    echo "  from this checkout: $HERE"
+    uv tool install --force --refresh "$HERE"
+  fi
+else
+  echo "  from PyPI"
+  uv tool install --force claude-voice
+fi
+
+# uv puts it here, and the PATH edit it makes to your shell rc does not help
+# the rest of this script.
+export PATH="$HOME/.local/bin:$PATH"
+command -v claude-voice >/dev/null || {
+  echo "  claude-voice is not on PATH — add ~/.local/bin to it and re-run" >&2
+  exit 1
+}
 
 # --- the voice model ---------------------------------------------------------
 MODEL_URL_BASE="https://huggingface.co/rhasspy/piper-voices/resolve/main"
-case "$PRESET" in
-  es) MODEL="es_MX-ald-medium"; MODEL_PATH="es/es_MX/ald/medium" ;;
-  *)  MODEL="en_US-amy-medium"; MODEL_PATH="en/en_US/amy/medium" ;;
-esac
-
 say "Fetching the Piper voice ($MODEL)"
 mkdir -p "$VOICES"
 if [ -f "$VOICES/$MODEL.onnx" ]; then
@@ -144,16 +201,27 @@ say "Building the acknowledgement and tick sounds"
 claude-voice build-acks  || true
 claude-voice build-ticks || true
 
+# --- the hooks ---------------------------------------------------------------
+# Merged, not pasted: the four entries are added and whatever else is hooked
+# in that file stays. Already installed, it says so and changes nothing.
+if [ "$HOOKS" = "1" ]; then
+  say "Installing the hooks"
+  claude-voice hooks --install || {
+    echo "  could not merge them — paste them yourself:" >&2
+    claude-voice hooks >&2 || true
+  }
+else
+  say "Hooks: skipped (--no-hooks)"
+  claude-voice hooks
+fi
+
 say "Done."
 cat <<EOF
 
-  1. Install the hooks:   claude-voice hooks
-     (paste the snippet into ~/.claude/settings.json)
-     Already had them? Print it again anyway — the snippet gains hooks over
-     time, and \`claude-voice doctor\` names the one you are missing.
+  Two words away from working:
 
-  2. Turn the voice on:   claude-voice on
-  3. Watch it work:       claude-voice hud
+      claude-voice on         turn the voice on (off is the default, always)
+      claude-voice            start a session — the HUD opens with it
 
   A second language, later, without reinstalling anything:
       claude-voice lang --fetch es    # download its voice and cache its acks
@@ -163,7 +231,6 @@ cat <<EOF
   Worth an alias, you will open it a lot:
       echo "alias hud='claude-voice hud'" >> ~/.bashrc
 
-  The voice stays off until step 2, and off is the default forever after
-  \`claude-voice off\`. While it is off the hook injects nothing, so you spend
-  no tokens on spoken summaries nobody hears.
+  While the voice is off the hook injects nothing, so you spend no tokens on
+  spoken summaries nobody hears.
 EOF

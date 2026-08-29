@@ -24,6 +24,51 @@ And a HUD — a frameless window that shows all of it at a glance, and answers t
 
 Everything runs on your machine. No audio leaves it.
 
+## 🚀 Quickstart
+
+Linux only for now ([why](#where-it-runs)). Three commands.
+
+```bash
+# 1. system packages — yours to install; nothing here runs sudo for you
+sudo apt install alsa-utils pipewire-bin python3-gi gir1.2-webkit2-4.1
+#   Fedora:  sudo dnf install alsa-utils pipewire-utils python3-gobject webkit2gtk4.1
+#   Arch:    sudo pacman -S alsa-utils pipewire python-gobject webkit2gtk-4.1
+
+# 2. everything else: the program, a voice, the config, the hooks
+curl -fsSL https://raw.githubusercontent.com/jcarranz97/claude-voice/main/install.sh | bash
+#   ... | bash -s -- --preset es      for Spanish (es_MX)
+
+# 3. turn the voice on — off is the default, always
+claude-voice on
+```
+
+Then start your session with `claude-voice` instead of `claude`:
+
+```bash
+claude-voice                 # opens the HUD, and gives the ear somewhere to type
+claude-voice --model opus    # arguments go straight through to claude
+```
+
+That is all of it. No clone, no tmux, no configuration to write first, and nothing to paste into `~/.claude/settings.json` — the script merges the four hooks in and keeps whatever was already there.
+
+Two things it deliberately does not do: install system packages, which is step 1 above and stays yours to run, and turn the voice on, which is step 3 and stays a thing you ask for.
+
+When something is wrong, `claude-voice doctor` says what — it checks the voice model, the audio session, and every hook.
+
+| If you want | Go to |
+|---|---|
+| what each install step actually does | [Install, in detail](#install) |
+| the commands you will use daily | [Running it](#running) |
+| the window, dictation, conversation mode | [The HUD](#hud) |
+| to change the voice, language or panels | [Configuration](#config) |
+| it installed but says nothing | [Troubleshooting](#troubleshooting) |
+| why any of it is built this way | [Why the design is the way it is](#design) |
+| to change the code | [Development](#development) |
+
+---
+
+<a id="screenshots"></a>
+
 ## ✨ What it looks like
 
 The reactor carries the state, and only the state: the instrument panel around it never changes colour, because a window whose chrome dims when nothing is happening reads as a window that is broken.
@@ -66,140 +111,18 @@ There is a second surface for the same HUD, drawn out of ring glyphs in a termin
 
 Both read the same module, so they cannot disagree about what is on screen — only about how it is drawn.
 
-## 💻 Where it runs
-
-| OS | Supported | Notes |
-|---|:---:|---|
-| 🐧 **Linux** | ✅ | PipeWire for capture, PulseAudio or ALSA for playback; X11 and Wayland both |
-| 🍎 **macOS** | ❌ | not yet — no CoreAudio capture path, and no window |
-| 🪟 **Windows** | ❌ | not yet — same, plus no systemd for the microphone watchdog |
-
-Linux only for now, and not by preference. The parts that are tied to it are the ones that touch the machine directly: PipeWire and ALSA for capture, `/proc` and `/sys` for the system and GPU meters, systemd for the microphone watchdog, and WebKitGTK for the window. None of that is unportable in principle; none of it is written yet.
-
-| Runtime | Supported | Notes |
-|---|:---:|---|
-| 🤖 **Claude Code** | ✅ | hooks for the voice, a wrapped pty for dictation |
-| 🧩 **OpenCode** | 🚧 | planned |
-| 🧩 other agent runtimes | 🚧 | planned |
-
-The voice attaches through Claude Code's hooks — `SessionStart`, `UserPromptSubmit`, `MessageDisplay` and `Stop` — and dictation delivers into the pty that `claude-voice run` holds open. The delivery half is already runtime-agnostic: the wrapper never inspects what it started, so `claude-voice run <anything>` gives that thing the ear. Nothing below the hook layer is Claude Code's either — the synthesis, the ear, the HUD and the state files are all agnostic already, so a second runtime is a matter of another way in, not another implementation.
-
-### Do I have to run Claude Code inside tmux?
-
-**No.** Start the session with `claude-voice` instead of `claude` and everything works in whatever terminal you already use — GNOME Terminal, Konsole, kitty, Alacritty, the one in VS Code.
-
-If you *like* tmux, keep it: run the same command inside a pane. A wrapper in a pane is still a wrapper, its pty is inside that pane, and delivery does not go through tmux at all. tmux stops being a requirement without becoming a problem.
-
-```bash
-claude-voice                         # the ear works, the HUD opens if none is up
-claude-voice --model opus            # arguments are passed straight through
-claude-voice run claude              # the same thing, spelled out
-```
-
-**The bare name is the session.** `claude-voice` with nothing after it is `claude-voice run claude`, because starting a session is the thing you type every day and two words for it is one too many. Anything beginning with a dash belongs to claude, since no subcommand here starts with one: `claude-voice --resume`, `claude-voice -c`, `claude-voice --model opus`. Everything else is a verb of ours — `on`, `off`, `status`, `hud`, `dictate`, `doctor` — and they are typed in full, `status` included; the bare name starts a session rather than reporting on one.
-
-Arguments are handed to the child untouched, so `--resume`, `-c`, `--add-dir` and anything Claude Code grows later work without this knowing they exist. That is why the wrapper has no flags of its own beyond `--sessions` — one more would collide the day the child grew the same name. `run` is the long form and takes any command at all, not just claude: `claude-voice run <anything>` gives that thing the ear, and `claude-voice run -- claude --sessions` is how you would pass down the one name that is taken.
-
-| | Works without tmux? | |
-|---|:---:|---|
-| speaking, narration, the acknowledgement, the heartbeat | ✅ | works in any terminal, always did |
-| the HUD — reactor, meters, history, agents | ✅ | |
-| `d` dictate, `c` conversation mode | ✅ | inside a session started with `run` |
-| `f` focus — mute every session but one | ✅ | filed under the pty instead of the pane |
-| `t` switch which session receives dictation | ✅ | it lists the sessions `run` started |
-
-**Why a wrapper and not something cleverer.** There is no way into a session that is already running: its stdin belongs to the terminal emulator, which holds the pty master, and writing to `/dev/pts/N` paints the screen rather than feeding the program. `TIOCSTI` was the old trick and the kernel disabled it in 6.2 — and even alive it only ever reached the caller's *own* controlling terminal, which a dictation process never is. `ydotool`, `wtype` and `xdotool` type into whichever window has focus, which is not a session and cannot be checked, and they want uinput permissions to do it. Terminal remote control is real but narrow: WezTerm out of the box, kitty and Konsole with configuration, nothing at all from GNOME Terminal, Alacritty or foot.
-
-So the text has to come from something that was present at launch. `claude-voice run` forks the real command onto a pty it holds the master of and pumps bytes both ways; writing into that master is indistinguishable from typing, because it is the same file the keyboard's bytes travel down. It is what tmux does, minus living in tmux. The cost is a longer word on the command line — `claude-voice` where you used to type `claude` — alias it away if you like.
-
-**One HUD, however many sessions.** `run` opens a window only if none is open, so the second and third terminals attach to the first one's. `claude-voice hud` still opens it explicitly if you would rather do that first.
-
 ---
 
-## 🧭 Why the design is the way it is
+<a id="install"></a>
 
-Most "make the LLM talk" setups read the response aloud and get abandoned in a
-week. Markdown, diffs and file paths are unlistenable, and nobody wants to hear
-"slash home slash user slash repos". The decisions that make this one liveable:
-
-**It speaks the model's own summary, never the response.** While the voice is
-on, a hook injects an instruction telling the model to end each response with
-`<!-- TTS: one short spoken sentence -->`. That marker is what gets spoken. No
-marker, no sound. The model writes for the ear on purpose — result, not
-procedure; "the config file", not the path.
-
-**A summary of an answer is not an answer.** Writing for the ear pulls towards
-the gist, and the gist is wrong when the question had an exact answer in it.
-Ask which services failed to start and the screen lists three names while the
-voice says "three, one more than yesterday" — true, and useless to somebody who
-asked *which*. So the instruction overrides its own word limit for a concrete
-answer: a number, a name, a short list, a yes or no gets said out loud, at
-whatever length that takes. Past six items it says how many, names the first
-few, and hands the rest to the screen — the one thing a screen is better at.
-
-**The switch controls both ends, which is what makes it cheap.** While the
-voice is off the hook injects nothing, so the model never writes the marker and
-you spend no tokens on spoken summaries nobody will hear. Turning it on is what
-makes the instruction appear.
-
-**One audio queue, one player.** Acknowledgement, narration, final answer and
-tick all enqueue and return immediately — a slow hook stalls the session. A
-single locked player process plays them in order, one at a time.
-
-**The acknowledgement is shown the last few turns, not just the prompt.** The
-line spoken the instant you hit enter comes from its own small model call, and
-that call used to see one thing: the sentence just submitted. Handed six words
-it can only hand six back, so "try it again with the flag" came back as
-"Retrying with the flag" — a sentence with no content in it. Worse, a word
-dictation got wrong was repeated with total confidence, because there was
-nothing to notice it against. It now reads the last `ack.context` turns of the
-spoken log first, which is enough to name the actual work and to quietly read
-"bump" where the microphone heard "pump".
-
-**And it decides whether to speak at all.** Say hello and the answer arrives in
-about the time an acknowledgement of it takes to play, so you were told twice
-that nothing was happening. The same call now answers `SILENT` for anything it
-could simply answer — a greeting, a yes or no, a question with no work behind
-it — and nothing plays: not the line, not the cached phrase. What still gets an
-acknowledgement is the turn that would otherwise open with a minute of silence,
-which is the turn it was written for. The test is how long the *answer* takes,
-not how short the request was: "run the tests" is three words and several
-minutes. A failed call is not a decline — if the model times out the cached
-phrase plays as before. `ack.skip_quick = false` acknowledges every prompt.
-
-**Per session, except what is genuinely shared.** You will have several
-sessions open, and a machine can be running a bot on the same hooks. What a
-*session* is doing — thinking, done — is one file each, and so are the
-heartbeat's pidfiles; otherwise the first window to finish writes "ready" over
-everyone and its `Stop` hook kills the tick of a window that is still working.
-What the *speaker* is doing stays global, because there is one pair of them.
-The HUD reads the session it is pointed at and lays the speaker over it.
-
-**Foreign technical terms get their own phonemizer.** espeak takes one language
-per utterance, so in Spanish "merge" comes out MER-je and "queue" becomes
-KE-u-e. The primary language phonemizes the whole line (correct prosody,
-correct word boundaries), then the configured foreign terms are re-phonemized
-and spliced in. Piper voices share one IPA alphabet, so it works; the acoustic
-model never trained on those phonemes, so they come out accented — which is
-exactly how a bilingual developer actually says them.
-
-**Silence detection is not enough for turn-taking.** A fixed silence threshold
-forces a choice between cutting people off and being slow: at 600 ms, LiveKit's
-open benchmark measures 21.7% mid-sentence cuts, and you need 1600 ms to reach
-5%. Conversation mode runs Silero VAD per 32 ms frame, and when it hears
-silence, asks a small model whether the phrase *sounds finished*.
-
-**It fails silent, always.** A broken voice must never break coding.
-
----
-
-## 📦 Install
+## 📦 Install, in detail
 
 ### 1. System packages
 
 Nothing here is installed for you — these are your package manager's, and a
 script that runs `sudo` on your behalf is not a thing this project does.
-`install.sh` checks for them and tells you which are missing.
+The script checks for them and names the ones you are missing, with the
+command for your distribution, before it does anything else.
 
 Python is **not** among them: [uv](https://docs.astral.sh/uv/) brings its own.
 
@@ -230,49 +153,54 @@ tmux is deliberately absent from that list. Dictation types into a session
 started with `claude-voice`, which needs nothing installed — see
 [Do I have to run Claude Code inside tmux?](#do-i-have-to-run-claude-code-inside-tmux)
 
-### 2. The program
+### 2. Everything else
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jcarranz97/claude-voice/main/install.sh | bash
+```
+
+One command, from any directory, with nothing cloned. It installs `uv` if you do not have it, installs the program, downloads a Piper voice, writes a starter config, synthesizes the cached acknowledgements and the heartbeat sounds, and merges the hooks into `~/.claude/settings.json`. Everything it does is to your home directory; it never asks for `sudo`, which is why step 1 is a step of yours.
+
+```bash
+curl -fsSL .../install.sh | bash -s -- --preset es    # Spanish (es_MX)
+curl -fsSL .../install.sh | bash -s -- --no-hooks     # print them, do not install them
+```
+
+Run it again whenever you like: an existing config is left alone, a voice already downloaded is not fetched twice, and hooks already installed are reported rather than added again.
+
+**The program on its own**, if you would rather do the rest by hand:
 
 ```bash
 uv tool install claude-voice
 ```
 
-That is the whole program, voice and ear both. It is an application on your machine, not a checkout: nothing is left pointing at a source tree, and you can use it in any directory. Installing from a checkout instead of PyPI changes nothing about that — it is still a copy, so [step 5](#5-installing-it-again-from-your-own-checkout) is how you replace it later.
+That is the whole program, voice and ear both. It is an application on your machine, not a checkout: nothing is left pointing at a source tree, and you can use it in any directory. What it does *not* get you is a voice — Piper does not ship one inside the package, and without one there is nothing to speak with. `claude-voice lang --fetch en` downloads it, which is the part of the script worth having.
 
 **There is nothing behind a flag.** The ear used to be an `stt` extra, and `claude-voice[stt]` still works so that anything written down against it keeps working — it just installs what the bare name installs. The extra bought a smaller install and sold a failure worth more than the disk it saved: extras are not remembered across reinstalls, so one that forgot to name it took the microphone away silently, and the program went on speaking until the next time you pressed `c` and it said there was no module named faster_whisper.
 
-### 3. A voice
-
-It does not arrive with one, and a voice is what makes it useful. The script
-fetches one, writes a starter config and warms the caches — and installs `uv`
-first if you do not have it:
+**From a clone**, which installs the working tree instead of the published package, and says which it did:
 
 ```bash
 git clone https://github.com/jcarranz97/claude-voice
 cd claude-voice
-./install.sh                 # English
-./install.sh --preset es     # Spanish (es_MX)
+./install.sh                 # a copy of the tree, as it is right now
+./install.sh --editable      # ... or the tree itself, edits and all
 ```
 
-One language is enough to start; a second one is two files, later, with no
-reinstall: `claude-voice lang --fetch es`.
+`--editable` is the one to use if you are going to change something — see [Development](#development).
 
-### 4. The hooks
+### 3. The hooks
 
-It does **not** touch your Claude settings — hooks are yours to install:
+The script installs them. It **merges** rather than pastes: the four entries are added to `~/.claude/settings.json`, everything already in that file stays, and the copy it replaced is kept next to it with a timestamp. An event already hooked to us is left exactly as it is, so running it again after an upgrade adds only what is new. A settings file it cannot parse is refused rather than repaired — it prints the snippet instead and changes nothing.
+
+Doing it yourself is still a supported path, and the only one for a project's `.claude/settings.json`:
 
 ```bash
-claude-voice hooks           # prints the snippet
+claude-voice hooks              # print the snippet, paste it yourself
+claude-voice hooks --install    # merge it into ~/.claude/settings.json
 ```
 
-Paste it into the `"hooks"` block of `~/.claude/settings.json` (or a project's
-`.claude/settings.json`), then:
-
-```bash
-claude-voice on              # off is the default, always
-claude-voice hud             # the status window
-```
-
-Updating an existing install? Print the snippet again and compare — it gains hooks over time, and a missing one costs you a feature rather than breaking the voice. `claude-voice doctor` names the one you are missing and what it does.
+Updating an existing install? Run `--install` again — the snippet gains hooks over time, and a missing one costs you a feature rather than breaking the voice. `claude-voice doctor` names the one you are missing and what it does.
 
 <details>
 <summary>What the hooks do</summary>
@@ -287,7 +215,9 @@ Updating an existing install? Print the snippet again and compare — it gains h
 The commands carry no paths, so reinstalling or upgrading does not break them.
 Older installs wrote an interpreter and a script path into each one; those
 still work, and `claude-voice doctor` will point them out rather than wait for
-the day a moved checkout makes them go quiet.
+the day a moved checkout makes them go quiet. `--install` counts them as
+installed and leaves them alone — adding ours beside one would run the hook
+twice, which for `Stop` means saying the same line twice.
 
 Drop the `MessageDisplay` entry if you only want the final line spoken.
 
@@ -295,13 +225,24 @@ Drop the `MessageDisplay` entry if you only want the final line spoken.
 
 </details>
 
-### 5. Installing it again, from your own checkout
+### 4. Turning it on
 
-`uv tool install` copies the code into the tool's own environment. It is not a link back to the source tree — that is the point of [The program](#2-the-program) above, and it is also the thing that catches you out the first time you edit the checkout and nothing changes. The installed program keeps running the code it was built from until you replace it, and replacing it takes both flags:
+```bash
+claude-voice on              # off is the default, always
+claude-voice                 # start a session; the HUD opens with it
+```
+
+The installer does not do this one. Off is the default the whole program is built around — while it is off the hook injects nothing, so a machine that installed this and never asked for it spends no tokens and makes no sound.
+
+### Installing it again, from your own checkout
+
+`uv tool install` copies the code into the tool's own environment. It is not a link back to the source tree — that is the point of [Everything else](#2-everything-else) above, and it is also the thing that catches you out the first time you edit the checkout and nothing changes. The installed program keeps running the code it was built from until you replace it, and replacing it takes both flags:
 
 ```bash
 uv tool install --force --refresh "$HOME/repos/claude-voice"   # wherever yours lives
 ```
+
+None of this applies to an `--editable` install, which is a pointer at your working tree rather than a copy of it — [Development](#development) is where that lives, and it is the better answer if you are changing the code rather than installing it once.
 
 `--refresh` is the one that matters and the one everybody leaves out. uv caches the wheel it built for a directory, so `--force` on its own reinstalls that cached wheel — your edits are not in it. What makes this worth a section of its own is that nothing complains: the command prints `Installed 1 executable: claude-voice` and exits zero, having installed the same code as before. Without `--force` you get the identical misleading success.
 
@@ -317,6 +258,8 @@ Silence means the install matches your working tree, and the command above is th
 
 ---
 
+<a id="running"></a>
+
 ## ▶️ Running it
 
 There are **two separate things**, and confusing them is the usual first
@@ -327,15 +270,9 @@ stumble:
 | **The voice** (speaking, narration, tick) | Claude Code, via the hooks | inside your Claude session — but only while a HUD is open |
 | **The HUD** | **you**, or the first session you start | a long-lived process of its own, one for every session |
 
-The short version of all of it:
-
-```bash
-claude-voice
-```
-
-That starts the session, opens a HUD if none is open, and gives the ear
-somewhere to type. Run it in a second terminal and the second session attaches
-to the same window — there is only ever one.
+`claude-voice` starts the session, opens a HUD if none is open, and gives the
+ear somewhere to type. Run it in a second terminal and the second session
+attaches to the same window — there is only ever one.
 
 The HUD is the application. While one is open, the hooks speak; while none is,
 nothing of ours runs at all — nothing spoken, no acknowledgement, no heartbeat,
@@ -351,9 +288,6 @@ last window going away.
 
 Closing does not turn the voice **off**, it suspends it. Open a HUD again and it
 picks up where the switch left it, with no keys pressed.
-
-Install the hooks, run `claude-voice on`, open a HUD, and the next thing you say
-to Claude gets spoken back.
 
 ### Day to day
 
@@ -394,7 +328,7 @@ speech-to-text pieces as notes rather than failures:
 [  ok  ] piper-tts — importable
 [  ok  ] voice model — en_US-amy-medium.onnx (63 MB)
 [ FAIL ] hook Stop — points at a missing file: /old/path/speak.py
-         fix: claude-voice hooks   (the checkout moved)
+         fix: claude-voice hooks   (the checkout moved — replace the old line)
 [ note ] switch — off
          fix: claude-voice on
 ```
@@ -435,6 +369,8 @@ means nothing speaks anywhere; the HUD says so on its bottom line and `f`
 clears it. And because pane ids belong to a tmux server, a focus set under a
 server that has since been restarted is ignored rather than applied to whatever
 pane inherited the number.
+
+<a id="hud"></a>
 
 ### 🖥️ The HUD
 
@@ -781,6 +717,8 @@ having it at all.
 
 ---
 
+<a id="config"></a>
+
 ## ⚙️ Configuration
 
 Everything lives in `~/.config/claude-voice/config.toml`. Values fall back, key
@@ -929,6 +867,8 @@ product names, acronyms — where you write the IPA by hand.
 
 ---
 
+<a id="troubleshooting"></a>
+
 ## 🩺 Troubleshooting
 
 Start with `claude-voice doctor` — it covers most of what follows. The rest is
@@ -948,9 +888,10 @@ for when it says everything is fine and you still hear nothing.
 - `audio=False` — no PipeWire/PulseAudio session. Expected over plain SSH and
   in systemd services; there is nothing to play through.
 - No line at all — the `Stop` hook is not installed or points at a bad path.
-  Re-run `claude-voice hooks` and compare.
+  `claude-voice hooks --install` adds what is missing; a hook frozen on an old
+  file path counts as installed, so that one is taken out by hand.
 
-**Edits to the checkout change nothing.** The install is a copy, not a link, and it keeps running the code it was built from. `uv tool install --force --refresh "$HOME/repos/claude-voice"` puts your working tree back in charge. Both flags: `--force` alone reinstalls uv's cached wheel and reports success while changing nothing. [Installing it again, from your own checkout](#5-installing-it-again-from-your-own-checkout) has the rest, including the one-line check for whether the two differ at all.
+**Edits to the checkout change nothing.** The install is a copy, not a link, and it keeps running the code it was built from. `uv tool install --force --refresh "$HOME/repos/claude-voice"` puts your working tree back in charge. Both flags: `--force` alone reinstalls uv's cached wheel and reports success while changing nothing. [Installing it again, from your own checkout](#installing-it-again-from-your-own-checkout) has the rest, including the one-line check for whether the two differ at all.
 
 **The HUD dies with `NameError` or `AttributeError`.** You are running a stale
 copy from an old path. This is what an alias frozen on `python .../hud.py`
@@ -1008,6 +949,137 @@ It caps itself, or `claude-voice silence` ends it now.
 
 ---
 
+<a id="where-it-runs"></a>
+
+## 💻 Where it runs
+
+| OS | Supported | Notes |
+|---|:---:|---|
+| 🐧 **Linux** | ✅ | PipeWire for capture, PulseAudio or ALSA for playback; X11 and Wayland both |
+| 🍎 **macOS** | ❌ | not yet — no CoreAudio capture path, and no window |
+| 🪟 **Windows** | ❌ | not yet — same, plus no systemd for the microphone watchdog |
+
+Linux only for now, and not by preference. The parts that are tied to it are the ones that touch the machine directly: PipeWire and ALSA for capture, `/proc` and `/sys` for the system and GPU meters, systemd for the microphone watchdog, and WebKitGTK for the window. None of that is unportable in principle; none of it is written yet.
+
+| Runtime | Supported | Notes |
+|---|:---:|---|
+| 🤖 **Claude Code** | ✅ | hooks for the voice, a wrapped pty for dictation |
+| 🧩 **OpenCode** | 🚧 | planned |
+| 🧩 other agent runtimes | 🚧 | planned |
+
+The voice attaches through Claude Code's hooks — `SessionStart`, `UserPromptSubmit`, `MessageDisplay` and `Stop` — and dictation delivers into the pty that `claude-voice run` holds open. The delivery half is already runtime-agnostic: the wrapper never inspects what it started, so `claude-voice run <anything>` gives that thing the ear. Nothing below the hook layer is Claude Code's either — the synthesis, the ear, the HUD and the state files are all agnostic already, so a second runtime is a matter of another way in, not another implementation.
+
+### Do I have to run Claude Code inside tmux?
+
+**No.** Start the session with `claude-voice` instead of `claude` and everything works in whatever terminal you already use — GNOME Terminal, Konsole, kitty, Alacritty, the one in VS Code.
+
+If you *like* tmux, keep it: run the same command inside a pane. A wrapper in a pane is still a wrapper, its pty is inside that pane, and delivery does not go through tmux at all. tmux stops being a requirement without becoming a problem.
+
+```bash
+claude-voice                         # the ear works, the HUD opens if none is up
+claude-voice --model opus            # arguments are passed straight through
+claude-voice run claude              # the same thing, spelled out
+```
+
+**The bare name is the session.** `claude-voice` with nothing after it is `claude-voice run claude`, because starting a session is the thing you type every day and two words for it is one too many. Anything beginning with a dash belongs to claude, since no subcommand here starts with one: `claude-voice --resume`, `claude-voice -c`, `claude-voice --model opus`. Everything else is a verb of ours — `on`, `off`, `status`, `hud`, `dictate`, `doctor` — and they are typed in full, `status` included; the bare name starts a session rather than reporting on one.
+
+Arguments are handed to the child untouched, so `--resume`, `-c`, `--add-dir` and anything Claude Code grows later work without this knowing they exist. That is why the wrapper has no flags of its own beyond `--sessions` — one more would collide the day the child grew the same name. `run` is the long form and takes any command at all, not just claude: `claude-voice run <anything>` gives that thing the ear, and `claude-voice run -- claude --sessions` is how you would pass down the one name that is taken.
+
+| | Works without tmux? | |
+|---|:---:|---|
+| speaking, narration, the acknowledgement, the heartbeat | ✅ | works in any terminal, always did |
+| the HUD — reactor, meters, history, agents | ✅ | |
+| `d` dictate, `c` conversation mode | ✅ | inside a session started with `run` |
+| `f` focus — mute every session but one | ✅ | filed under the pty instead of the pane |
+| `t` switch which session receives dictation | ✅ | it lists the sessions `run` started |
+
+**Why a wrapper and not something cleverer.** There is no way into a session that is already running: its stdin belongs to the terminal emulator, which holds the pty master, and writing to `/dev/pts/N` paints the screen rather than feeding the program. `TIOCSTI` was the old trick and the kernel disabled it in 6.2 — and even alive it only ever reached the caller's *own* controlling terminal, which a dictation process never is. `ydotool`, `wtype` and `xdotool` type into whichever window has focus, which is not a session and cannot be checked, and they want uinput permissions to do it. Terminal remote control is real but narrow: WezTerm out of the box, kitty and Konsole with configuration, nothing at all from GNOME Terminal, Alacritty or foot.
+
+So the text has to come from something that was present at launch. `claude-voice run` forks the real command onto a pty it holds the master of and pumps bytes both ways; writing into that master is indistinguishable from typing, because it is the same file the keyboard's bytes travel down. It is what tmux does, minus living in tmux. The cost is a longer word on the command line — `claude-voice` where you used to type `claude` — alias it away if you like.
+
+**One HUD, however many sessions.** `run` opens a window only if none is open, so the second and third terminals attach to the first one's. `claude-voice hud` still opens it explicitly if you would rather do that first.
+
+---
+
+<a id="design"></a>
+
+## 🧭 Why the design is the way it is
+
+Most "make the LLM talk" setups read the response aloud and get abandoned in a
+week. Markdown, diffs and file paths are unlistenable, and nobody wants to hear
+"slash home slash user slash repos". The decisions that make this one liveable:
+
+**It speaks the model's own summary, never the response.** While the voice is
+on, a hook injects an instruction telling the model to end each response with
+`<!-- TTS: one short spoken sentence -->`. That marker is what gets spoken. No
+marker, no sound. The model writes for the ear on purpose — result, not
+procedure; "the config file", not the path.
+
+**A summary of an answer is not an answer.** Writing for the ear pulls towards
+the gist, and the gist is wrong when the question had an exact answer in it.
+Ask which services failed to start and the screen lists three names while the
+voice says "three, one more than yesterday" — true, and useless to somebody who
+asked *which*. So the instruction overrides its own word limit for a concrete
+answer: a number, a name, a short list, a yes or no gets said out loud, at
+whatever length that takes. Past six items it says how many, names the first
+few, and hands the rest to the screen — the one thing a screen is better at.
+
+**The switch controls both ends, which is what makes it cheap.** While the
+voice is off the hook injects nothing, so the model never writes the marker and
+you spend no tokens on spoken summaries nobody will hear. Turning it on is what
+makes the instruction appear.
+
+**One audio queue, one player.** Acknowledgement, narration, final answer and
+tick all enqueue and return immediately — a slow hook stalls the session. A
+single locked player process plays them in order, one at a time.
+
+**The acknowledgement is shown the last few turns, not just the prompt.** The
+line spoken the instant you hit enter comes from its own small model call, and
+that call used to see one thing: the sentence just submitted. Handed six words
+it can only hand six back, so "try it again with the flag" came back as
+"Retrying with the flag" — a sentence with no content in it. Worse, a word
+dictation got wrong was repeated with total confidence, because there was
+nothing to notice it against. It now reads the last `ack.context` turns of the
+spoken log first, which is enough to name the actual work and to quietly read
+"bump" where the microphone heard "pump".
+
+**And it decides whether to speak at all.** Say hello and the answer arrives in
+about the time an acknowledgement of it takes to play, so you were told twice
+that nothing was happening. The same call now answers `SILENT` for anything it
+could simply answer — a greeting, a yes or no, a question with no work behind
+it — and nothing plays: not the line, not the cached phrase. What still gets an
+acknowledgement is the turn that would otherwise open with a minute of silence,
+which is the turn it was written for. The test is how long the *answer* takes,
+not how short the request was: "run the tests" is three words and several
+minutes. A failed call is not a decline — if the model times out the cached
+phrase plays as before. `ack.skip_quick = false` acknowledges every prompt.
+
+**Per session, except what is genuinely shared.** You will have several
+sessions open, and a machine can be running a bot on the same hooks. What a
+*session* is doing — thinking, done — is one file each, and so are the
+heartbeat's pidfiles; otherwise the first window to finish writes "ready" over
+everyone and its `Stop` hook kills the tick of a window that is still working.
+What the *speaker* is doing stays global, because there is one pair of them.
+The HUD reads the session it is pointed at and lays the speaker over it.
+
+**Foreign technical terms get their own phonemizer.** espeak takes one language
+per utterance, so in Spanish "merge" comes out MER-je and "queue" becomes
+KE-u-e. The primary language phonemizes the whole line (correct prosody,
+correct word boundaries), then the configured foreign terms are re-phonemized
+and spliced in. Piper voices share one IPA alphabet, so it works; the acoustic
+model never trained on those phonemes, so they come out accented — which is
+exactly how a bilingual developer actually says them.
+
+**Silence detection is not enough for turn-taking.** A fixed silence threshold
+forces a choice between cutting people off and being slow: at 600 ms, LiveKit's
+open benchmark measures 21.7% mid-sentence cuts, and you need 1600 ms to reach
+5%. Conversation mode runs Silero VAD per 32 ms frame, and when it hears
+silence, asks a small model whether the phrase *sounds finished*.
+
+**It fails silent, always.** A broken voice must never break coding.
+
+---
+
 ## 📋 Requirements
 
 | | |
@@ -1037,12 +1109,66 @@ own connection, since a late acknowledgement is worse than a vague one.
 
 ---
 
+<a id="development"></a>
+
+## 🛠️ Development
+
+Everything above installs a copy. Changing the code means a checkout and an
+install that points back at it:
+
+```bash
+git clone https://github.com/jcarranz97/claude-voice
+cd claude-voice
+uv sync --group dev          # the test environment
+./install.sh --editable      # a voice, the config, the hooks — running your tree
+```
+
+`--editable` is what makes that different from every other install on this
+page: the tool on your PATH *is* the checkout, so an edit is live the next time
+a hook fires and there is nothing to reinstall. Without it the same script
+installs a copy, and you get to find out the first time you change something
+and nothing happens.
+
+Only the program needs a checkout, so if you already have the rest — a voice, a
+config, the hooks — this is the whole of it:
+
+```bash
+uv tool install --force --refresh --editable .
+```
+
+`--refresh` matters either way: uv caches the wheel it built for a directory,
+and without it a reinstall can quietly keep the old build and leave you testing
+code you did not write.
+
+The three things CI checks, which are three commands with no arguments:
+
+```bash
+uv run --group dev ruff check .          # lint
+uv run --group dev ruff format .         # format, in place
+uv run --group dev pytest                # tests
+```
+
+Coverage is gated at 95% of the package and the matrix is Python 3.11, 3.12 and
+3.13; locally 3.11 is enough. A pull request that adds code adds tests for it.
+
+**[CONTRIBUTING.md](CONTRIBUTING.md) is the rest of it** — what the test
+harness does to keep a suite from opening your microphone, spending your
+tokens or writing to your real config, the three rules every test here follows,
+and the house style for comments.
+
+The map of what lives where is [below](#layout).
+
+---
+
+<a id="layout"></a>
+
 ## 🗂️ Layout
 
 ```
 claude_voice/
   cli.py                the only entry point you need
   config.py             layered configuration
+  hooks.py              the settings.json snippet, and the merge that installs it
   lang.py               the language switch: preset in, preset out
   voice.py              the switch; the UserPromptSubmit hook
   focus.py              which pane owns the voice when several are open

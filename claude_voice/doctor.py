@@ -194,7 +194,7 @@ def check_hooks() -> None:
             BAD,
             "hooks",
             "none installed",
-            "claude-voice hooks   (then paste into ~/.claude/settings.json)",
+            "claude-voice hooks --install",
         )
         return
 
@@ -205,7 +205,7 @@ def check_hooks() -> None:
                 WARN if why else BAD,
                 f"hook {ev}",
                 "not installed" + (f" ({why})" if why else ""),
-                "claude-voice hooks",
+                "claude-voice hooks --install",
             )
             continue
         cmd, label = found[ev]
@@ -217,7 +217,7 @@ def check_hooks() -> None:
                 BAD,
                 f"hook {ev}",
                 f"points at a missing file: {target}",
-                "claude-voice hooks   (the checkout moved)",
+                "claude-voice hooks   (the checkout moved — replace the old line)",
             )
         elif target:
             report(

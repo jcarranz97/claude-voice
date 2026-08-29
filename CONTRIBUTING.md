@@ -17,7 +17,17 @@ That is enough to run the tests. To actually *use* the branch you are working
 on — voice, ear and HUD — install it as a tool from the checkout:
 
 ```sh
-uv tool install --refresh --editable .
+./install.sh --editable
+```
+
+That is the same setup script the README's Quickstart runs, plus `--editable`:
+it installs the checkout itself rather than a copy of it, so an edit is live
+with nothing to reinstall. It also fetches a voice, writes a config and merges
+the hooks, which is what makes a branch actually speak. If you have those
+already, the program alone is:
+
+```sh
+uv tool install --force --refresh --editable .
 ```
 
 `--refresh` matters. Without it a reinstall can quietly keep the old build and

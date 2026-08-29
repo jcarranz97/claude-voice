@@ -77,7 +77,8 @@ Input
   claude-voice listen --check     verify the models and measure latencies
 
 Setup
-  claude-voice hooks              print the settings.json snippet to install
+  claude-voice hooks --install    merge the hooks into ~/.claude/settings.json
+  claude-voice hooks              ... or just print them, to paste yourself
   claude-voice doctor             check the install and say what is wrong
   claude-voice config             what is in effect, and where it came from
   claude-voice build-acks [lang]  re-synthesize the cached acknowledgements
@@ -111,6 +112,7 @@ ROUTES = {
     "mic": ("mic.py", []),
     "monitor": ("monitor.py", []),
     "doctor": ("doctor.py", []),
+    "hooks": ("hooks.py", []),
 }
 
 # What Claude Code calls, keyed by the settings.json event name so that a
@@ -121,39 +123,6 @@ HOOKS = {
     "message-display": ("narrate.py", []),
     "stop": ("speak.py", []),
 }
-
-SNIPPET = """Add this to the "hooks" block of ~/.claude/settings.json
-(or a project's .claude/settings.json):
-
-  "hooks": {
-    "SessionStart": [
-      { "hooks": [
-        { "type": "command", "command": "claude-voice hook session-start" } ] }
-    ],
-    "UserPromptSubmit": [
-      { "matcher": "", "hooks": [
-        { "type": "command", "command": "claude-voice hook user-prompt-submit" } ] }
-    ],
-    "MessageDisplay": [
-      { "hooks": [
-        { "type": "command", "command": "claude-voice hook message-display" } ] }
-    ],
-    "Stop": [
-      { "hooks": [
-        { "type": "command", "command": "claude-voice hook stop" } ] }
-    ]
-  }
-
-The commands carry no paths, so moving or reinstalling claude-voice does not
-break them and this snippet does not need pasting again for that reason.
-
-SessionStart notes which tmux pane the conversation is in, before it has said
-anything: without it the first dictated line of a conversation has no session
-to be filed under and is lost to the history panel.
-
-MessageDisplay drives live narration mid-turn; drop it if you only want the
-final line spoken. The voice stays off until you run: claude-voice on
-"""
 
 
 def _exec(module: str, args) -> NoReturn:
@@ -184,10 +153,6 @@ def main() -> int:
         _exec("voice.py", rest)
     if cmd in ("on", "off", "focus", "mute", "solo", "silence"):
         _exec("voice.py", [cmd, *rest])
-
-    if cmd == "hooks":
-        print(SNIPPET, end="")
-        return 0
 
     if cmd == "hook":
         event = rest[0] if rest else ""
