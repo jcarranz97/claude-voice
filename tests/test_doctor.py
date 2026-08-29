@@ -10,9 +10,11 @@ the suite, and a test that read it would pass or fail depending on their setup.
 import collections
 import sys
 import types
+from types import SimpleNamespace
 
 import pytest
 
+import claude_voice.config as config
 import claude_voice.doctor as doctor
 
 Config = doctor._config.Config
@@ -606,6 +608,7 @@ class TestMain:
         assert checks == [
             "check_python",
             "check_config",
+            "check_provider",
             "check_tts",
             "check_audio",
             "check_hooks",
@@ -627,3 +630,52 @@ class TestMain:
         monkeypatch.setattr(doctor, "check_python", two)
         assert doctor.main() == 1
         assert "2 problems to fix above." in capsys.readouterr().out
+
+
+class TestProvider:
+    """Which engine speaks. Not ready is a note, not a failure -- it falls
+    back to Piper, so the voice still works."""
+
+    def test_piper_is_reported_plainly(self, home, capsys):
+        doctor.check_provider()
+        out = capsys.readouterr().out
+        assert "piper" in out and doctor.BAD not in out
+
+    def test_an_unknown_provider_fails(self, home, write_config, capsys):
+        write_config('[tts]\nprovider = "elevenlabs"\n')
+        doctor.CFG = config.load(reload=True)
+        doctor.check_provider()
+        out = capsys.readouterr().out
+        assert doctor.BAD in out and "elevenlabs" in out
+
+    def test_chatterbox_not_built_is_a_note(self, home, write_config, capsys, monkeypatch):
+        write_config('[tts]\nprovider = "chatterbox"\n')
+        doctor.CFG = config.load(reload=True)
+        monkeypatch.setitem(
+            sys.modules,
+            "chatterbox",
+            SimpleNamespace(available=lambda preset: (False, "no cloned voice yet")),
+        )
+        doctor.check_provider()
+        out = capsys.readouterr().out
+        assert doctor.WARN in out and doctor.BAD not in out
+
+    def test_chatterbox_ready_says_how_many_tags(self, home, write_config, capsys, monkeypatch):
+        write_config('[tts]\nprovider = "chatterbox"\n')
+        doctor.CFG = config.load(reload=True)
+        monkeypatch.setitem(
+            sys.modules, "chatterbox", SimpleNamespace(available=lambda preset: (True, ""))
+        )
+        doctor.check_provider()
+        assert "tags" in capsys.readouterr().out
+
+    def test_a_broken_provider_module_is_survived(self, home, write_config, capsys, monkeypatch):
+        write_config('[tts]\nprovider = "chatterbox"\n')
+        doctor.CFG = config.load(reload=True)
+
+        def boom(preset):
+            raise RuntimeError("half installed")
+
+        monkeypatch.setitem(sys.modules, "chatterbox", SimpleNamespace(available=boom))
+        doctor.check_provider()
+        assert doctor.WARN in capsys.readouterr().out

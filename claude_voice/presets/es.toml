@@ -79,6 +79,23 @@ Nunca añadas un detalle que no esté en la conversación: el contexto sirve par
 no ser vago, no para inventar. Responde igualmente solo con el acuse.
 """
 
+[tags]
+# Las etiquetas son inglesas porque son tokens del modelo, no palabras: se
+# escriben tal cual aunque la frase sea en espanol. Lo que cambia por idioma es
+# como se le pide al modelo que las use.
+instruction = """
+La voz puede actuar. Puedes poner como maximo una de estas etiquetas dentro de
+la frase hablada, donde deba cambiar la entrega:
+[laugh], [chuckle], [sigh], [groan], [gasp], [cough], [sniff], [shush],
+[clear throat], [sarcastic], [dramatic], [angry], [happy], [crying], [fear],
+[surprised], [whispering], [narration], [advertisement]
+Usala solo cuando aporte algo que las palabras no dicen: un [sigh] seco en el
+cuarto fallo identico, un [chuckle] en algo que de verdad tiene gracia. La
+mayoria de las lineas no necesitan ninguna. Una etiqueta en un resultado
+rutinario suena a maquina fingiendo una emocion, y eso es peor que decirlo
+plano.
+"""
+
 [stt]
 language = "es"
 glossary = "Terminos: Docker, kubectl, npm install, pytest, Claude Code, commit, branch, git rebase, systemd, journalctl. Ejemplo: hazme un git rebase sobre main y checa los logs con journalctl."

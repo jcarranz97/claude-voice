@@ -507,3 +507,56 @@ class TestShow:
         config.load(reload=True)
         config.show()
         assert "also on disk" not in capsys.readouterr().out
+
+
+class TestEmotionTags:
+    """Two different questions, deliberately two properties.
+
+    `tag_vocabulary` is what may be *recognised*, and matters most when the
+    provider cannot hear tags. `tags` is what the model may be told to *write*,
+    which is nothing at all unless something can hear it.
+    """
+
+    def test_the_vocabulary_is_known_whoever_is_speaking(self, home):
+        cfg = config.load()
+        assert cfg.get("tts.provider") == "piper"
+        assert "sigh" in cfg.tag_vocabulary
+
+    def test_piper_is_told_about_no_tags(self, home):
+        """Spending prompt on a vocabulary that would be stripped is waste."""
+        cfg = config.load()
+        assert cfg.tags == []
+        assert cfg.tag_instruction == ""
+
+    def test_chatterbox_may_write_them(self, home, write_config):
+        write_config('[tts]\nprovider = "chatterbox"\n')
+        cfg = config.load(reload=True)
+        assert "sigh" in cfg.tags
+        assert "[sigh]" in cfg.tag_instruction
+
+    def test_the_switch_turns_the_writing_off_but_not_the_stripping(self, home, write_config):
+        write_config('[tts]\nprovider = "chatterbox"\n\n[tags]\nenabled = false\n')
+        cfg = config.load(reload=True)
+        assert cfg.tags == []
+        assert "sigh" in cfg.tag_vocabulary
+
+    def test_a_narrowed_vocabulary_replaces_the_default(self, home, write_config):
+        write_config('[tts]\nprovider = "chatterbox"\n\n[tags]\nvocabulary = ["sigh"]\n')
+        cfg = config.load(reload=True)
+        assert cfg.tags == ["sigh"]
+        assert cfg.tag_vocabulary == ["sigh"]
+
+    def test_the_instruction_gains_the_tag_guidance(self, home, write_config):
+        write_config('[tts]\nprovider = "chatterbox"\n\n[instruction]\ntext = "BASE"\n')
+        cfg = config.load(reload=True)
+        assert cfg.instruction.startswith("BASE")
+        assert "[chuckle]" in cfg.instruction
+
+    def test_the_instruction_is_untouched_under_piper(self, home, write_config):
+        write_config('[instruction]\ntext = "BASE"\n')
+        assert config.load(reload=True).instruction == "BASE"
+
+    def test_a_preset_can_write_its_own_tag_wording(self, home, write_config):
+        write_config('[tts]\nprovider = "chatterbox"\n\n[tags]\ninstruction = "Puedes suspirar."\n')
+        cfg = config.load(reload=True)
+        assert cfg.tag_instruction == "Puedes suspirar."

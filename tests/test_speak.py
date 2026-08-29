@@ -634,3 +634,95 @@ class TestMain:
         monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
         assert speak.main() == 0
         assert turn.read("")["state"] == "idle"
+
+
+class TestEmotionTags:
+    """Tags reach a provider that can hear them, and nothing else.
+
+    The stripping is the load-bearing half. Piper has no concept of a tag, so
+    an unstripped one is phonemized as ordinary words and spoken aloud --
+    `[sighs]` comes out as "size".
+    """
+
+    def test_a_known_tag_is_removed(self, cfg):
+        assert speak.strip_tags("Four failures. [sigh] All in the parser.", cfg) == (
+            "Four failures. All in the parser."
+        )
+
+    def test_a_tag_at_either_end_is_removed(self, cfg):
+        assert speak.strip_tags("[whispering] The deploy is running.", cfg) == (
+            "The deploy is running."
+        )
+        assert speak.strip_tags("Done, the tests pass. [chuckle]", cfg) == ("Done, the tests pass.")
+
+    def test_a_two_word_tag_is_removed(self, cfg):
+        assert speak.strip_tags("Right. [clear throat] Where were we.", cfg) == (
+            "Right. Where were we."
+        )
+
+    def test_case_and_padding_do_not_save_a_tag(self, cfg):
+        assert speak.strip_tags("Done. [ Chuckle ]", cfg) == "Done."
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "Version [1.2.3] shipped.",
+            "Use the glob [abc]* here.",
+            "The flag [-v] is on.",
+            "See note [4] below.",
+        ],
+    )
+    def test_brackets_that_are_not_tags_survive(self, cfg, line):
+        """Eating these would be a silent corruption -- a word simply gone."""
+        assert speak.strip_tags(line, cfg) == line
+
+    def test_stripping_leaves_no_double_space(self, cfg):
+        assert "  " not in speak.strip_tags("Done. [sigh] Again.", cfg)
+
+    def test_nothing_to_strip_is_left_alone(self, cfg):
+        assert speak.strip_tags("Done, the tests pass.", cfg) == "Done, the tests pass."
+
+    def test_an_empty_vocabulary_strips_nothing(self, cfg, monkeypatch):
+        monkeypatch.setattr(type(cfg), "tag_vocabulary", property(lambda self: []))
+        assert speak.strip_tags("Done. [sigh]", cfg) == "Done. [sigh]"
+
+
+class TestProviderDispatch:
+    """`synthesize` routes, and always falls back to something that speaks."""
+
+    def test_piper_is_the_default_and_gets_stripped_text(self, cfg, monkeypatch, tmp_path):
+        seen = {}
+        monkeypatch.setattr(speak, "_piper", lambda t, p, c: seen.setdefault("text", t) or True)
+        speak.synthesize("Done. [sigh]", tmp_path / "o.wav", cfg=cfg)
+        assert seen["text"] == "Done."
+
+    def test_chatterbox_receives_the_tag_intact(self, cfg, monkeypatch, tmp_path):
+        seen = {}
+        monkeypatch.setitem(
+            sys.modules,
+            "chatterbox",
+            SimpleNamespace(synthesize=lambda t, p, cfg=None: seen.setdefault("text", t) or True),
+        )
+        speak.synthesize("Done. [sigh]", tmp_path / "o.wav", cfg=cfg, provider="chatterbox")
+        assert seen["text"] == "Done. [sigh]"
+
+    def test_a_failing_provider_falls_back_to_piper_without_the_tag(
+        self, cfg, monkeypatch, tmp_path, capsys
+    ):
+        """A voice that goes silent is worse than one that sounds flat."""
+        monkeypatch.setitem(
+            sys.modules, "chatterbox", SimpleNamespace(synthesize=lambda *a, **k: False)
+        )
+        seen = {}
+        monkeypatch.setattr(speak, "_piper", lambda t, p, c: seen.setdefault("text", t) or True)
+        assert speak.synthesize("Done. [sigh]", tmp_path / "o.wav", cfg=cfg, provider="chatterbox")
+        assert seen["text"] == "Done."
+        assert "falling back" in capsys.readouterr().err
+
+    def test_an_explicit_provider_overrides_the_config(self, cfg, monkeypatch, tmp_path):
+        """How the clone gets a Piper reference without recursing into itself."""
+        cfg.as_dict().setdefault("tts", {})["provider"] = "chatterbox"
+        called = {}
+        monkeypatch.setattr(speak, "_piper", lambda t, p, c: called.setdefault("yes", True))
+        speak.synthesize("Done.", tmp_path / "o.wav", cfg=cfg, provider="piper")
+        assert called == {"yes": True}
