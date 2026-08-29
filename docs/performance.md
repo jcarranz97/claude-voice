@@ -6,6 +6,17 @@ title: Performance
 
 Two choices in this program cost real time and real CPU, and in both cases the obvious-looking option is not the cheap one. This page is the measurements behind them, so the trade is a number rather than an impression.
 
+## The choices, and what you get by default
+
+| Setting | Options | Default | Costs |
+|---|---|---|---|
+| `tts.provider` | `piper` · `chatterbox` | **`piper`** | Chatterbox is 1–2 s slower per line and 640 MB on disk, and can act |
+| `hud.shell` | `auto` · `webview` · `browser` · `none` | **`auto`**, which tries `webview` first | `webview` costs ~7× the CPU of `browser`, and is frameless |
+| `tags.enabled` | `true` · `false` | **`true`** | nothing — tags are only written when a provider can hear them |
+| `tts.threads` | any int | **`8`** | measured optimum; 4 is slower and 32 thrashes |
+
+Every configuration key, with its own default, is in [Settings](reference/settings.md).
+
 !!! note "How these were taken"
 
     One machine — 32 cores, 29 GB, no GPU acceleration in use — with a load average under 4, so nothing here is contention. CPU figures are instantaneous, sampled from `/proc/<pid>/stat` over a four to five second window, not the lifetime average `ps` reports by default. Memory is PSS rather than RSS, so shared libraries are not counted several times over.
@@ -14,8 +25,9 @@ Two choices in this program cost real time and real CPU, and in both cases the o
 
 ## The voice: Piper against Chatterbox
 
-| | Piper | Chatterbox Turbo |
+| | Piper — **the default** | Chatterbox Turbo |
 |---|---|---|
+| `tts.provider` | `"piper"` | `"chatterbox"` |
 | A short line (21 chars) | **~800 ms** | 1.1–1.5 s |
 | A median line (76 chars) | ~800 ms | 2.6–2.8 s |
 | A long line (303 chars) | ~900 ms | 14–15 s |
@@ -72,8 +84,9 @@ Measured over six seeds per tag, counting a hit as at least 0.25 s of extra voic
 
 ## The window: `browser` against `webview`
 
-| | `webview` (WebKitGTK) | `browser` (Chromium `--app`) |
+| | `webview` (WebKitGTK) — **what `auto` picks** | `browser` (Chromium `--app`) |
 |---|---|---|
+| `hud.shell` | `"auto"` or `"webview"` | `"browser"` |
 | CPU, idle **and** busy | **97% of a core** | **14–15%** total |
 | Memory (PSS) | 0.38 GB | 0.44 GB |
 | Processes | 1 | 12 |

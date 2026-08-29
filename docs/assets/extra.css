@@ -153,6 +153,14 @@
   background-color: var(--md-accent-fg-color--transparent);
 }
 
+/* A setting name is one token and reads as gibberish broken across two lines
+ * -- `tts.provide` above `r`. Inline code in a table never wraps mid-token;
+ * the cell gets wider or the table scrolls, both of which are better. */
+.md-typeset table:not([class]) td code,
+.md-typeset table:not([class]) th code {
+  white-space: nowrap;
+}
+
 /* The section rule under an h2 does more for a long page than any colour. */
 .md-typeset h2 {
   padding-bottom: 0.2em;
