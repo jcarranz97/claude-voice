@@ -63,7 +63,23 @@ Every key, its type and its default is in [Settings](reference/settings.md).
 
 ## The four layers
 
-Values fall back **key by key**, so a config that sets one value does not wipe out the rest. Lowest priority first:
+Values fall back **key by key**, so a config that sets one value does not wipe out the rest.
+
+```mermaid
+flowchart BT
+    D["1 · Built-in defaults<br/><i>a complete working English setup</i>"]
+    P["2 · The language pack<br/><i>presets/&lt;lang&gt;.toml, bundled or yours</i>"]
+    C["3 · Your config.toml"]
+    T["4 · [preset.&lt;name&gt;] tables<br/><i>in your config file</i>"]
+    R(["what is in effect"])
+
+    D --> P --> C --> T --> R
+
+    M["the preset marker file<br/><i>written by claude-voice lang, and by l</i>"]
+    M -.->|"outranks general.preset"| R
+```
+
+Lowest priority first:
 
 <div class="annotate" markdown>
 
@@ -83,6 +99,13 @@ And above all four sits `~/.config/claude-voice/preset`, a one-line marker file 
 There is one exception, and it is the reason a language switch used to look broken while everything else worked.
 
 **While the active preset is not the one your config file names, layers 2 and 3 swap.** The language pack outranks your config file, for the keys the pack defines and only those.
+
+```mermaid
+flowchart LR
+    Q{"is the active preset<br/>the one config.toml names?"}
+    Q -->|yes| N["defaults → pack → <b>your config</b> → [preset.x]"]
+    Q -->|"no — you switched language"| I["defaults → <b>your config</b> → pack → [preset.x]<br/><i>for the keys the pack defines, and only those</i>"]
+```
 
 A config file written for Spanish carries Spanish in it — the voice model, the instruction, the acknowledgement phrases. Left on top it would keep speaking Spanish inside the English preset. Your microphone device and your panel position are in no preset, so they never move.
 

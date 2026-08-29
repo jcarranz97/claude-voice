@@ -15,6 +15,17 @@ Four sounds come out of this program, and they are four separate things with fou
 
 All four go through one queue and one player, so they never talk over each other.
 
+```mermaid
+flowchart LR
+    T0(("you hit<br/>enter")) --> ACK["the acknowledgement<br/><i>immediately</i>"]
+    ACK --> TICK["the heartbeat<br/><i>from 1.75s, every 2.45s,<br/>decaying as the turn runs long</i>"]
+    TICK --> NAR["narration<br/><i>between tool calls</i>"]
+    NAR --> FIN["the spoken line<br/><i>at Stop</i>"]
+    FIN --> T1(("silence"))
+```
+
+Each has its own switch, and each can be off without touching the others.
+
 ## The switch
 
 ```bash

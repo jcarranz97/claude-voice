@@ -34,6 +34,27 @@ Everything runs on your machine. No audio leaves it.
 
 </div>
 
+## How it fits together
+
+```mermaid
+flowchart LR
+    You(("you"))
+    CC["Claude Code<br/><i>started with claude-voice</i>"]
+
+    You -->|type| CC
+    You -->|speak| MIC["the ear<br/><i>Whisper + VAD + turn detection,<br/>all local</i>"]
+    MIC -->|"into the running session"| CC
+
+    CC -->|four hooks| CV["claude-voice"]
+    CV --> TTS["the voice<br/><i>Piper, local</i>"]
+    TTS -->|🔊| You
+    CV --> HUD["the HUD<br/><i>state, meters, the spoken log</i>"]
+    HUD -->|👁| You
+    HUD -.->|"no window open,<br/>nothing runs"| CV
+```
+
+Speaking attaches through Claude Code's hooks. Listening goes the other way, into a pty the wrapper holds open — which is why you start the session with `claude-voice` rather than `claude`. [Architecture](architecture.md) draws the whole of it.
+
 ## Quickstart
 
 Linux only for now — see [Platform support](platforms.md). Three commands.

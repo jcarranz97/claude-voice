@@ -25,23 +25,24 @@ theme:
     logo: material/waveform
   favicon: assets/favicon.svg
   palette:
-    # The switch is a real preference, so it starts on the system's and lets
-    # the reader override it in either direction.
+    # `custom` on both, defined in assets/extra.css: a warm grey page and
+    # Claude's clay as the single accent. The switch is a real preference, so
+    # it starts on the system's and lets the reader override it either way.
     - media: "(prefers-color-scheme)"
       toggle:
         icon: material/brightness-auto
         name: Follow the system
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: black
-      accent: amber
+      primary: custom
+      accent: custom
       toggle:
         icon: material/brightness-7
         name: Switch to dark
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: black
-      accent: amber
+      primary: custom
+      accent: custom
       toggle:
         icon: material/brightness-4
         name: Switch to light
@@ -92,7 +93,15 @@ markdown_extensions:
   - pymdownx.keys
   - pymdownx.mark
   - pymdownx.snippets
-  - pymdownx.superfences
+  # Diagrams are authored as ```mermaid fences and rendered by the theme's own
+  # bundled mermaid, which follows the light/dark toggle. Nothing is fetched
+  # from a CDN and no image is committed, so a diagram is edited as text in the
+  # page it explains rather than in whatever drew the PNG.
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.tasklist:

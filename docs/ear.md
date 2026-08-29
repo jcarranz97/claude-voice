@@ -75,6 +75,17 @@ max_secs = 120
 
 ### Delivery is refused unless the target is Claude
 
+```mermaid
+flowchart TB
+    T([transcribed text]) --> A{"is there a session<br/>started through<br/>the wrapper?"}
+    A -->|no| X1["disabled — the microphone<br/>is never opened at all"]
+    A -->|yes| B{"is that session<br/>running claude?"}
+    B -->|no| X2["refused"]
+    B -->|yes| C{"does the text<br/>contain a newline?"}
+    C -->|yes| X3[rejected]
+    C -->|no| D(["written into the pty,<br/>then \r, 150 ms later"])
+```
+
 Sending is refused unless the target session is running `claude`. In a shell, a bad transcription would execute as a command.
 
 With no such session, both modes are **disabled rather than silently useless**. The microphone is not opened at all, the HUD replaces its footer with `⚠ no Claude Code session — dictation disabled`, and pressing ++d++ or ++c++ flashes the same reason instead of recording into a void.

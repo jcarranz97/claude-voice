@@ -1,48 +1,198 @@
-/* The HUD's own palette, borrowed for the docs.
+/* The palette.
  *
- * The reactor is amber when it speaks and cyan when it listens, and those two
- * are the only colours this site adds to Material's defaults. Everything else
- * is left alone deliberately: a documentation theme that disagrees with the
- * product it documents is a small lie, and one that repaints every heading is
- * a maintenance job nobody signed up for. */
+ * Material's stock indigo-on-white says "a MkDocs site" before it says
+ * anything about this program, so both schemes are rebuilt on two colours and
+ * nothing else: a warm grey for the page, and Claude's clay for everything
+ * that is a link, a control or a highlight. One accent, used everywhere, is
+ * the point -- a docs theme with four brand colours in it reads as a theme
+ * rather than as a document.
+ *
+ * The greys are warm on purpose. A neutral grey next to a terracotta accent
+ * goes visibly blue, and the screenshots on these pages are of a dark
+ * HUD, which a cold page fights. */
 
 :root {
-  --cv-amber: #ffb020;
-  --cv-cyan: #35d0d8;
+  --cv-clay: #d97757; /* Claude's own; the dark scheme uses it as-is  */
+  --cv-clay-ink: #b4552f; /* darkened for contrast on a light page       */
+  --cv-clay-lift: #e79070; /* lifted for hover on a dark page             */
+
+  --cv-bone: #faf9f5; /* the light page                              */
+  --cv-bone-sink: #f0eee6; /* cards, quotes, table headers                */
+  --cv-bone-edge: #e4e1d6;
+
+  --cv-ink: #262624; /* the dark page, and light-page text          */
+  --cv-ink-lift: #30302e; /* cards on the dark page                      */
+  --cv-ink-edge: #3d3d3a;
+  --cv-paper: #edeae2; /* dark-page text                              */
+
+  --cv-ok: #5f9e6e;
+  --cv-warn: #c98a2e;
+  --cv-stop: #c46b5c;
 }
 
-[data-md-color-scheme="slate"] {
-  --md-accent-fg-color: var(--cv-amber);
-  --md-typeset-a-color: var(--cv-amber);
-  --md-code-hl-string-color: var(--cv-cyan);
-}
+/* ---------------------------------------------------------------- light -- */
 
 [data-md-color-scheme="default"] {
-  --md-accent-fg-color: #b26a00;
-  --md-typeset-a-color: #b26a00;
+  --md-default-bg-color: var(--cv-bone);
+  --md-default-fg-color: var(--cv-ink);
+  --md-default-fg-color--light: #55534d;
+  --md-default-fg-color--lighter: #8a877e;
+  --md-default-fg-color--lightest: #cbc8bd;
+
+  --md-code-bg-color: var(--cv-bone-sink);
+  --md-code-fg-color: #3a3835;
+
+  --md-typeset-color: var(--cv-ink);
+  --md-typeset-a-color: var(--cv-clay-ink);
+  --md-typeset-mark-color: #f2dcc9;
+
+  --md-footer-bg-color: var(--cv-ink);
+  --md-footer-bg-color--dark: #1c1c1a;
 }
 
-/* Screenshots of a frameless window on a dark desktop need an edge, or they
- * bleed into the page in dark mode and float in white space in light mode. */
+[data-md-color-primary="custom"] {
+  --md-primary-fg-color: var(--cv-ink);
+  --md-primary-fg-color--light: #3d3d3a;
+  --md-primary-fg-color--dark: #1c1c1a;
+  --md-primary-bg-color: var(--cv-bone);
+  --md-primary-bg-color--light: #cbc8bd;
+}
+
+[data-md-color-accent="custom"] {
+  --md-accent-fg-color: var(--cv-clay-ink);
+  --md-accent-fg-color--transparent: rgb(217 119 87 / 10%);
+  --md-accent-bg-color: var(--cv-bone);
+  --md-accent-bg-color--light: var(--cv-bone-sink);
+}
+
+/* ----------------------------------------------------------------- dark -- */
+
+[data-md-color-scheme="slate"] {
+  --md-hue: 40; /* Material derives its greys from this; 40 is warm */
+
+  --md-default-bg-color: var(--cv-ink);
+  --md-default-fg-color: var(--cv-paper);
+  --md-default-fg-color--light: #b8b4a9;
+  --md-default-fg-color--lighter: #86837b;
+  --md-default-fg-color--lightest: #4a4a46;
+
+  --md-code-bg-color: var(--cv-ink-lift);
+  --md-code-fg-color: #ddd9cf;
+
+  --md-typeset-color: var(--cv-paper);
+  --md-typeset-a-color: var(--cv-clay);
+  --md-typeset-mark-color: #4a3527;
+
+  --md-footer-bg-color: #1c1c1a;
+  --md-footer-bg-color--dark: #161615;
+}
+
+[data-md-color-scheme="slate"][data-md-color-primary="custom"] {
+  --md-primary-fg-color: #1f1f1d;
+  --md-primary-fg-color--light: var(--cv-ink-lift);
+  --md-primary-fg-color--dark: #161615;
+  --md-primary-bg-color: var(--cv-paper);
+  --md-primary-bg-color--light: #b8b4a9;
+}
+
+[data-md-color-scheme="slate"][data-md-color-accent="custom"] {
+  --md-accent-fg-color: var(--cv-clay-lift);
+  --md-accent-fg-color--transparent: rgb(217 119 87 / 14%);
+  --md-accent-bg-color: var(--cv-ink);
+  --md-accent-bg-color--light: var(--cv-ink-lift);
+}
+
+/* ------------------------------------------------------------- surfaces -- */
+
+/* The header is the page's own grey rather than a slab of accent: with a
+ * single warm accent, a coloured header spends the whole budget before the
+ * reader reaches a link. */
+.md-header,
+.md-tabs {
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+}
+
+[data-md-color-scheme="default"] .md-header {
+  background-color: var(--cv-bone);
+  color: var(--cv-ink);
+}
+
+[data-md-color-scheme="default"] .md-search__form {
+  background-color: rgb(38 38 36 / 6%);
+}
+
+[data-md-color-scheme="default"] .md-search__form:hover {
+  background-color: rgb(38 38 36 / 10%);
+}
+
+/* Cards, quotes and admonitions sit one step off the page rather than on a
+ * white slab, which is what makes the light scheme read as paper. */
+[data-md-color-scheme="default"] .md-typeset .grid.cards > ul > li,
+[data-md-color-scheme="default"] .md-typeset details,
+[data-md-color-scheme="default"] .md-typeset .admonition {
+  background-color: #fffefb;
+  border-color: var(--cv-bone-edge);
+}
+
+[data-md-color-scheme="slate"] .md-typeset .grid.cards > ul > li,
+[data-md-color-scheme="slate"] .md-typeset details,
+[data-md-color-scheme="slate"] .md-typeset .admonition {
+  background-color: var(--cv-ink-lift);
+  border-color: var(--cv-ink-edge);
+}
+
+.md-typeset .grid.cards > ul > li:hover {
+  border-color: var(--md-accent-fg-color);
+  box-shadow: none;
+}
+
+/* Table headers get the accent, faintly. It is the one place a long reference
+ * page needs a horizon line. */
+.md-typeset table:not([class]) th {
+  white-space: nowrap;
+  background-color: var(--md-accent-fg-color--transparent);
+}
+
+/* The section rule under an h2 does more for a long page than any colour. */
+.md-typeset h2 {
+  padding-bottom: 0.2em;
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+}
+
+/* --------------------------------------------------------------- detail -- */
+
+/* Screenshots of a frameless window need an edge, or they bleed into the page
+ * in dark mode and float in white space in light mode. */
 .md-typeset img[src*="assets/hud-"] {
   border-radius: 0.4rem;
-  box-shadow: 0 0.2rem 1rem rgb(0 0 0 / 35%);
+  box-shadow: 0 0.2rem 1rem rgb(0 0 0 / 30%);
 }
 
-/* The keyboard keys in the HUD tables are read as keys, so they should look
- * like keys rather than like code. */
 .md-typeset kbd {
   font-size: 0.85em;
 }
 
-/* Tables of flags and settings are long and narrow; letting them run to the
- * full column width makes the two-word cells unreadable. */
-.md-typeset table:not([class]) th {
-  white-space: nowrap;
-}
-
 /* The terminal HUD is drawn out of box-drawing glyphs on a character grid, and
- * a proportional fallback font shears it apart. */
+ * ligatures shear it apart. */
 .md-typeset pre code {
   font-variant-ligatures: none;
+}
+
+/* -------------------------------------------------------------- mermaid -- */
+
+/* Material renders mermaid with the site's own palette, so the diagrams follow
+ * the light/dark toggle without anything here. Two things it does not do:
+ *
+ * The fences carry no `classDef` colours. They used to, and it was wrong twice
+ * over -- mermaid's parser rejects `var(` outright, and hanging the colours off
+ * the rendered node's class from CSS means depending on mermaid's internal DOM
+ * and racing its lazy render. A diagram whose meaning lives in its labels and
+ * its arrows does not need a second channel for it.
+ *
+ * A diagram wider than the column scrolls inside itself rather than pushing the
+ * page sideways. */
+
+.md-typeset .mermaid {
+  margin: 1.2em 0;
+  overflow-x: auto;
 }

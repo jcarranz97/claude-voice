@@ -57,7 +57,24 @@ The reactor carries the state, and only the state. The instrument panel around i
 | `LISTENING` | a dashed ring: conversation mode is armed |
 | `VOICE OFF` | the switch is off |
 
-The precedence between them is deliberate: you talking wins over anything Claude is doing; except when nothing is on the other end, which is louder still; agents out replaces `THINKING` with who is doing the thinking; and the voice being off replaces a calm state, but never a live one.
+The precedence between them is deliberate, and it reads as one sentence: you talking wins over anything Claude is doing; except when nothing is on the other end, which is louder still; agents out replaces `THINKING` with who is doing the thinking; and the voice being off replaces a calm state, but never a live one.
+
+```mermaid
+flowchart TB
+    S([what to draw]) --> A{"conversation mode<br/>armed, but nothing<br/>can receive text?"}
+    A -->|yes| A1["NOT LISTENING<br/><i>louder than anything else</i>"]
+    A -->|no| B{"you are<br/>talking?"}
+    B -->|yes| B1[LISTENING]
+    B -->|no| C{"the turn is waiting<br/>on subagents?"}
+    C -->|yes| C1[AGENTS]
+    C -->|no| D{"a turn is<br/>running?"}
+    D -->|yes| D1[THINKING or SPEAKING]
+    D -->|no| E{"the switch<br/>is off?"}
+    E -->|yes| E1[VOICE OFF]
+    E -->|no| F1[READY / STANDING BY]
+```
+
+The last branch is the one that stops the window lying: the voice being off never overwrites a state that is actually happening, because a session that is working while the switch is off is still working.
 
 ### How it follows the voice
 
