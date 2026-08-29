@@ -1,0 +1,59 @@
+# The documentation site: built on every pull request, published from main.
+#
+# Two jobs on purpose. `build` runs everywhere, including on forks, and is the
+# one that fails a pull request -- mkdocs runs with `strict: true`, so a dead
+# cross-reference or a page missing from the nav is a red X rather than a link
+# a reader finds for us later. `deploy` runs only on main and only needs the
+# artefact the first job already produced, so nothing is built twice and a fork
+# never asks for the Pages permissions it cannot have.
+#
+# One-time setup in the repository: Settings -> Pages -> Source: GitHub Actions.
+# There is no gh-pages branch and nothing is committed by this workflow.
+
+name: Docs
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Publishing is not something to do twice at once, and the newer commit is the
+# one that should win -- but a half-finished deployment is worse than a late
+# one, so this queue does not cancel what is already running.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: mkdocs build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          python-version: "3.13"
+      - name: Build the site
+        run: uv run --group docs mkdocs build --strict
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+
+  deploy:
+    name: github pages
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

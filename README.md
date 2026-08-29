@@ -1,6 +1,9 @@
 # claude-voice
 
 [![CI](https://github.com/jcarranz97/claude-voice/actions/workflows/ci.yml/badge.svg)](https://github.com/jcarranz97/claude-voice/actions/workflows/ci.yml)
+[![Docs](https://github.com/jcarranz97/claude-voice/actions/workflows/docs.yml/badge.svg)](https://jcarranz97.github.io/claude-voice/)
+
+**📚 [Documentation](https://jcarranz97.github.io/claude-voice/)** — [tutorials](https://jcarranz97.github.io/claude-voice/tutorials/), [installation](https://jcarranz97.github.io/claude-voice/installation/), [CLI](https://jcarranz97.github.io/claude-voice/reference/cli/), [settings](https://jcarranz97.github.io/claude-voice/reference/settings/).
 
 Give Claude Code a voice, an ear, and a status display — locally, with no
 cloud speech services.
@@ -20,7 +23,7 @@ It hooks into Claude Code and does five things:
 
 And a HUD — a frameless window that shows all of it at a glance, and answers the questions you would otherwise ask by squinting at a terminal: is it listening, is it about to speak, is anything actually running.
 
-![The HUD while Claude is working](docs/hud-thinking.jpg)
+![The HUD while Claude is working](docs/assets/hud-thinking.jpg)
 
 Everything runs on your machine. No audio leaves it.
 
@@ -75,21 +78,21 @@ The reactor carries the state, and only the state: the instrument panel around i
 
 **Speaking.** Amber, and the reactor moves to the voice itself — it swells on a vowel, spikes on a stressed syllable and falls into the gaps between words, so a two-word answer and a long one no longer look the same. The line it is saying is written underneath.
 
-![Speaking](docs/hud-speaking.jpg)
+![Speaking](docs/assets/hud-speaking.jpg)
 
 **Listening.** Conversation mode is armed — the dashed ring — and you are talking right now, with the reactor following how loudly. The microphone badge has its own colour, because the ear being open is not a state of Claude's, and confusing the two is how you end up talking to a window that stopped listening ten minutes ago.
 
-![Listening](docs/hud-listening.jpg)
+![Listening](docs/assets/hud-listening.jpg)
 
 **Armed and quiet.** The same ring, the badge reading `ready to listen`. This is the state that used to be invisible: microphone open, nothing arriving, indistinguishable from the mode being off.
 
-![Conversation mode, waiting](docs/hud-conversation.jpg)
+![Conversation mode, waiting](docs/assets/hud-conversation.jpg)
 
 **How it follows the voice.** The two directions are not the same problem, and only one of them is hard. A line being spoken is a finished file before a sample of it is played, so its shape is known in advance: the player measures it once, publishes the envelope with the moment playback started, and every window draws it off the clock. Nothing is streamed and nothing can drift — a window opened mid-sentence catches up on the right syllable. The microphone has no such luxury, so its level is published as it is heard, about twenty-five times a second, and the reactor rises fast and falls slowly the way an ear does rather than the way a graph does. Both are advisory: a window that cannot read either still animates, it just animates blind, which is what it did before.
 
 **Agents.** Waiting on subagents looks the same as thinking from the inside, but it is not the same thing — if agents are out, the wait has an owner. Each one gets a small reactor of its own, in orbit around the main one, so the count is something you read rather than something you tally; the panel beside it names what each is doing.
 
-![Subagents running](docs/hud-agents.jpg)
+![Subagents running](docs/assets/hud-agents.jpg)
 
 There is a second surface for the same HUD, drawn out of ring glyphs in a terminal, for a machine with no desktop:
 

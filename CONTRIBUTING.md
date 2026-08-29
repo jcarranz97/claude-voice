@@ -78,6 +78,22 @@ Three rules follow from what this package does:
    test.
 3. **Nothing left behind.** No thread, no socket, no file outside the test home.
 
+## The documentation site
+
+The site is MkDocs Material, built from `docs/` with `mkdocs.yml` at the root,
+and published to GitHub Pages from `main`.
+
+```sh
+uv run --group docs mkdocs serve            # live reload at 127.0.0.1:8000
+uv run --group docs mkdocs build --strict   # what CI runs
+```
+
+`--strict` is the gate: a dead cross-reference or a page missing from the nav
+fails the build rather than becoming a broken link a reader finds for us later.
+Every page is in the nav, links between pages are relative and keep the `.md`
+extension so they resolve on GitHub too, and the screenshots in `docs/assets/`
+are shared with this README.
+
 ## Style
 
 Comments here explain *why*, not what, and the modules carry long docstrings

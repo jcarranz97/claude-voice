@@ -1,0 +1,172 @@
+site_name: claude-voice
+site_url: https://jcarranz97.github.io/claude-voice/
+site_description: >-
+  A local voice, an ear and a HUD for Claude Code. Speaking, dictation,
+  conversation mode and a status window — all on your own machine, with no
+  cloud speech services.
+site_author: Juan Carranza
+
+repo_url: https://github.com/jcarranz97/claude-voice
+repo_name: jcarranz97/claude-voice
+edit_uri: edit/main/docs/
+
+copyright: Released under the MIT licence.
+
+# GitHub Pages serves this project at /claude-voice/, and a build that assumes
+# the root produces a site whose every link is one directory too high.
+site_dir: site
+docs_dir: docs
+
+theme:
+  name: material
+  language: en
+  icon:
+    repo: fontawesome/brands/github
+    logo: material/waveform
+  favicon: assets/favicon.svg
+  palette:
+    # `custom` on both, defined in assets/extra.css: a warm grey page and
+    # Claude's clay as the single accent. The switch is a real preference, so
+    # it starts on the system's and lets the reader override it either way.
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Follow the system
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light
+  font:
+    text: Inter
+    code: JetBrains Mono
+  features:
+    - announce.dismiss
+    - content.action.edit
+    - content.code.annotate
+    - content.code.copy
+    - content.tabs.link
+    - content.tooltips
+    - navigation.footer
+    - navigation.indexes
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.sections
+    - navigation.top
+    - navigation.tracking
+    - search.highlight
+    - search.share
+    - search.suggest
+    - toc.follow
+
+extra_css:
+  - assets/extra.css
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      permalink_title: Link to this section
+  - pymdownx.betterem
+  - pymdownx.caret
+  - pymdownx.details
+  # `:material-linux:` and friends. Without this they render as the literal
+  # text, which is how the platform tables shipped the first time. The icons
+  # come out as inline SVG that inherits the surrounding colour, so they follow
+  # the light/dark toggle and cost no request.
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.snippets
+  # Diagrams are authored as ```mermaid fences and rendered by the theme's own
+  # bundled mermaid, which follows the light/dark toggle. Nothing is fetched
+  # from a CDN and no image is committed, so a diagram is edited as text in the
+  # page it explains rather than in whatever drew the PNG.
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+plugins:
+  - search
+  - tags
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/jcarranz97/claude-voice
+      name: claude-voice on GitHub
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/claude-voice/
+      name: claude-voice on PyPI
+
+# A dead link in the docs is a broken build, not a warning nobody reads.
+strict: true
+
+validation:
+  omitted_files: warn
+  absolute_links: warn
+  unrecognized_links: warn
+  anchors: warn
+
+nav:
+  - Overview: index.md
+  - Tutorials:
+      - tutorials/index.md
+      - Your first spoken line: tutorials/first-voice.md
+      - Talking to Claude: tutorials/talking-to-claude.md
+      - Living in the HUD: tutorials/the-hud.md
+      - Making it yours: tutorials/making-it-yours.md
+  - Installation: installation.md
+  - Capabilities:
+      - The voice: voice.md
+      - The ear: ear.md
+      - The HUD: hud.md
+      - Sessions and focus: sessions.md
+      - The spoken log: history.md
+      - Languages: languages.md
+      - Pronunciation: pronunciation.md
+      - The microphone watchdog: microphone.md
+  - Configuring claude-voice: configuration.md
+  - Reference:
+      - CLI: reference/cli.md
+      - Settings: reference/settings.md
+      - Hooks: reference/hooks.md
+      - Keys and files: reference/keys-and-files.md
+      - Modules: reference/modules.md
+  - Understanding:
+      - Design decisions: design.md
+      - Architecture: architecture.md
+      - Security: security.md
+  - Troubleshooting: troubleshooting.md
+  - FAQ: faq.md
+  - Platform support: platforms.md
+  - Contributing: contributing.md
