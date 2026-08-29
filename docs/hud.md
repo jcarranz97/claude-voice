@@ -147,11 +147,19 @@ Not a browser tab. The page opens in one of these, in order:
 
 | shell | | what it is |
 |---|:---:|---|
-| `webview` | :material-star: | WebKitGTK through the system PyGObject — frameless, stays above other windows, paints in a quarter of a second |
-| `browser` | :material-check-bold: | Chrome or Chromium in `--app` mode with a profile of its own, so it is a window and not a tab in the browser you are using |
+| `browser` | :material-star: | Chrome or Chromium in `--app` mode with a profile of its own, so it is a window and not a tab in the browser you are using |
+| `webview` | :material-check-bold: | WebKitGTK through the system PyGObject — frameless, stays above other windows, paints in a quarter of a second |
 | `none` | :material-minus: | print the address and open nothing — for a second screen, or a machine with no desktop |
 
-`auto` tries them in that order. Pin one with `hud.shell` in the config, or for one run with `claude-voice hud --shell browser`.
+`auto` tries them in that order. Pin one with `hud.shell` in the config, or for one run with `claude-voice hud --shell webview`.
+
+!!! info "Why the browser is first, when the frameless window is the nicer object"
+
+    Because we take WebKit's GPU renderer away. `WEBKIT_DISABLE_DMABUF_RENDERER=1` stops it painting a blank white window on NVIDIA, and the price is that it rasterizes the reactor on the CPU: **97% of a core, against 14% for Chromium**, which composites on the GPU and needs no such workaround.
+
+    The HUD is on screen all day by design, so its idle cost is the one cost you pay continuously — on a laptop it is a battery question as much as a speed one. A title bar is not worth seven times the CPU. [Performance](performance.md#the-window-browser-against-webview) has the measurements.
+
+    `webview` is one word away if you want the frameless window and have the headroom, and stays the fallback on a machine with no Chromium at all.
 
 A frameless window has no title bar and no resize grips, so the page lends it both: drag the HUD's own bar to move the window, drag any edge or corner to resize, double-click the bar to maximise, and the `✕` at its right closes the HUD — as do ++q++ and ++escape++.
 

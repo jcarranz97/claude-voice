@@ -186,7 +186,20 @@ def open_window(url: str, argv: list = ()) -> Shell:
             want = argv[i + 1]
     want = want or str(_config.load().get("hud.shell", "auto") or "auto")
 
-    order = [want] if want in SHELLS else ["webview", "browser", "none"]
+    # Browser first, and this is a deliberate reversal. The webview is the
+    # nicer object -- frameless, drag-anywhere, stays above -- but we hand it
+    # WEBKIT_DISABLE_DMABUF_RENDERER=1 to stop it painting a blank white window
+    # on NVIDIA, which takes its GPU renderer away and leaves it rasterizing
+    # the reactor on the CPU. Measured, that is 97% of a core against 14% for
+    # Chromium, which composites on the GPU and needs no such workaround.
+    #
+    # The HUD is on screen all day by design, so its idle cost is the one cost
+    # every user pays continuously; on a laptop this is a battery bug as much
+    # as a slow one. A title bar is not worth seven times the CPU.
+    #
+    # `webview` stays one word away for anyone who wants the frameless window,
+    # and stays the fallback here for a machine with no Chromium at all.
+    order = [want] if want in SHELLS else ["browser", "webview", "none"]
     why = []
     for name in order:
         try:
