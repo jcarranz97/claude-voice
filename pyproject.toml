@@ -76,6 +76,13 @@ dev = [
     "pytest-cov>=5.0",
     "ruff>=0.14",
 ]
+# The documentation site. Kept out of `dev` because it is the one group a
+# contributor changing code never needs, and it is by far the heaviest.
+docs = [
+    "mkdocs>=1.6",
+    "mkdocs-material>=9.5",
+    "pymdown-extensions>=10.0",
+]
 
 [tool.ruff]
 line-length = 100

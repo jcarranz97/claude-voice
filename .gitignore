@@ -17,3 +17,6 @@ uv.lock
 .coverage.*
 coverage.xml
 htmlcov/
+
+# The built documentation site
+site/

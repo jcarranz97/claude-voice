@@ -1,0 +1,48 @@
+/* The HUD's own palette, borrowed for the docs.
+ *
+ * The reactor is amber when it speaks and cyan when it listens, and those two
+ * are the only colours this site adds to Material's defaults. Everything else
+ * is left alone deliberately: a documentation theme that disagrees with the
+ * product it documents is a small lie, and one that repaints every heading is
+ * a maintenance job nobody signed up for. */
+
+:root {
+  --cv-amber: #ffb020;
+  --cv-cyan: #35d0d8;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-accent-fg-color: var(--cv-amber);
+  --md-typeset-a-color: var(--cv-amber);
+  --md-code-hl-string-color: var(--cv-cyan);
+}
+
+[data-md-color-scheme="default"] {
+  --md-accent-fg-color: #b26a00;
+  --md-typeset-a-color: #b26a00;
+}
+
+/* Screenshots of a frameless window on a dark desktop need an edge, or they
+ * bleed into the page in dark mode and float in white space in light mode. */
+.md-typeset img[src*="assets/hud-"] {
+  border-radius: 0.4rem;
+  box-shadow: 0 0.2rem 1rem rgb(0 0 0 / 35%);
+}
+
+/* The keyboard keys in the HUD tables are read as keys, so they should look
+ * like keys rather than like code. */
+.md-typeset kbd {
+  font-size: 0.85em;
+}
+
+/* Tables of flags and settings are long and narrow; letting them run to the
+ * full column width makes the two-word cells unreadable. */
+.md-typeset table:not([class]) th {
+  white-space: nowrap;
+}
+
+/* The terminal HUD is drawn out of box-drawing glyphs on a character grid, and
+ * a proportional fallback font shears it apart. */
+.md-typeset pre code {
+  font-variant-ligatures: none;
+}
