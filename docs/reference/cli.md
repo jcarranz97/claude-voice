@@ -76,6 +76,10 @@ claude-voice --help      # everything, grouped
 | `claude-voice pron diag <word>…` | why a word sounds wrong, and the TOML that fixes it |
 | `claude-voice pron say "…"` | hear a phrase, with a level sanity check |
 | `claude-voice pron list` | the active pronunciation rules |
+| `claude-voice voice` | the expressive provider: is it ready, and what tags exist |
+| `claude-voice voice --fetch` | download its weights (about 490 MB, once) |
+| `claude-voice voice --build` | clone your own Piper voice for it to imitate |
+| `claude-voice voice --say "…"` | hear one line, tags and all |
 | `claude-voice narrate --tune <words> [<per_turn>]` | narration limits, without editing the config |
 | `claude-voice narrate --show` | what those limits currently are |
 | `claude-voice queue --status` | what is queued and what is playing |

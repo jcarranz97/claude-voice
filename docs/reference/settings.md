@@ -24,11 +24,27 @@ claude-voice config      # what is in effect, and where each value came from
 
 | Key | Type | Default | |
 |---|---|---|---|
+| `provider` | string | `"piper"` | which engine speaks: `piper` (flat, fast, always there) or `chatterbox` (expressive, ~1–2 s slower). Chatterbox falls back to Piper whenever it cannot run — see [The expressive provider](../voice.md#the-expressive-provider) |
+| `threads` | int | `8` | CPU threads for Chatterbox. Measured optimum on a 32-core machine: 4 is slower, 32 thrashes |
 | `voice_model` | path | `~/.local/share/piper-voices/en_US-amy-medium.onnx` | the Piper voice. A missing model falls back to another of the same language on disk, preferring `high` over `medium` over `low` |
 | `length_scale` | float | `1.0` | `>1` is slower; butler pacing lives near `1.06` |
 | `primary_voice` | string | `"en-us"` | the espeak-ng voice that phonemizes the whole line |
 | `foreign_voice` | string | `""` | a second espeak voice, spliced in for `pronunciation.foreign_terms`. Blank disables the mixed-phoneme pass |
 | `max_chars` | int | `400` | the spoken line is truncated here |
+
+## `[tags]`
+
+Emotion tags the spoken line may carry. They only reach a provider that understands them; everything else has them stripped before synthesis, because Piper reads an unknown tag aloud as ordinary words.
+
+| Key | Type | Default | |
+|---|---|---|---|
+| `enabled` | bool | `true` | may the model write tags at all. Off still strips them |
+| `vocabulary` | list[string] | `[]` | blank uses the built-in list of 19. Narrowing it narrows both what may be written and what is recognised for stripping |
+| `instruction` | string | `""` | blank uses the built-in wording, which asks for restraint. This is where you ask for more — a per-language value, like the rest of the register |
+
+The built-in vocabulary is `laugh`, `chuckle`, `sigh`, `groan`, `gasp`, `cough`, `sniff`, `shush`, `clear throat`, `sarcastic`, `dramatic`, `angry`, `happy`, `crying`, `fear`, `surprised`, `whispering`, `narration`, `advertisement`.
+
+`[narration]` is the neutral one — a real trained token meaning plain delivery. Keeping it in the list is what makes "a tag on every line" workable without forcing a feeling onto lines that have none.
 
 ## `[instruction]`
 

@@ -202,6 +202,71 @@ The final line **flushes** the same session's pending items when it enqueues, so
 
 Every item that reaches the player is written to the [spoken log](history.md) as it is played — which is why the log has the narration and the acknowledgement in it, and the transcript does not.
 
+## The expressive provider
+
+Piper is flat by construction and always will be — it is a VITS model, phonemes in and one learned delivery out, with no input where "laugh" could go. Upstream's own answer to emotion is to train a separate speaker per emotion.
+
+So there is a second provider:
+
+```toml
+[tts]
+provider = "chatterbox"    # piper (default) | chatterbox
+```
+
+Chatterbox Turbo runs locally on the CPU, is MIT for both its code and its weights, needs no account, and takes emotion as square-bracket tags written inline in the spoken line:
+
+```html
+<!-- TTS: [sigh] Fourth attempt on the same failure. -->
+```
+
+Nineteen tags are available — `[laugh]`, `[chuckle]`, `[sigh]`, `[groan]`, `[gasp]`, `[cough]`, `[sniff]`, `[shush]`, `[clear throat]`, `[sarcastic]`, `[dramatic]`, `[angry]`, `[happy]`, `[crying]`, `[fear]`, `[surprised]`, `[whispering]`, `[narration]`, `[advertisement]`.
+
+It costs about a second or two more per line than Piper. [Performance](performance.md#the-voice-piper-against-chatterbox) has the numbers.
+
+### Setting it up
+
+```bash
+claude-voice voice --fetch    # the weights, about 490 MB, once
+claude-voice voice --build    # clone your own Piper voice for it to imitate
+claude-voice voice            # is it ready?
+claude-voice voice --say "Done, the tests pass. [chuckle]"
+```
+
+Then set `tts.provider`. `claude-voice doctor` reports the provider and says which step is missing if either is.
+
+### It clones the voice you already have
+
+Chatterbox imitates whatever reference clip it is handed, so `--build` has **Piper speak one sentence and clones that**. The consequences are all good ones:
+
+- **The timbre does not change** when you switch provider. The voice you are used to simply gains the ability to sigh.
+- **No voice asset ships** and no attribution is owed, because the reference is Piper's own MIT-licensed output.
+- **It follows the language switch.** Build it under the `es` preset and you get a Chatterbox that sounds like *your* Spanish voice, because that is what it was cloned from. One file per preset.
+
+A shorter reference is also a faster one — its length becomes prompt tokens on every later generation — so the clip is deliberately brief.
+
+### Tags are stripped for anything that cannot hear them
+
+This matters more than it sounds. Piper has no concept of a tag, so an unstripped one is phonemized as ordinary words: `[sigh]` comes out as **"size"**, and adds most of a second.
+
+So any provider that does not declare tag support has them removed first, using a vocabulary that lives in the configuration rather than in the expressive provider — a broken or missing provider must not be able to switch the stripping off. Only *known* tags go: `Version [1.2.3] shipped.` survives intact.
+
+The model is only told about tags when something can actually hear them. Under Piper the guidance is not injected at all, so no prompt is spent describing a vocabulary whose every use would be stripped again.
+
+### Choosing how often it acts
+
+```toml
+[tags]
+enabled = true
+vocabulary = []        # blank uses the full list
+instruction = ""       # blank uses the built-in wording
+```
+
+The built-in wording asks for restraint — "most lines need none" — which in practice produces very few. `tags.instruction` is where you change that, and it is a per-language value like the rest of the register. Asking for one on *every* line works best if you keep `[narration]` in the list as the neutral option, so a plain number still sounds plain.
+
+### If it cannot run
+
+It falls back to Piper and says so on stderr. That is a deliberate decision rather than an exception handler: a voice that goes silent when a model file is missing is worse than one that sounds flat.
+
 ## Synthesis
 
 Piper, locally, on the CPU. The voice model is a pair of files — an `.onnx` and its `.onnx.json` — under `~/.local/share/piper-voices/`.

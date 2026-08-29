@@ -165,6 +165,7 @@ nav:
   - Understanding:
       - Design decisions: design.md
       - Architecture: architecture.md
+      - Performance: performance.md
       - Security: security.md
   - Troubleshooting: troubleshooting.md
   - FAQ: faq.md
