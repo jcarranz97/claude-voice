@@ -39,8 +39,7 @@ def spark(points, w=120, h=24) -> str:
     lo, hi = min(points), max(points) or 1
     step = w / max(len(points) - 1, 1)
     pts = " ".join(
-        f"{i * step:.1f},{h - (v - lo) / (hi - lo or 1) * h:.1f}"
-        for i, v in enumerate(points)
+        f"{i * step:.1f},{h - (v - lo) / (hi - lo or 1) * h:.1f}" for i, v in enumerate(points)
     )
     return f'<svg width="{w}" height="{h}"><polyline points="{pts}" fill="none" stroke="var(--accent)"/></svg>'
 ```
@@ -64,9 +63,9 @@ panel = "cv_lab.panel:panel"
 ```python
 def run(ctx) -> None:
     """Started when a window opens, stopped when the last one closes."""
-    while ctx.alive():               # false as soon as nothing is watching
+    while ctx.alive():  # false as soon as nothing is watching
         ctx.publish({"state": "printing", "progress": 41})
-        ctx.sleep(10)                # interruptible; not time.sleep
+        ctx.sleep(10)  # interruptible; not time.sleep
 ```
 
 The daemon never draws. It publishes state, and the panel reads it — which is what keeps the drawing path fast and keeps a wedged daemon from being able to freeze a window.
@@ -300,9 +299,12 @@ A panel row may carry an action, which the HUD binds to a key and a click:
 
 ```python
 def panel(ctx) -> dict:
-    return {"title": "lab", "rows": [
-        {"label": "queue", "value": "3 jobs", "action": "window", "key": "l"},
-    ]}
+    return {
+        "title": "lab",
+        "rows": [
+            {"label": "queue", "value": "3 jobs", "action": "window", "key": "l"},
+        ],
+    }
 
 
 def act(ctx, name: str) -> tuple[bool, str]:
@@ -339,13 +341,13 @@ def window(ctx) -> dict:
             <h2>printing</h2>
             <div class="meter">
               <label>progress</label>
-              <div class="track"><i style="width:{p['progress']}%"></i></div>
-              <b>{p['progress']}%</b>
+              <div class="track"><i style="width:{p["progress"]}%"></i></div>
+              <b>{p["progress"]}%</b>
             </div>
-            <div class="meter"><label>nozzle</label><b>{p['nozzle_c']}C</b></div>
-            <p class="card">{p['job']['eta_min']} minutes left</p>
+            <div class="meter"><label>nozzle</label><b>{p["nozzle_c"]}C</b></div>
+            <p class="card">{p["job"]["eta_min"]} minutes left</p>
           </div>
-          <img class="card" src="{p['camera_url']}" alt="the bed">
+          <img class="card" src="{p["camera_url"]}" alt="the bed">
         """,
     }
 ```
@@ -452,8 +454,8 @@ import time
 import urllib.request
 
 URL = "https://wttr.in/?format=j1"
-TTL = 900.0                          # the weather does not move faster than this
-TIMEOUT = 5.0                        # it is a network call, and networks hang
+TTL = 900.0  # the weather does not move faster than this
+TIMEOUT = 5.0  # it is a network call, and networks hang
 
 _lock = threading.Lock()
 _state = {"t": 0.0, "rows": [], "busy": False}
@@ -712,9 +714,9 @@ A printer is the same shape:
 
 ```python
 POLL = {
-    "printing": 10,                  # this is what is being watched
-    "idle": 60,                      # nothing is happening; nobody is waiting
-    "gone": 300,                     # unreachable; back off rather than hammer it
+    "printing": 10,  # this is what is being watched
+    "idle": 60,  # nothing is happening; nobody is waiting
+    "gone": 300,  # unreachable; back off rather than hammer it
 }
 
 
@@ -753,7 +755,7 @@ The plugin never connects. It asks the host, by the server name it declared, and
 def panel(ctx) -> dict:
     """ctx.mcp is the host's connection, already open and shared."""
     got = ctx.mcp("lab-monitor", "printer_status", {"printer_id": "p1"})
-    if not got.ready:                # down, reconnecting, or never configured
+    if not got.ready:  # down, reconnecting, or never configured
         return {"title": "lab", "rows": [{"label": "lab", "value": got.why, "state": "warn"}]}
     return {"title": "lab", "rows": [{"label": "state", "value": got.value["state"]}]}
 ```
@@ -983,7 +985,7 @@ def on_tool(event) -> dict | None:
     """The payload carries the tool's own result. Nothing needs asking twice."""
     p = event["result"]
     if not p.get("printing"):
-        return None                  # not printing: no window, no interruption
+        return None  # not printing: no window, no interruption
     return {
         "title": f"{p['job']['name']} — {p['progress']}%",
         "html": f"<img src='{p['camera_url']}' alt='the bed'>",
