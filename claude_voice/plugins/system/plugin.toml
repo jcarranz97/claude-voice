@@ -14,4 +14,3 @@ panel = "panel:panel"
 
 [options]
 default_enabled = true
-legacy_key = ["hud.panels.system"]   # what switched this off before it moved

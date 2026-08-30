@@ -11,7 +11,7 @@ The short version: audio never leaves the machine, two features make network cal
 | | What is sent | Where | Off switch |
 |---|---|---|---|
 | The acknowledgement | the prompt, plus `ack.context` turns of what was said out loud | the Anthropic API | `ack.contextual = false`, or `ack.enabled = false` |
-| The repo panel | a `gh pr view` for the current branch | GitHub, through your own `gh` | `hud.github = false` |
+| The repo panel | a `gh pr view` for the current branch | GitHub, through your own `gh` | `plugins.github.network = false` |
 
 `ack.context = 0` keeps the acknowledgement and sends the prompt alone, without any of the conversation.
 

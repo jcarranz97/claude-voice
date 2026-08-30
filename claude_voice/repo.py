@@ -21,7 +21,7 @@ Two speeds, because the questions cost wildly different amounts:
 
 Nothing here is required. No repository, no `gh`, no network, no GitHub
 remote: each one just removes a line from the window. The whole block is off
-with `hud.github = false` for anyone who would rather this program not talk
+with `plugins.github.network = false` for anyone who would rather this
 to GitHub at all -- it is the only thing in it that leaves the machine.
 """
 
@@ -50,7 +50,7 @@ SHA = re.compile(r"^[0-9a-f]{7,40}$")
 
 
 def enabled() -> bool:
-    return bool(CFG.get("hud.github", True))
+    return bool(CFG.get("plugins.github.network", True))
 
 
 def root(start: str) -> Path:

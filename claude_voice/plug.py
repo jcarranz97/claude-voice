@@ -104,14 +104,6 @@ def enabled(name: str) -> bool:
     if not man:
         return False
     default = bool(man.get("options", {}).get("default_enabled", True))
-    # A panel that became a plugin keeps the key that used to switch it off.
-    # Somebody with `hud.github = false` set must not have the panel come
-    # back because it moved house.
-    # A panel usually had more than one way to switch it off -- the block and
-    # the question behind it -- and every one of them still has to work.
-    legacy = man.get("options", {}).get("legacy_key") or []
-    for key in [legacy] if isinstance(legacy, str) else legacy:
-        default = default and bool(cfg().get(key, True))
     return bool(cfg().get(f"plugins.enabled.{name}", default))
 
 

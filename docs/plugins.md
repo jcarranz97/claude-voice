@@ -385,8 +385,10 @@ That is the point of building it this way rather than adding a hook here and the
 
 It also sets the standard for what a panel has to be able to say. The GitHub panel is not a decorative case: the branch is a file read that must stay current within seconds, the pull request is a network call that can hang, and the state it reports has four distinct values. Any panel shape that carries that carries a print queue too.
 
-!!! note "The old panel keys keep working"
-    A panel that becomes a plugin does not lose the setting that used to control it. `hud.github = false` continues to mean what it meant — read as an override of `plugins.enabled.github`, warned about once, and dropped a release later. A configuration that worked yesterday works today.
+!!! warning "A panel that moves takes its settings with it"
+    `hud.panels.system` and `hud.panels.repo` became `plugins.enabled.system` and `plugins.enabled.github`; `hud.github`, which kept the branch and dropped only the network call, became `plugins.github.network`. The distinction it drew was worth keeping — switching a panel off and telling it not to use the network are two different wishes — so it survived the move under a name that says whose setting it is.
+
+    The old spellings were dropped rather than shimmed. A key that quietly means something else is worse than one that plainly no longer exists, and the [settings reference](reference/settings.md) names the replacement for each.
 
 ## Writing one
 

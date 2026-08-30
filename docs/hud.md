@@ -119,7 +119,7 @@ The branch is read off disk and is always current. The rest comes from `gh` on a
 github = false   # keep the repository and branch; ask gh nothing
 ```
 
-`hud.github` is a narrower switch than `hud.panels.repo`, and it is the only thing in this program besides the acknowledgement that talks to a network. Use `github = false` to keep the branch and drop the network; use `panels.repo = false` to drop the block entirely.
+`plugins.github.network` is a narrower switch than `plugins.enabled.github`, and it is the only thing in this program besides the acknowledgement that talks to a network. Use `network = false` to keep the branch and drop the network; use `plugins.enabled.github = false` to drop the block entirely.
 
 ### The system panel
 

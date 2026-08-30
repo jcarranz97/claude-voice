@@ -951,10 +951,12 @@ class TestPanels:
     """Which blocks the window draws at all."""
 
     def test_everything_is_on_by_default(self):
-        assert hudcore.panels() == dict.fromkeys(hudcore.PANELS, True)
+        # The two that became plugins answer here too, under the names both
+        # windows draw them by, so that neither surface had to learn a word.
+        assert hudcore.panels() == dict.fromkeys(list(hudcore.PANELS) + ["system", "repo"], True)
 
     def test_a_block_can_be_switched_off(self, write_config):
-        write_config("[hud.panels]\nrepo = false\n")
+        write_config("[plugins.enabled]\ngithub = false\n")
         hudcore.reload_cfg()
         show = hudcore.panels()
         assert show["repo"] is False and show["system"] is True
@@ -1076,7 +1078,7 @@ class TestSnapshot:
 
     def test_the_repo_block_is_empty_when_the_panel_is_off(self, write_config, monkeypatch):
         # Off is off: a hidden panel does not quietly keep calling GitHub.
-        write_config("[hud.panels]\nrepo = false\n")
+        write_config("[plugins.enabled]\ngithub = false\n")
         hudcore.reload_cfg()
         monkeypatch.setattr(hudcore._repo, "info", lambda w: pytest.fail("asked anyway"))
         assert hudcore.snapshot()["repo"] == {}

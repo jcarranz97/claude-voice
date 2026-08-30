@@ -18,4 +18,3 @@ panel = "panel:panel"
 
 [options]
 default_enabled = true
-legacy_key = ["hud.github", "hud.panels.repo"]   # both still switch it off

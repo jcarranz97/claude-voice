@@ -164,7 +164,7 @@ claude-voice hud --shell browser
 
 The branch is read off disk and is always current. The rest needs `gh`, a repository, and a pull request for that branch — rows with no answer are not drawn.
 
-It is asked on a slow clock in a background thread, so a slow network makes that row late and never makes the window stutter. `hud.github = false` stops it asking.
+It is asked on a slow clock in a background thread, so a slow network makes that row late and never makes the window stutter. `plugins.github.network = false` stops it asking.
 
 ## Still stuck
 

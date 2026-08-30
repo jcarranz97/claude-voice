@@ -108,14 +108,14 @@ class TestTheEnableTable:
         # Off is off: the panel is not drawn and the numbers are not read.
         assert "system" not in [p["plugin"] for p in plug.panels()]
 
-    def test_the_key_that_used_to_switch_it_off_still_does(self, write_config):
-        write_config("[hud]\ngithub = false\n")
-        plug.reset()
-        assert plug.enabled("github") is False
+    def test_the_network_switch_is_the_plugins_own_setting(self, write_config, monkeypatch):
+        """Switching the panel off and asking GitHub nothing are two
+        different wishes, and both survived the move."""
+        import claude_voice.repo as repo
 
-    def test_the_new_key_overrules_the_old_one(self, write_config):
-        write_config("[hud]\ngithub = false\n\n[plugins.enabled]\ngithub = true\n")
-        plug.reset()
+        write_config("[plugins.github]\nnetwork = false\n")
+        monkeypatch.setattr(repo, "CFG", plug.cfg())
+        assert repo.enabled() is False
         assert plug.enabled("github") is True
 
     def test_a_plugin_nobody_installed_is_not_enabled(self):

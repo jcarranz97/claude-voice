@@ -674,7 +674,7 @@ def level_now(d: dict = None) -> float:
 # subagents is noise to somebody who has never launched one. Off is off: the
 # question behind a hidden panel is not asked either, so switching the repo
 # block off also stops the branch being read and GitHub being called.
-PANELS = {"system": True, "repo": True, "session": True, "agents": True}
+PANELS = {"session": True, "agents": True}
 
 
 def panels() -> dict:
@@ -684,7 +684,13 @@ def panels() -> dict:
     something to draw for. A name it does not draw is not an error: the
     config is a description of the HUD, not of one of its two surfaces.
     """
-    return {k: bool(CFG.get(f"hud.panels.{k}", v)) for k, v in PANELS.items()}
+    show = {k: bool(CFG.get(f"hud.panels.{k}", v)) for k, v in PANELS.items()}
+    # The two blocks that became plugins are switched by the table that
+    # switches every plugin, and answered here under the names both windows
+    # already draw them by.
+    show["system"] = _plug.enabled("system")
+    show["repo"] = _plug.enabled("github")
+    return show
 
 
 def repo_now() -> dict:
