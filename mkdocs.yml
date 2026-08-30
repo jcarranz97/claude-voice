@@ -159,6 +159,7 @@ nav:
       - Languages: languages.md
       - Pronunciation: pronunciation.md
       - The microphone watchdog: microphone.md
+      - Plugins: plugins.md
   - Configuring claude-voice: configuration.md
   - Reference:
       - CLI: reference/cli.md
