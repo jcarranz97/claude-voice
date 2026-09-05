@@ -498,10 +498,9 @@ class TestTheStreamContract:
         "mic",
         "language",
         "session",
-        "repo",
         "level",
         "panels",
-        "system",
+        "plugin_panels",
         "history",
         "labels",
     )
@@ -522,7 +521,8 @@ class TestTheStreamContract:
         # The other half of the contract: the producer is asked for exactly
         # what the page reads. Nothing is spawned -- snapshot() is only
         # allowed to look at the empty state dir.
-        monkeypatch.setattr(hudweb.core, "system_stats", dict)
+        monkeypatch.setattr(hudweb.core, "plugin_panels", list)
+        monkeypatch.setattr(hudweb.core._plug, "panels", lambda path, window: [])
         monkeypatch.setattr(hudweb.core, "history_entries", list)
         monkeypatch.setattr(hudweb.core, "display_state", lambda: ("idle", "", [], False))
         monkeypatch.setattr(hudweb.core, "dictate_target_info", dict)

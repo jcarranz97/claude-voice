@@ -132,8 +132,8 @@ class Env:
         self.panel = False
         self.position = "left"
         self.rows = []
-        self.panels = {"system": True, "repo": False, "session": True, "agents": True}
-        self.repo = {}
+        self.panels = {"session": True, "agents": True}
+        self.plugin_panels = []
         self.language = ("", "")
         self.acted = []  # every action name the key handler ran
         self.results = {}  # action name -> (ok, message)
@@ -189,7 +189,7 @@ def env(monkeypatch, curses_stub, home):
     monkeypatch.setattr(hud.core, "act", act)
     monkeypatch.setattr(hud.core, "level_now", lambda d=None: e.level)
     monkeypatch.setattr(hud.core, "panels", lambda: e.panels)
-    monkeypatch.setattr(hud.core, "repo_now", lambda: e.repo)
+    monkeypatch.setattr(hud.core, "plugin_panels", lambda window: e.plugin_panels)
     monkeypatch.setattr(hud.core, "next_language", lambda: e.language)
     monkeypatch.setattr(hud.core, "TITLE", "C L A U D E")
     # A frame costs a twentieth of a second on a real HUD and nothing here.
@@ -423,56 +423,86 @@ class TestDrawBars:
         hud.draw_bars(FakeScreen(failing=True), 30, 60, 1.0, "idle", hud.CYAN, 120)
 
 
-class TestDrawRepo:
-    """Branch, pull request and checks, on the one row a terminal can spare."""
+def a_row(label, value, **kw):
+    """One row in the shape the registry hands over, defaults and all."""
+    row = {
+        "label": label,
+        "short": label,
+        "value": value,
+        "meter": None,
+        "state": "",
+        "detail": "",
+        "action": "",
+        "key": "",
+    }
+    row.update(kw)
+    return row
 
-    def test_nothing_is_drawn_without_a_branch(self, curses_stub):
+
+def a_panel(*rows, plugin="github", order=20):
+    return {
+        "plugin": plugin,
+        "title": plugin,
+        "mark": "",
+        "rows": list(rows),
+        "tiles": [],
+        "note": "",
+        "slot": "right",
+        "order": order,
+        "action": None,
+    }
+
+
+class TestDrawPanels:
+    """Every plugin panel on the one row a terminal can spare."""
+
+    def test_nothing_at_all_is_drawn_without_panels(self, curses_stub):
         win = FakeScreen()
-        hud.draw_repo(win, 0, 120, None)
-        hud.draw_repo(win, 0, 120, {"name": "claude-voice"})
+        hud.draw_panels(win, 0, 120, [])
         assert win.writes == []
 
-    def test_a_detached_head_is_named_as_one(self, curses_stub):
+    def test_the_label_is_dim_and_the_value_is_not(self, curses_stub):
         win = FakeScreen()
-        hud.draw_repo(win, 0, 120, {"name": "voice", "branch": "abc1234", "detached": True})
-        assert "voice · abc1234 (detached)" in win.row(0)
+        hud.draw_panels(win, 0, 120, [a_panel(a_row("branch", "main"))])
+        assert "branch main" in win.row(0)
+        labels = [w for w in win.writes if w[2].strip() == "branch"]
+        values = [w for w in win.writes if w[2] == "main"]
+        assert labels[0][3] & curses.A_DIM
+        assert not values[0][3] & curses.A_DIM
 
-    def test_a_draft_pull_request_says_draft(self, curses_stub):
+    def test_rows_are_separated_and_panels_are_ordered(self, curses_stub):
         win = FakeScreen()
-        pr = {"number": 31, "draft": True, "state": "open", "checks": {}}
-        hud.draw_repo(win, 0, 120, {"branch": "topic", "pr": pr})
-        assert "#31 draft" in win.row(0)
+        hud.draw_panels(
+            win,
+            0,
+            160,
+            [
+                a_panel(a_row("pr", "#40"), plugin="github", order=20),
+                a_panel(a_row("cpu", "38%"), plugin="system", order=10),
+            ],
+        )
+        assert "cpu 38%  ·  pr #40" in win.row(0)
 
-    def test_a_merged_pull_request_says_its_state(self, curses_stub):
+    def test_a_state_colours_the_value_and_a_warning_bolds_it(self, curses_stub):
         win = FakeScreen()
-        pr = {"number": 31, "draft": True, "state": "merged", "checks": {}}
-        hud.draw_repo(win, 0, 120, {"branch": "topic", "pr": pr})
-        assert "#31 merged" in win.row(0)
+        hud.draw_panels(win, 0, 120, [a_panel(a_row("checks", "✗ 1 failing", state="warn"))])
+        seg = next(w for w in win.writes if w[2] == "✗ 1 failing")
+        assert seg[3] & curses.A_BOLD
 
-    @pytest.mark.parametrize(
-        ("checks", "expected"),
-        [
-            ({"state": "passing", "pass": 7}, "✓ 7 passing"),
-            ({"state": "running", "running": 2}, "● 2 running"),
-            ({"state": "failing", "fail": 1}, "✗ 1 failing"),
-        ],
-    )
-    def test_the_checks_are_the_tail_of_the_line(self, curses_stub, checks, expected):
+    def test_the_detail_follows_the_value(self, curses_stub):
         win = FakeScreen()
-        pr = {"number": 3, "draft": False, "state": "open", "checks": checks}
-        hud.draw_repo(win, 0, 120, {"branch": "topic", "pr": pr})
-        assert expected in win.row(0)
+        rows = [a_row("checks", "✗ 2 failing", state="warn", detail="lint, tests")]
+        hud.draw_panels(win, 0, 200, [a_panel(*rows)])
+        assert "✗ 2 failing — lint, tests" in win.row(0)
 
-    def test_a_failing_run_names_the_jobs(self, curses_stub):
+    def test_what_does_not_fit_is_cut_rather_than_wrapped(self, curses_stub):
         win = FakeScreen()
-        checks = {"state": "failing", "fail": 2, "failing": ["lint", "tests"]}
-        pr = {"number": 3, "draft": False, "state": "open", "checks": checks}
-        hud.draw_repo(win, 0, 200, {"branch": "topic", "pr": pr})
-        assert "— lint, tests" in win.row(0)
-        assert win.writes[0][3] & curses.A_BOLD
+        hud.draw_panels(win, 0, 20, [a_panel(a_row("branch", "a-very-long-branch-name"))])
+        assert len(win.row(0).rstrip()) < 20
+        assert all(y == 0 for y, *_ in win.writes)
 
     def test_a_refused_write_is_swallowed(self, curses_stub):
-        hud.draw_repo(FakeScreen(failing=True), 0, 120, {"branch": "topic"})
+        hud.draw_panels(FakeScreen(failing=True), 0, 120, [a_panel(a_row("branch", "main"))])
 
 
 # --- the loop ------------------------------------------------------------
@@ -560,11 +590,10 @@ class TestBanner:
         assert "window too small" in screen.text
         assert "C L A U D E" not in screen.text
 
-    def test_the_repo_row_is_drawn_only_when_the_panel_is_on(self, run, env):
-        env.repo = {"name": "claude-voice", "branch": "main"}
-        assert "claude-voice · main" not in run([-1]).text
-        env.panels = dict(env.panels, repo=True)
-        assert "claude-voice · main" in run([-1]).row(0)
+    def test_the_plugin_row_sits_above_the_title(self, run, env):
+        assert "branch main" not in run([-1]).text
+        env.plugin_panels = [a_panel(a_row("branch", "main"))]
+        assert "branch main" in run([-1]).row(0)
 
     def test_a_full_screen_never_raises(self, run, env):
         # Every addstr fails, which is what a window resized mid-frame does.

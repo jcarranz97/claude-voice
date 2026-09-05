@@ -121,12 +121,33 @@ def provides(kind: str) -> list[str]:
     return sorted(out, key=lambda n: (order(n), n))
 
 
+def _option(name: str, key: str, default):
+    """A placement setting: yours if you set one, otherwise the plugin's own
+    idea of where it belongs. A panel that has to be moved before it looks
+    right is a panel that shipped in the wrong place."""
+    man = index().get(name) or {}
+    return cfg().get(f"plugins.{name}.{key}", man.get("options", {}).get(key, default))
+
+
 def order(name: str) -> int:
-    return int(cfg().get(f"plugins.{name}.order", 50))
+    return int(_option(name, "order", 50))
 
 
 def slot(name: str) -> str:
-    return str(cfg().get(f"plugins.{name}.slot", "right"))
+    return str(_option(name, "slot", "right"))
+
+
+# The two surfaces, and they are not equally capable: half a dozen rows of
+# numbers belong in both, a photograph belongs in one. Silence means both,
+# because that is true of nearly every panel.
+WINDOWS = ("browser", "terminal")
+
+
+def windows(name: str) -> list[str]:
+    """Which HUD surfaces this plugin is willing to be drawn in."""
+    man = index().get(name) or {}
+    got = man.get("requires", {}).get("windows")
+    return [w for w in got if w in WINDOWS] if got else list(WINDOWS)
 
 
 def _entry(name: str, kind: str):
@@ -201,14 +222,18 @@ def blocked() -> set[str]:
     return set(_blocked)
 
 
-def panels(path: str = "") -> list[dict]:
-    """Every enabled panel, drawn or not by the surface that asked.
+def panels(path: str = "", window: str = "browser") -> list[dict]:
+    """Every enabled panel this window can draw, in the order it draws them.
 
     A panel that returns nothing takes no space, which is how a rail with
-    several plugins in it stays readable.
+    several plugins in it stays readable. A panel that says it cannot live
+    in this window is not asked at all -- the work behind it is skipped with
+    the drawing, which is the same rule a switched-off panel lives by.
     """
     out = []
     for name in provides("panel"):
+        if window not in windows(name):
+            continue
         got = call(name, "panel", _Ctx(name, path))
         if not got or not got.get("rows"):
             continue
@@ -216,13 +241,52 @@ def panels(path: str = "") -> list[dict]:
             {
                 "plugin": name,
                 "title": got.get("title", name),
-                "rows": got.get("rows", []),
+                # A glyph beside the title, from the host's own small set. A
+                # plugin names one; it does not get to ship a picture into a
+                # heading, and a name the host does not know draws nothing.
+                "mark": got.get("mark") or "",
+                "rows": [_row(r) for r in got.get("rows", [])],
+                # Numbers that are read rather than compared: an absolute
+                # beside the percentage that already has a bar of its own.
+                "tiles": [
+                    {"label": str(t.get("label", "")), "value": str(t.get("value", ""))}
+                    for t in got.get("tiles") or []
+                ],
+                # One line of prose under the rows, for the thing being
+                # measured rather than the measurement -- the name of a card.
+                "note": str(got.get("note") or ""),
                 "slot": slot(name),
                 "order": order(name),
                 "action": got.get("action"),
             }
         )
     return out
+
+
+def _row(r: dict) -> dict:
+    """One row, with every key the surfaces draw and nothing else.
+
+    Built here rather than passed through, so that a plugin returning an
+    extra key cannot reach a renderer, and a plugin omitting one cannot
+    make a renderer reach for something absent.
+    """
+    meter = r.get("meter")
+    label = str(r.get("label", ""))
+    return {
+        "label": label,
+        # What a surface with one row calls it. "pull request" is right in a
+        # rail and too long on a line shared with four other rows.
+        "short": str(r.get("short") or label),
+        "value": str(r.get("value", "")),
+        "meter": None if meter is None else float(meter),
+        "state": r.get("state") or "",
+        # A second line under the value, dimmer: the title of the pull
+        # request whose number is the row, the names of the checks that
+        # failed. Never the answer itself -- a surface may drop it.
+        "detail": str(r.get("detail") or ""),
+        "action": r.get("action") or "",
+        "key": r.get("key") or "",
+    }
 
 
 class _Ctx:
@@ -286,10 +350,18 @@ def _rows() -> list[tuple]:
                 "bundled" if man["_bundled"] else "installed",
                 "on" if enabled(name) else "off",
                 contributes(name),
+                where(name),
                 man["plugin"].get("description", ""),
             )
         )
     return out
+
+
+def where(name: str) -> str:
+    """The windows column, in one word when there is one: a plugin that draws
+    everywhere is the ordinary case and does not deserve a longer answer."""
+    got = windows(name)
+    return "both" if len(got) == len(WINDOWS) else ",".join(got)
 
 
 def main(argv=None) -> int:
@@ -314,8 +386,8 @@ def main(argv=None) -> int:
             print("no plugins")
             return 0
         w = max(len(r[0]) for r in rows)
-        for name, ver, where, state, kinds, desc in rows:
-            print(f"{name:<{w}}  {state:<3}  {where:<9}  {ver:<7}  {kinds:<12}  {desc}")
+        for name, ver, origin, state, kinds, wins, desc in rows:
+            print(f"{name:<{w}}  {state:<3}  {origin:<9}  {ver:<7}  {kinds:<12}  {wins:<8}  {desc}")
         return 0
 
     if cmd in ("info", "enable", "disable"):
@@ -332,6 +404,7 @@ def main(argv=None) -> int:
             print(f"  {man['plugin'].get('description', '')}")
             print(f"  from       {'the wheel' if man['_bundled'] else man['_dir']}")
             print(f"  provides   {contributes(name) or 'nothing'}")
+            print(f"  windows    {', '.join(windows(name))}")
             print(f"  state      {'enabled' if enabled(name) else 'disabled'}")
             if name in errors():
                 print(f"  last error {errors()[name]}")

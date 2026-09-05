@@ -127,27 +127,103 @@ function flash(msg, bad) {
 const deSpace = (s) =>
   s.replace(/(?<=\S) (?=\S)/g, "").replace(/\s{2,}/g, " ").trim();
 
-const UNITS = ["B", "KB", "MB", "GB", "TB"];
+/* --- plugin panels ----------------------------------------------------
 
-const scale = (n) => {
-  let i = 0;
-  while (n >= 1024 && i < UNITS.length - 1) { n /= 1024; i++; }
-  return [n < 10 ? n.toFixed(1) : String(Math.round(n)), UNITS[i]];
+   Every readout in this window is a plugin, and none of it is written by
+   hand here: the host sends a title and a list of rows, and this builds the
+   same blocks the window has always had out of them. A row is a label and a
+   value; it may also carry a bar, a colour, and a second dimmer line under
+   the value. Nothing else is styling a plugin gets. */
+
+const el = (tag, cls, text) => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
 };
 
-const human = (n) => scale(n).join(" ");
+/* A row with a meter is a percentage, and the bar is the answer -- the
+   number beside it is for the times you want the number. */
+function meterRow(r) {
+  const box = el("div", "meter");
+  box.appendChild(el("label", "", r.label));
+  const track = el("div", "track");
+  const bar = el("i");
+  bar.style.width = `${Math.min(100, r.meter)}%`;
+  bar.classList.toggle("hot", r.meter >= 85);
+  track.appendChild(bar);
+  box.appendChild(track);
+  box.appendChild(el("b", "", r.value));
+  return box;
+}
 
-/* "21 / 30 GB", not "21 GB / 30 GB" -- the repeated unit is what pushes a
-   tile onto two lines, and it says nothing the second time. */
-const pair = (a, b) => {
-  const [av, au] = scale(a), [bv, bu] = scale(b);
-  return au === bu ? `${av} / ${bv} ${bu}` : `${av} ${au} / ${bv} ${bu}`;
-};
+/* Everything else is a label and a value, in the two-column list the session
+   block uses -- which is why a plugin panel and the HUD's own blocks look
+   like one window rather than like a window with plugins in it. */
+function kvRows(rows) {
+  const dl = el("dl", "kv");
+  for (const r of rows) {
+    dl.appendChild(el("dt", "", r.label));
+    const dd = el("dd", "");
+    if (r.state) dd.dataset.state = r.state;
+    dd.appendChild(document.createTextNode(r.value));
+    // The pull request's title, the names of the checks that failed: the
+    // detail is what saves a trip to the browser, and it is never the answer.
+    if (r.detail) dd.appendChild(el("span", "detail", r.detail));
+    dl.appendChild(dd);
+  }
+  return dl;
+}
 
-function meter(id, pct) {
-  $(`${id}-bar`).style.width = `${Math.min(100, pct)}%`;
-  $(`${id}-bar`).classList.toggle("hot", pct >= 85);
-  $(`${id}-val`).textContent = `${Math.round(pct)}%`;
+function block(p) {
+  const box = el("div", "block");
+  box.dataset.plugin = p.plugin;
+  const h = el("h2");
+  if (p.mark) {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("class", "mark");
+    const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+    use.setAttribute("href", `#mark-${p.mark}`);
+    svg.appendChild(use);
+    h.appendChild(svg);
+  }
+  h.appendChild(document.createTextNode(`// ${p.title}`));
+  box.appendChild(h);
+
+  // Meters first and together, whatever order they came in: a bar between
+  // two text rows reads as a mistake, and the bars are the shape of the block.
+  const bars = p.rows.filter((r) => r.meter !== null);
+  const rest = p.rows.filter((r) => r.meter === null);
+  for (const r of bars) box.appendChild(meterRow(r));
+  if (rest.length) box.appendChild(kvRows(rest));
+  if (p.note) {
+    const note = el("p", "card", p.note);
+    note.title = p.note;
+    box.appendChild(note);
+  }
+  if (p.tiles.length) {
+    const tiles = el("div", "tiles");
+    for (const t of p.tiles) {
+      const tile = el("div", "tile");
+      tile.appendChild(el("b", "", t.value));
+      tile.appendChild(el("span", "", t.label));
+      tiles.appendChild(tile);
+    }
+    box.appendChild(tiles);
+  }
+  return box;
+}
+
+/* Rebuilt every frame rather than patched: a panel that appears, disappears
+   or changes its number of rows is the ordinary case here, and four frames a
+   second of a dozen rows is not worth a diff. */
+function panels(s) {
+  const rails = { left: $("plugins-left"), right: $("plugins-right") };
+  for (const box of Object.values(rails)) box.innerHTML = "";
+  const sorted = [...s.plugin_panels].sort(
+    (a, b) => a.order - b.order || a.plugin.localeCompare(b.plugin));
+  for (const p of sorted) (rails[p.slot] || rails.right).appendChild(block(p));
+  return sorted;
 }
 
 /* Which blocks this window draws. Everything is on unless the config says
@@ -158,12 +234,8 @@ function meter(id, pct) {
 function blocks(s) {
   const p = s.panels || {};
   const on = (k) => p[k] !== false;
-  $("system-block").hidden = !on("system");
   $("session-block").hidden = !on("session");
   $("agents-block").hidden = !on("agents");
-  // The repo block hides itself when there is no repository to name, so this
-  // only has to answer the other question: whether it is wanted at all.
-  if (!on("repo")) $("repo-block").hidden = true;
   return on;
 }
 
@@ -175,8 +247,8 @@ function blocks(s) {
  * -- there is no alert list in the state to count, they are worked out here. */
 function column(on) {
   document.querySelector(".panel.right").hidden =
-    !on("session") && !on("agents") && !on("repo")
-    && !$("alerts").childElementCount;
+    !on("session") && !on("agents") && !$("alerts").childElementCount
+    && !$("plugins-right").childElementCount;
 }
 
 function render(s) {
@@ -193,30 +265,12 @@ function render(s) {
   badge.textContent = !s.voice_on ? "VOICE OFF"
     : s.focus.state ? "VOICE ON · ONE SESSION" : "VOICE ON";
 
-  const sys = s.system;
-  meter("cpu", sys.cpu); meter("mem", sys.mem); meter("disk", sys.disk);
-  $("mem-abs").textContent = pair(sys.mem_used, sys.mem_total);
-  $("disk-abs").textContent = human(sys.disk_free);
-  $("load-abs").textContent = sys.load.map((x) => x.toFixed(2)).join(" ");
-
-  // A machine with no readable card shows no card rows at all. Zeros would
-  // read as a measurement, and it is the one number here that is not one.
-  const gpu = sys.gpu;
-  for (const id of ["gpu-row", "vram-row", "gpu-name", "vram-tile"])
-    $(id).hidden = !gpu;
-  if (gpu) {
-    meter("gpu", gpu.busy);
-    meter("vram", gpu.vram);
-    $("vram-abs").textContent = pair(gpu.vram_used, gpu.vram_total);
-    $("gpu-name").textContent = gpu.name;
-    $("gpu-name").title = gpu.name;
-  }
+  const drawn = panels(s);
 
   $("history-title").textContent = `// ${deSpace(s.labels.history)}`;
   history(s);
 
   const on = blocks(s);
-  if (on("repo")) repo(s);
   session(s);
   $("k-lang").textContent = s.language.name || s.language.preset;
   $("k-mic").textContent = s.mic.speaking ? "recording you"
@@ -237,54 +291,7 @@ function render(s) {
   alerts(s);
   column(on);
   keys(s);
-  ticker(s);
-}
-
-/* What the watched session is working on.
- *
- * The branch is nearly free and always right; the pull request and its checks
- * come from `gh` on a slow clock, so this row can be a second behind and,
- * when the network is down, several minutes behind. That is the correct
- * trade: the alternative is a window that stalls on somebody else's CI.
- *
- * Nothing here says "unknown" or "loading". A row that has no answer is not
- * drawn -- an empty pull request row on a branch that has never been pushed
- * reads as a failure to find one, and there is nothing to find. */
-function repo(s) {
-  const r = s.repo || {};
-  $("repo-block").hidden = !r.branch;
-  if (!r.branch) return;
-  // Two rows, not one: a repository name and a branch name on the same line
-  // wrap into three in a panel this narrow, and the wrap lands mid-word.
-  $("k-repo").textContent = r.name || "—";
-  $("k-branch").textContent = r.branch + (r.detached ? " (detached)" : "");
-
-  const pr = r.pr;
-  for (const id of ["k-pr-label", "k-pr"]) $(id).hidden = !pr;
-  for (const id of ["k-checks-label", "k-checks"]) $(id).hidden = !pr;
-  if (!pr) return;
-
-  $("k-pr-num").textContent =
-    `#${pr.number} · ${pr.draft && pr.state === "open" ? "draft" : pr.state}`;
-  $("k-pr-title").textContent = pr.title || "";
-
-  // Counts read better as a sentence than as a table, and the failing names
-  // are the only thing here that saves a trip to the browser.
-  const c = pr.checks || {};
-  const box = $("k-checks");
-  box.dataset.check = c.state || "none";
-  const bits = [];
-  if (c.running) bits.push(`${c.running} running`);
-  if (c.fail) bits.push(`${c.fail} failing`);
-  if (c.pass) bits.push(`${c.pass} passing`);
-  box.textContent = { passing: "✓ ", failing: "✗ ", running: "● " }[c.state] || "";
-  box.append(bits.join(" · ") || "none yet");
-  if (c.failing?.length) {
-    const names = document.createElement("span");
-    names.className = "chk-names";
-    names.textContent = c.failing.join(", ");
-    box.appendChild(names);
-  }
+  ticker(s, drawn);
 }
 
 /* Where your voice goes in, and where sound comes out.
@@ -438,10 +445,16 @@ function keys(s) {
 
 /* The scrolling line of nothing much, from the reference. It is decoration,
    and it says so by only ever repeating what is already on screen. */
-function ticker(s) {
+function ticker(s, drawn) {
   const bits = [
     `voice.${s.voice_on ? "on" : "off"}`, `state.${s.state}`,
-    `lang.${s.language.preset}`, `cpu=${s.system.cpu}%`, `ram=${s.system.mem}%`,
+    `lang.${s.language.preset}`,
+    // The top row of each panel that is up, which is as much of a plugin as
+    // a line of decoration is entitled to.
+    ...drawn.filter((p) => p.rows.length).map((p) => {
+      const r = p.rows[0];
+      return `${r.short}=${r.value}`;
+    }),
     `agents=${s.agents.length}`, `mic.${s.mic.open ? "open" : "closed"}`,
   ];
   const line = bits.join("  ·  ") + "  ·  ";

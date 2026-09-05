@@ -5,6 +5,11 @@
 name = "system"
 description = "CPU, memory, disk and the GPU, if there is one."
 
+[requires]
+# Five meters and four tiles need a rail. The terminal HUD has one row above
+# its title, and the panel that has to be there is the one about the branch.
+windows = ["browser"]
+
 [provides]
 panel = ["system"]
 surfaces = ["panel"]
@@ -14,3 +19,5 @@ panel = "panel:panel"
 
 [options]
 default_enabled = true
+slot = "left"
+order = 10

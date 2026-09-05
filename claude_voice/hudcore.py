@@ -13,7 +13,7 @@ So the questions live here, once, and the drawing lives in the two front ends:
   is anything refusing to work      dictate_blocked(), focus_state()
   who has the microphone            re-exported from mic.py
   what was said out loud            history_entries()
-  what is the machine doing         system_stats()
+  what the plugins have to show     plugin_panels()
 
 and the four things a key press can do -- the voice, the focus, dictation,
 conversation mode -- are act() and its neighbours, so that pressing `m` in a
@@ -44,13 +44,11 @@ import lang as _lang  # noqa: E402
 # once: a reactor that pulses to a different number than the meter under it
 # is two instruments disagreeing about one room.
 import level as _level  # noqa: E402
-import plug as _plug  # noqa: E402
 
-# The branch the watched session is on, and what GitHub thinks of it. Asked
-# here rather than in either window for the usual reason, and because the
-# answer costs a network call: two windows must not mean two of them.
-import repo as _repo  # noqa: E402
-import sysstat as _sysstat  # noqa: E402
+# What the plugins have to draw. Asked here rather than in either window for
+# the usual reason: a panel that costs a network call must not cost two of
+# them because there happen to be two windows open.
+import plug as _plug  # noqa: E402
 
 # Every microphone question -- who has it, whether anyone is actually
 # being recorded, and how to close a capture of ours that was left
@@ -511,25 +509,21 @@ def history_entries(n: int = 0) -> list:
         return []
 
 
-# --- the graphics card ---------------------------------------------------
+# --- what the plugins have to show ---------------------------------------
 #
-# Read out of sysfs, like everything else here. amdgpu publishes utilisation
-# and VRAM directly; nvidia needs its own tool, which is asked for only when
-# sysfs has nothing. Neither is a dependency: a machine with no readable GPU
-# shows no GPU rows, rather than three zeros pretending to be a measurement.
+# The machine's own numbers and the state of the branch are plugins like any
+# other, and this is the only way either of them reaches a window. Nothing
+# here knows what a CPU or a pull request is.
 
 
-def gpu_stats() -> dict:
-    """The GPU, if there is one. Lives in sysstat.py now; the name stays
-    because both windows and the tests ask for it here."""
-    return _sysstat.gpu_stats()
+def plugin_panels(window: str = "browser") -> list[dict]:
+    """Every panel this window can draw, already in rows.
 
-
-def system_stats() -> dict:
-    """CPU, memory and disk. Empty when the panel is off, because the
-    question behind a hidden panel is not asked either -- which was true
-    of every other panel already and quietly untrue of this one."""
-    return _sysstat.system_stats() if _plug.enabled("system") else {}
+    The window it is asked for matters: a plugin may decline a surface it
+    cannot serve honestly, and a panel that is not going to be drawn is not
+    computed -- the question behind a hidden panel is not asked either.
+    """
+    return _plug.panels(dictate_target_info().get("path", ""), window)
 
 
 def voice_on() -> bool:
@@ -626,17 +620,13 @@ def snapshot() -> dict:
             "dir": tgt.get("dir", ""),
             "title": tgt.get("title", ""),
         },
-        # The pane's real path, not the pretty name beside it: `dir` is a
-        # basename for a label, and a basename resolves against whatever
-        # directory this process happens to be in.
-        "repo": _repo.info(tgt.get("path", "")) if show["repo"] else {},
-        # Every panel a plugin contributes, bundled or installed. The two
-        # keys above are the same data in the shape the current renderers
-        # already read; they go when the renderers do.
-        "plugin_panels": _plug.panels(tgt.get("path", "")),
+        # Every panel a plugin contributes, bundled or installed, in the rows
+        # the browser draws them as. The pane's real path goes with it, not
+        # the pretty name beside it: `dir` is a basename for a label, and a
+        # basename resolves against whatever directory this process is in.
+        "plugin_panels": _plug.panels(tgt.get("path", ""), "browser"),
         "level": level_shape(),
         "panels": show,
-        "system": system_stats(),
         "history": history_entries(),
         "labels": {
             k: L(k, k)
@@ -668,12 +658,11 @@ def level_now(d: dict = None) -> float:
     return _level.live()
 
 
-# Which blocks the window draws at all. Everything is on by default, because
-# a HUD that hides half of itself until you find a config file is a HUD that
-# looks broken -- but not everyone works in pull requests, and a panel about
-# subagents is noise to somebody who has never launched one. Off is off: the
-# question behind a hidden panel is not asked either, so switching the repo
-# block off also stops the branch being read and GitHub being called.
+# Which of the HUD's own blocks the window draws. Everything is on by
+# default, because a HUD that hides half of itself until you find a config
+# file is a HUD that looks broken -- but a panel about subagents is noise to
+# somebody who has never launched one. Everything else in the window is a
+# plugin and is switched in the one table that switches plugins.
 PANELS = {"session": True, "agents": True}
 
 
@@ -684,22 +673,7 @@ def panels() -> dict:
     something to draw for. A name it does not draw is not an error: the
     config is a description of the HUD, not of one of its two surfaces.
     """
-    show = {k: bool(CFG.get(f"hud.panels.{k}", v)) for k, v in PANELS.items()}
-    # The two blocks that became plugins are switched by the table that
-    # switches every plugin, and answered here under the names both windows
-    # already draw them by.
-    show["system"] = _plug.enabled("system")
-    show["repo"] = _plug.enabled("github")
-    return show
-
-
-def repo_now() -> dict:
-    """The branch and pull request of the session being watched.
-
-    Both windows ask this; the caching is inside repo.py, where the two
-    different costs -- a file read and a network call -- are kept apart.
-    """
-    return _repo.info(dictate_target_info().get("path", ""))
+    return {k: bool(CFG.get(f"hud.panels.{k}", v)) for k, v in PANELS.items()}
 
 
 def ear_level() -> tuple:

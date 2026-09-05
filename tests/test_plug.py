@@ -30,6 +30,22 @@ def write_plugin(base, name, manifest, code="", filename="panel.py"):
     return d
 
 
+def a_machine(**kw):
+    """What sysstat.system_stats() answers, on a machine with round numbers."""
+    got = {
+        "cpu": 12.0,
+        "mem": 40.0,
+        "mem_used": 2**30,
+        "mem_total": 2**31,
+        "disk": 50.0,
+        "disk_free": 2**30,
+        "load": [0.5, 0.2, 0.1],
+        "gpu": {},
+    }
+    got.update(kw)
+    return got
+
+
 PANEL = """
     [plugin]
     name = "%s"
@@ -190,6 +206,111 @@ class TestAPluginThatMisbehaves:
         assert "quiet" not in [p["plugin"] for p in plug.panels()]
 
 
+class TestTheRowsAPanelReturns:
+    """What reaches a renderer. Built by the registry rather than passed
+    through, so that a surface can read every key on every row."""
+
+    def _one(self, home, returns):
+        write_plugin(
+            home / "plugins",
+            "one",
+            PANEL % ("one", "one"),
+            f"def panel(ctx):\n    return {returns}\n",
+        )
+        plug.reset()
+        return next(p for p in plug.panels() if p["plugin"] == "one")
+
+    def test_a_row_carries_every_key_whether_it_asked_to_or_not(self, home):
+        got = self._one(home, "{'title': 't', 'rows': [{'label': 'x', 'value': '1'}]}")
+        assert got["rows"] == [
+            {
+                "label": "x",
+                "short": "x",
+                "value": "1",
+                "meter": None,
+                "state": "",
+                "detail": "",
+                "action": "",
+                "key": "",
+            }
+        ]
+
+    def test_a_key_nobody_documented_does_not_reach_a_renderer(self, home):
+        got = self._one(home, "{'rows': [{'label': 'x', 'onclick': 'rm -rf /'}]}")
+        assert "onclick" not in got["rows"][0]
+
+    def test_the_panel_carries_its_tiles_its_note_and_its_mark(self, home):
+        got = self._one(
+            home,
+            "{'title': 't', 'mark': 'github', 'note': 'a card',"
+            " 'rows': [{'label': 'x'}], 'tiles': [{'label': 'load', 'value': '0.5'}]}",
+        )
+        assert got["mark"] == "github"
+        assert got["note"] == "a card"
+        assert got["tiles"] == [{"label": "load", "value": "0.5"}]
+
+    def test_a_panel_that_asked_for_none_of_them_still_has_them_all(self, home):
+        got = self._one(home, "{'rows': [{'label': 'x'}]}")
+        assert got["tiles"] == [] and got["note"] == "" and got["mark"] == ""
+        # And a title, because a block has a heading whatever the plugin says.
+        assert got["title"] == "one"
+
+
+class TestWhichWindowAPluginDrawsIn:
+    """The terminal and the browser are not equally capable, and a plugin
+    that cannot serve one says so rather than shipping a sad version."""
+
+    def test_silence_means_both(self, home):
+        write_plugin(home / "plugins", "any", PANEL % ("any", "any"))
+        plug.reset()
+        assert plug.windows("any") == ["browser", "terminal"]
+
+    def test_a_declared_window_is_the_only_one_it_is_asked_for(self, home):
+        write_plugin(
+            home / "plugins",
+            "wide",
+            PANEL % ("wide", "wide") + '\n[requires]\nwindows = ["browser"]\n',
+            "def panel(ctx):\n    return {'rows': [{'label': 'x'}]}\n",
+        )
+        plug.reset()
+        # No repository here, so the GitHub panel has nothing to say either
+        # way; the one being tested is the one that declared a window.
+        assert "wide" in [p["plugin"] for p in plug.panels(window="browser")]
+        assert "wide" not in [p["plugin"] for p in plug.panels(window="terminal")]
+
+    def test_a_window_nobody_has_heard_of_is_not_one(self, home):
+        write_plugin(
+            home / "plugins",
+            "odd",
+            PANEL % ("odd", "odd") + '\n[requires]\nwindows = ["hologram"]\n',
+        )
+        plug.reset()
+        assert plug.windows("odd") == []
+
+    def test_the_bundled_two_say_where_they_belong(self):
+        # Five meters and four tiles need a rail; the terminal has one row.
+        assert plug.windows("system") == ["browser"]
+        assert plug.windows("github") == ["browser", "terminal"]
+
+
+class TestWherePanelsSit:
+    """Placement is the plugin's suggestion and the config's decision."""
+
+    def test_the_manifest_places_it_when_nobody_else_does(self):
+        assert (plug.slot("system"), plug.order("system")) == ("left", 10)
+        assert (plug.slot("github"), plug.order("github")) == ("right", 20)
+
+    def test_a_plugin_with_no_opinion_lands_on_the_right(self, home):
+        write_plugin(home / "plugins", "bare", PANEL % ("bare", "bare"))
+        plug.reset()
+        assert (plug.slot("bare"), plug.order("bare")) == ("right", 50)
+
+    def test_your_config_outranks_the_manifest(self, write_config):
+        write_config("[plugins.system]\nslot = 'right'\norder = 90\n")
+        plug.reset()
+        assert (plug.slot("system"), plug.order("system")) == ("right", 90)
+
+
 class TestWhatAPluginIsHanded:
     def test_it_gets_its_own_settings_and_nobody_elses(self, home, write_config):
         write_config("[plugins.mine]\ncolour = 'blue'\n")
@@ -258,58 +379,105 @@ class TestTheBundledPanels:
     def test_a_directory_that_is_not_a_repository_draws_nothing(self, monkeypatch):
         assert self._github(monkeypatch, {}) == {}
 
-    def test_a_branch_with_no_pull_request_is_one_row(self, monkeypatch):
-        got = self._github(monkeypatch, {"branch": "main"})
-        assert [r["label"] for r in got["rows"]] == ["branch"]
+    def test_a_branch_with_no_pull_request_is_the_repository_and_the_branch(self, monkeypatch):
+        got = self._github(monkeypatch, {"branch": "main", "name": "claude-voice"})
+        assert [r["label"] for r in got["rows"]] == ["repo", "branch"]
+        assert got["mark"] == "github"
 
     def test_a_detached_head_is_a_warning(self, monkeypatch):
         got = self._github(monkeypatch, {"branch": "abc1234", "detached": True})
-        assert got["rows"][0]["state"] == "warn"
+        row = got["rows"][1]
+        assert row["state"] == "warn" and row["value"] == "abc1234 (detached)"
 
-    def test_a_pull_request_brings_its_checks(self, monkeypatch):
+    def test_a_pull_request_brings_its_title_and_its_checks(self, monkeypatch):
         got = self._github(
             monkeypatch,
             {
                 "branch": "main",
-                "pr": {"number": 38, "state": "OPEN", "checks": {"state": "running"}},
+                "pr": {
+                    "number": 38,
+                    "state": "open",
+                    "title": "Make the panels plugins",
+                    "checks": {"state": "running", "running": 2},
+                },
             },
         )
         rows = {r["label"]: r for r in got["rows"]}
-        assert rows["pr"]["value"] == "#38 open"
-        assert rows["pr"]["state"] == "ok"
+        assert rows["pull request"]["value"] == "#38 · open"
+        assert rows["pull request"]["short"] == "pr"
+        assert rows["pull request"]["detail"] == "Make the panels plugins"
+        # Open is where a pull request lives, not news about it.
+        assert rows["pull request"].get("state") is None
+        assert rows["checks"]["value"] == "● 2 running"
         assert rows["checks"]["state"] == "busy"
+
+    def test_a_draft_says_draft_and_a_merge_is_the_good_news(self, monkeypatch):
+        draft = {"number": 1, "state": "open", "draft": True, "checks": {}}
+        got = self._github(monkeypatch, {"branch": "main", "pr": draft})
+        assert got["rows"][2]["value"] == "#1 · draft"
+
+        merged = {"number": 1, "state": "merged", "checks": {}}
+        got = self._github(monkeypatch, {"branch": "main", "pr": merged})
+        assert got["rows"][2]["state"] == "ok"
+
+    def test_the_failing_checks_are_named_in_the_detail(self, monkeypatch):
+        checks = {"state": "failing", "fail": 2, "pass": 5, "failing": ["lint", "tests"]}
+        got = self._github(
+            monkeypatch,
+            {"branch": "main", "pr": {"number": 3, "state": "open", "checks": checks}},
+        )
+        row = got["rows"][3]
+        assert row["value"] == "✗ 2 failing · 5 passing"
+        assert row["detail"] == "lint, tests"
+        assert row["state"] == "warn"
 
     def test_no_gh_says_so_once_rather_than_looking_broken(self, monkeypatch):
         got = self._github(monkeypatch, {"branch": "main", "gh": False})
-        assert {"label": "pr", "value": "no gh", "state": None} in got["rows"]
+        assert [r["value"] for r in got["rows"]][-1] == "no gh"
 
     def test_the_system_panel_draws_the_rows_the_hud_had(self, monkeypatch):
         fn = plug._entry("system", "panel")
         monkeypatch.setattr(
             fn.__globals__["sysstat"],
             "system_stats",
-            lambda: {
-                "cpu": 12.0,
-                "mem": 40.0,
-                "disk": 50.0,
-                "gpu": {"busy": 7.0, "vram": 3.0},
-            },
+            lambda: a_machine(
+                gpu={
+                    "busy": 7.0,
+                    "vram": 3.0,
+                    "vram_used": 2e9,
+                    "vram_total": 8e9,
+                    "name": "Radeon 780M",
+                }
+            ),
         )
         got = fn(plug._Ctx("system"))
         assert [r["label"] for r in got["rows"]] == ["cpu", "ram", "disk", "gpu", "vram"]
         assert got["rows"][2]["state"] is None
+        assert got["note"] == "Radeon 780M"
+
+    def test_the_absolutes_behind_the_percentages_are_tiles(self, monkeypatch):
+        fn = plug._entry("system", "panel")
+        monkeypatch.setattr(
+            fn.__globals__["sysstat"],
+            "system_stats",
+            lambda: a_machine(
+                gpu={"busy": 7.0, "vram": 3.0, "vram_used": 2**31, "vram_total": 2**33}
+            ),
+        )
+        got = fn(plug._Ctx("system"))
+        assert got["tiles"] == [
+            {"label": "memory", "value": "1.0 / 2.0 GB"},
+            {"label": "free", "value": "1.0 GB"},
+            {"label": "vram", "value": "2.0 / 8.0 GB"},
+            {"label": "load", "value": "0.50 0.20 0.10"},
+        ]
 
     def test_a_full_disk_is_the_one_row_that_is_alarming(self, monkeypatch):
         fn = plug._entry("system", "panel")
         monkeypatch.setattr(
             fn.__globals__["sysstat"],
             "system_stats",
-            lambda: {
-                "cpu": 1.0,
-                "mem": 2.0,
-                "disk": 97.0,
-                "gpu": {},
-            },
+            lambda: a_machine(disk=97.0),
         )
         got = fn(plug._Ctx("system"))
         assert got["rows"][2]["state"] == "warn"
@@ -319,15 +487,12 @@ class TestTheBundledPanels:
         monkeypatch.setattr(
             fn.__globals__["sysstat"],
             "system_stats",
-            lambda: {
-                "cpu": 1.0,
-                "mem": 2.0,
-                "disk": 3.0,
-                "gpu": {"busy": None, "vram": None},
-            },
+            lambda: a_machine(gpu={"busy": None, "vram": None}),
         )
         got = fn(plug._Ctx("system"))
         assert [r["label"] for r in got["rows"]] == ["cpu", "ram", "disk"]
+        assert [t["label"] for t in got["tiles"]] == ["memory", "free", "load"]
+        assert got["note"] == ""
 
     def test_the_system_panel_says_nothing_when_the_numbers_are_gone(self, monkeypatch):
         fn = plug._entry("system", "panel")

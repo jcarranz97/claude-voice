@@ -137,22 +137,24 @@ claude-voice pron list                         # what is currently overridden
 Everything in the window is on out of the box, because a HUD that hides half of itself until you find a config file looks broken. But not everybody works in pull requests, and a panel listing subagents is noise to somebody who has never launched one.
 
 ```toml
-[hud.panels]
-system = true                     # cpu, memory, disk, gpu
-repo = false                      # no GitHub, no branch row, nothing asked
+[hud.panels]                      # the blocks the window draws itself
 session = true                    # where dictation goes, language, microphone
 agents = false                    # the list goes; the reactor still says AGENTS
+
+[plugins.enabled]                 # the readouts, which are plugins
+system = true                     # cpu, memory, disk, gpu
+github = false                    # no GitHub, no branch row, nothing asked
 ```
 
-Off is genuinely off, not hidden: with `repo = false` the branch is not read and `gh` is never called.
+Off is genuinely off, not hidden: with `github = false` the branch is not read and `gh` is never called.
 
 The one thing a panel switch does not touch is the reactor, which shows the state of the work rather than a block of the window — waiting on subagents still colours it, and still says so, with the list switched off.
 
 A narrower switch, if you want the branch but not the network:
 
 ```toml
-[hud]
-github = false     # keep the repository and branch, read off disk; ask gh nothing
+[plugins.github]
+network = false    # keep the repository and branch, read off disk; ask gh nothing
 ```
 
 `plugins.github.network` is the only thing in this program that talks to a network.

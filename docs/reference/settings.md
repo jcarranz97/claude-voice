@@ -613,34 +613,14 @@ Worth knowing that rasterization cost follows pixel *area*, and the geometry is 
 
 ## `[hud.panels]`
 
-Which blocks the window draws. All on by default, because a HUD that hides half of itself until you find a config file looks broken.
+The blocks the window draws itself. Both on by default, because a HUD that hides half of itself until you find a config file looks broken.
 
-Off is genuinely off, not hidden: with the repo panel disabled the branch is not read and `gh` is never called. The one thing a panel switch does not touch is the reactor, which shows the state of the work rather than a block of the window — waiting on subagents still colours it with the list switched off.
+The one thing a panel switch does not touch is the reactor, which shows the state of the work rather than a block of the window — waiting on subagents still colours it with the list switched off.
 
 Changes take effect when the HUD is next opened.
 
 !!! warning "`hud.panels.system` and `hud.panels.repo` have moved"
     Both blocks are [plugins](../plugins.md) now, and are switched with the one table that switches every plugin: `plugins.enabled.system` and `plugins.enabled.github`. The narrower `hud.github`, which kept the branch and dropped only the network call, is now `plugins.github.network`. The old spellings do nothing.
-
-### `plugins.enabled.system`
-
-The block of CPU, memory, disk, and the graphics card's load and VRAM, named by its actual board.
-
-**Default**: `true` · **Type**: `bool`
-
-### `plugins.enabled.github`
-
-The block of repository, branch, pull request and the state of its checks. Off is genuinely off: the branch is not read and `gh` is never called.
-
-**Default**: `true` · **Type**: `bool`
-
-### `plugins.github.network`
-
-Whether the repo panel may call `gh` at all.
-
-The only thing in this program besides the acknowledgement that talks to a network. `false` keeps the repository and branch, which are read off disk, and stops asking about pull requests and checks. Narrower than turning the whole panel off.
-
-**Default**: `true` · **Type**: `bool`
 
 ### `hud.panels.session`
 
@@ -653,6 +633,60 @@ Where dictation goes, which language speaks, what the microphone is doing.
 The list of running subagents.
 
 **Default**: `true` · **Type**: `bool`
+
+---
+
+## `[plugins.enabled]`
+
+Every readout in the window is a [plugin](../plugins.md), bundled or installed, and this is the one table that switches them. A plugin absent from it takes whatever its manifest asked for.
+
+Off is genuinely off, not hidden: a panel that is not drawn is not computed, so with the GitHub plugin disabled the branch is not read and `gh` is never called.
+
+Changes take effect when the HUD is next opened.
+
+### `plugins.enabled.system`
+
+CPU, memory, disk, and the graphics card's load and VRAM named by its actual board, with the absolutes behind the percentages in tiles underneath. Browser window only.
+
+**Default**: `true` · **Type**: `bool`
+
+### `plugins.enabled.github`
+
+Repository, branch, pull request and the state of its checks. Drawn in both windows; in the terminal it is the row above the title.
+
+**Default**: `true` · **Type**: `bool`
+
+---
+
+## `[plugins.<name>]`
+
+A plugin's own settings. Keys the host does not recognise belong to the plugin, which reads them with a default at the call site; the ones below are the host's.
+
+### `plugins.github.network`
+
+Whether the repo panel may call `gh` at all.
+
+The only thing in this program besides the acknowledgement that talks to a network. `false` keeps the repository and branch, which are read off disk, and stops asking about pull requests and checks. Narrower than turning the whole panel off.
+
+**Default**: `true` · **Type**: `bool`
+
+### `plugins.<name>.slot`
+
+Which rail the panel sits in, `left` or `right`. Defaults to whatever the plugin's manifest asked for — `left` for `system`, `right` for `github` and for a plugin with no opinion — because a panel that has to be moved before it looks right shipped in the wrong place.
+
+**Default**: the manifest's, else `"right"` · **Type**: `str`
+
+### `plugins.<name>.order`
+
+Where it sits among the panels already in that rail; lower is higher up. The bundled two take `10` and `20`, so there is room between them.
+
+**Default**: the manifest's, else `50` · **Type**: `int`
+
+### `plugins.timeout`
+
+How long a plugin may take to answer before the answer is counted late. Three failures of either kind — raising, or being late — set a plugin aside for the rest of the process, said once.
+
+**Default**: `0.25` · **Type**: `float`
 
 ---
 
