@@ -155,7 +155,7 @@ A narrower switch, if you want the branch but not the network:
 github = false     # keep the repository and branch, read off disk; ask gh nothing
 ```
 
-`hud.github` is the only thing in this program that talks to a network.
+`plugins.github.network` is the only thing in this program that talks to a network.
 
 Changes take effect when the HUD is next opened.
 

@@ -560,14 +560,6 @@ Whether `claude-voice run` opens a HUD if none is up. With `hud.required` on, `f
 
 **Default**: `true` · **Type**: `bool`
 
-### `hud.github`
-
-Whether the repo panel may call `gh` at all.
-
-The only thing in this program besides the acknowledgement that talks to a network. `false` keeps the repository and branch, which are read off disk, and stops asking about pull requests and checks. Narrower than turning the whole panel off.
-
-**Default**: `true` · **Type**: `bool`
-
 ### `hud.shell`
 
 Which window the page opens in.
@@ -623,19 +615,30 @@ Worth knowing that rasterization cost follows pixel *area*, and the geometry is 
 
 Which blocks the window draws. All on by default, because a HUD that hides half of itself until you find a config file looks broken.
 
-Off is genuinely off, not hidden: with `repo = false` the branch is not read and `gh` is never called. The one thing a panel switch does not touch is the reactor, which shows the state of the work rather than a block of the window — waiting on subagents still colours it with the list switched off.
+Off is genuinely off, not hidden: with the repo panel disabled the branch is not read and `gh` is never called. The one thing a panel switch does not touch is the reactor, which shows the state of the work rather than a block of the window — waiting on subagents still colours it with the list switched off.
 
 Changes take effect when the HUD is next opened.
 
-### `hud.panels.system`
+!!! warning "`hud.panels.system` and `hud.panels.repo` have moved"
+    Both blocks are [plugins](../plugins.md) now, and are switched with the one table that switches every plugin: `plugins.enabled.system` and `plugins.enabled.github`. The narrower `hud.github`, which kept the branch and dropped only the network call, is now `plugins.github.network`. The old spellings do nothing.
 
-CPU, memory, disk, and the graphics card's load and VRAM, named by its actual board.
+### `plugins.enabled.system`
+
+The block of CPU, memory, disk, and the graphics card's load and VRAM, named by its actual board.
 
 **Default**: `true` · **Type**: `bool`
 
-### `hud.panels.repo`
+### `plugins.enabled.github`
 
-Repository, branch, pull request and the state of its checks.
+The block of repository, branch, pull request and the state of its checks. Off is genuinely off: the branch is not read and `gh` is never called.
+
+**Default**: `true` · **Type**: `bool`
+
+### `plugins.github.network`
+
+Whether the repo panel may call `gh` at all.
+
+The only thing in this program besides the acknowledgement that talks to a network. `false` keeps the repository and branch, which are read off disk, and stops asking about pull requests and checks. Narrower than turning the whole panel off.
 
 **Default**: `true` · **Type**: `bool`
 

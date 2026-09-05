@@ -84,6 +84,7 @@ Setup
   claude-voice hooks --install    merge the hooks into ~/.claude/settings.json
   claude-voice hooks              ... or just print them, to paste yourself
   claude-voice doctor             check the install and say what is wrong
+  claude-voice plugin list        every plugin, and whether it is on
   claude-voice config             what is in effect, and where it came from
   claude-voice build-acks [lang]  re-synthesize the cached acknowledgements
   claude-voice build-ticks        regenerate the heartbeat sounds
@@ -119,6 +120,7 @@ ROUTES = {
     "mic": ("mic.py", []),
     "monitor": ("monitor.py", []),
     "doctor": ("doctor.py", []),
+    "plugin": ("plug.py", []),
     "hooks": ("hooks.py", []),
 }
 

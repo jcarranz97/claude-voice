@@ -352,7 +352,7 @@ flowchart LR
     end
 ```
 
-**No audio leaves the machine, ever.** There is no code path that sends a recording anywhere. `ack.contextual = false` removes the first call; `hud.github = false` removes the second. [Security](security.md) has the detail.
+**No audio leaves the machine, ever.** There is no code path that sends a recording anywhere. `ack.contextual = false` removes the first call; `plugins.github.network = false` removes the second. [Security](security.md) has the detail.
 
 ## Models
 

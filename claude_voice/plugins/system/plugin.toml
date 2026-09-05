@@ -1,0 +1,16 @@
+# What the machine is doing. Bundled: it ships in the wheel, updates with
+# the application, and cannot be uninstalled -- only switched off.
+
+[plugin]
+name = "system"
+description = "CPU, memory, disk and the GPU, if there is one."
+
+[provides]
+panel = ["system"]
+surfaces = ["panel"]
+
+[entrypoints]
+panel = "panel:panel"
+
+[options]
+default_enabled = true

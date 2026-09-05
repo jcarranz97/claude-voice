@@ -1,0 +1,20 @@
+# The branch, and what GitHub thinks of it. Bundled, and off for anyone who
+# does not work in pull requests -- switching it off stops the branch being
+# read and stops `gh` being called at all.
+
+[plugin]
+name = "github"
+description = "The branch of the watched session, and its pull request."
+
+[requires]
+needs = ["network"]
+
+[provides]
+panel = ["github"]
+surfaces = ["panel"]
+
+[entrypoints]
+panel = "panel:panel"
+
+[options]
+default_enabled = true

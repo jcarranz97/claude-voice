@@ -62,7 +62,7 @@ class TestEnabled:
 
     def test_on_unless_it_is_turned_off(self, monkeypatch):
         assert repo.enabled() is True
-        monkeypatch.setattr(repo, "CFG", Config({"hud": {"github": False}}))
+        monkeypatch.setattr(repo, "CFG", Config({"plugins": {"github": {"network": False}}}))
         assert repo.enabled() is False
 
 
@@ -330,7 +330,7 @@ class TestInfo:
         assert asked == []
 
     def test_github_turned_off_asks_nobody(self, repository, asked, monkeypatch):
-        monkeypatch.setattr(repo, "CFG", Config({"hud": {"github": False}}))
+        monkeypatch.setattr(repo, "CFG", Config({"plugins": {"github": {"network": False}}}))
         out = repo.info(str(repository()))
         assert "gh" not in out
         assert asked == []
