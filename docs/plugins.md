@@ -206,8 +206,7 @@ def panel(ctx) -> dict:
         "rows": [
             {"label": "branch", "value": "main"},
             {"label": "pull request", "short": "pr", "value": "#38 · open"},
-            {"label": "checks", "value": "✗ 1 failing",
-             "state": "warn", "detail": "lint"},
+            {"label": "checks", "value": "✗ 1 failing", "state": "warn", "detail": "lint"},
         ],
     }
 ```
