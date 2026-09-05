@@ -359,40 +359,57 @@ def draw_bars(win, y, cx, t, state, color, w, x0=0, level=0.0):
             pass
 
 
-def draw_repo(win, y, w, r) -> None:
-    """Branch, pull request and checks, on one line.
+# What a row's state means, in the four colours this window has. A row with
+# no state takes none: most rows are a number, and a number that is fine is
+# not news.
+STATE_COLOUR = {"ok": GREEN, "warn": AMBER, "busy": AMBER}
 
-    The window on a desktop has a panel for this; a terminal has one row, so
-    it is one row: everything after the branch appears only once it exists,
-    and the checks -- the reason anyone looks -- get the colour and the only
-    bold on the line.
+
+def panel_segments(panels) -> list:
+    """Every plugin panel as (text, attr) runs, for a surface with one row.
+
+    The browser gives each panel a block in a rail. A terminal has the one
+    line above the title, so the panels are laid end to end on it: labels
+    dim, values plain, and the only thing that takes a colour is a row that
+    asked for one -- which in practice is the checks, the reason anyone
+    looks. Tiles and the note are left out; they are a rail's luxuries.
     """
-    if not r or not r.get("branch"):
+    segs = []
+    for p in sorted(panels, key=lambda p: (p.get("order", 50), p.get("plugin", ""))):
+        for r in p.get("rows", []):
+            if segs:
+                segs.append(("  ·  ", curses.A_DIM))
+            colour = curses.color_pair(STATE_COLOUR.get(r.get("state"), WHITE))
+            if r.get("short"):
+                segs.append((r["short"] + " ", curses.A_DIM))
+            segs.append(
+                (r.get("value", ""), colour | (curses.A_BOLD if r.get("state") == "warn" else 0))
+            )
+            if r.get("detail"):
+                segs.append((" — " + r["detail"], colour | curses.A_DIM))
+    return segs
+
+
+def draw_panels(win, y, w, panels) -> None:
+    """The plugin row, centred, cut at the edge rather than wrapped.
+
+    A second line is the title's, so what does not fit is not shown. That is
+    also why the panels that ship declare which window they belong in: five
+    meters and a branch cannot share sixty columns, and the branch wins.
+    """
+    segs = panel_segments(panels)
+    if not segs:
         return
-    left = f"{r.get('name', '')} · {r['branch']}".strip(" ·")
-    if r.get("detached"):
-        left += " (detached)"
-    pr = r.get("pr")
-    if pr:
-        left += f"  ·  #{pr['number']} {'draft' if pr['draft'] and pr['state'] == 'open' else pr['state']}"
-    c = (pr or {}).get("checks", {})
-    tail, attr = "", curses.A_DIM
-    if c.get("state") == "passing":
-        tail = f"  ✓ {c['pass']} passing"
-    elif c.get("state") == "running":
-        tail = f"  ● {c['running']} running"
-    elif c.get("state") == "failing":
-        tail = f"  ✗ {c['fail']} failing"
-        if c.get("failing"):
-            tail += f" — {', '.join(c['failing'])}"
-        attr = curses.A_BOLD
-    line = (left + tail)[: max(0, w - 2)]
-    x = max(0, (w - len(line)) // 2)
-    colour = {"passing": GREEN, "running": AMBER, "failing": AMBER}.get(c.get("state"), WHITE)
-    try:
-        win.addstr(y, x, line, curses.color_pair(colour) | attr)
-    except curses.error:
-        pass
+    x = max(0, (w - sum(len(t) for t, _ in segs)) // 2)
+    for text, attr in segs:
+        if x >= w - 1:
+            break
+        chunk = text[: w - 1 - x]
+        try:
+            win.addstr(y, x, chunk, attr)
+        except curses.error:
+            pass
+        x += len(chunk)
 
 
 def centered(win, y, text, w, attr=0, x0=0):
@@ -556,15 +573,13 @@ def main(stdscr):
             label, color = (L("voice_off", "V O I C E   O F F"), WHITE)
             st = "idle"
 
-        # The top row, above the title: what this session is working on. It is
-        # the one thing on screen that is about the repository rather than
-        # about the voice, so it sits outside the frame the rest of it uses,
-        # and it is drawn only when there is a repository to name -- and only
-        # when the config wants the block at all, in which case nothing is
-        # read and nobody is asked.
+        # The top row, above the title: whatever the plugins have to say. It
+        # is the one part of this screen that is not about the voice, so it
+        # sits outside the frame the rest of it uses. A plugin switched off,
+        # or one that says it does not belong in a terminal, is not asked --
+        # so nothing is read and nobody is called on its account.
         show = core.panels()
-        if show["repo"]:
-            draw_repo(stdscr, 0, w, core.repo_now())
+        draw_panels(stdscr, 0, w, core.plugin_panels("terminal"))
 
         centered(stdscr, 1, core.TITLE, w, curses.color_pair(color) | curses.A_BOLD)
 

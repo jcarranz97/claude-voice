@@ -30,6 +30,9 @@ claude_voice/
   hudweb.py             the same window, served to a browser engine
   hudshell.py           the frameless window it opens in
   web/                  the page: one html, one css, one js, no build step
+  plug.py               the plugin registry: manifests, guards, rows
+  plugins/              the readouts that ship, as plugins
+  sysstat.py            cpu, memory, disk and the card, off /proc
   repo.py               the branch, its pull request and its checks
   mic.py                who holds the microphone; the watchdog timer
   run.py                the pty wrapper: the bare `claude-voice`
@@ -66,6 +69,7 @@ The CLI is a dispatch table and an `exec`, so argv, exit codes and signal handli
 | `pron` | `pron.py` |
 | `config` | `config.py` |
 | `hooks` | `hooks.py` |
+| `plugin` | `plug.py` |
 | `doctor` | `doctor.py` |
 
 ## The one structural surprise

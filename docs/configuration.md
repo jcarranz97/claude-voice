@@ -62,13 +62,17 @@ timeout = 3.0                     # past this, the cached phrase plays instead
 [hud]
 required = true                   # no window open, nothing of ours runs at all
 shell = "auto"                    # auto | webview | browser | none
-github = true                     # the repo panel may ask gh about its pull request
 
-[hud.panels]                      # which blocks the window draws; all on by default
-system = true
-repo = true
+[hud.panels]                      # the blocks the window draws itself
 session = true
 agents = true
+
+[plugins.enabled]                 # the readouts, which are plugins
+system = true
+github = true
+
+[plugins.github]
+network = true                    # ask gh about the branch, or keep the branch alone
 
 [history]
 enabled = true                    # the spoken log behind the HUD's h panel
@@ -181,7 +185,7 @@ The rest of the directory is state, not settings: session files, pidfiles, the s
 |---|---|
 | The hooks — instruction, tags, acknowledgement, heartbeat, narration, the spoken line | **immediately**, on your next prompt. They are short-lived processes that read the config per invocation |
 | The HUD's labels and language | reloaded in place |
-| `[hud.panels]`, `hud.shell`, window size | when the HUD is next opened |
+| `[hud.panels]`, `[plugins.enabled]`, `hud.shell`, window size | when the HUD is next opened |
 | Conversation mode's language | when it is next started — the HUD restarts it for you on a language switch |
 | `[ack].phrases`, or a new voice model | after `claude-voice build-acks`, which re-synthesizes the cache |
 | `[thinking].style` | after `claude-voice build-ticks` |

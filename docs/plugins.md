@@ -114,6 +114,8 @@ panel = "cv_weather.panel:panel"     # imported only when the panel is drawn
 
 [options]
 default_enabled = true               # false ships it off, for the user to opt in
+slot = "left"                        # where this panel belongs, until told otherwise
+order = 30                           # and how high up; lower is higher
 ```
 
 The two tables that look redundant are not. `[provides]` is read on **every** invocation and answers "does anything care about this event"; `[entrypoints]` is touched only when the answer is yes. That split is the whole performance story, and the next section is why it had to exist.
@@ -203,13 +205,36 @@ def panel(ctx) -> dict:
         "title": "github",
         "rows": [
             {"label": "branch", "value": "main"},
-            {"label": "pr", "value": "#38 open", "state": "ok"},
-            {"label": "checks", "value": "running", "state": "busy"},
+            {"label": "pull request", "short": "pr", "value": "#38 · open"},
+            {"label": "checks", "value": "✗ 1 failing",
+             "state": "warn", "detail": "lint"},
         ],
     }
 ```
 
-Both surfaces already know how to draw a title and a list of label-value pairs; `state` picks the colour from the active theme and is the only styling a plugin gets. The function is called from the same snapshot every surface renders, which means it inherits the rule that snapshot already lives by: **it must return immediately**. A panel that wants a slow answer keeps its own cache and asks in a background thread, showing whatever the last answer was.
+Both surfaces already know how to draw a title and a list of label-value pairs. `state` picks the colour from the active theme and is the only colour a plugin gets. The function is called from the same snapshot every surface renders, which means it inherits the rule that snapshot already lives by: **it must return immediately**. A panel that wants a slow answer keeps its own cache and asks in a background thread, showing whatever the last answer was.
+
+The whole vocabulary, and there is deliberately not much of it:
+
+| On a row | |
+|---|---|
+| `label` | the name of the thing, in the rail |
+| `short` | what a surface with one row calls it. `pull request` is right in a rail and too long on a line shared with four other rows |
+| `value` | the answer |
+| `meter` | a percentage, `0`–`100`. The row is drawn as a bar with the value beside it, because "how full" is a question a bar answers without being read |
+| `state` | `ok`, `warn` or `busy`, and nothing else |
+| `detail` | a second, dimmer line under the value — a pull request's title, the names of the checks that failed. Never the answer itself: a surface is allowed to drop it |
+| `action` | see [A row can be pressed](#a-row-can-be-pressed) |
+
+| On the panel | |
+|---|---|
+| `title` | the heading. Absent, the plugin's name |
+| `rows` | the rows. **A panel with none takes no space and is not drawn** |
+| `tiles` | `label`/`value` pairs for numbers that are read rather than compared — an absolute beside a percentage that already has a bar. Browser only |
+| `note` | one line of prose under the rows, for the thing being measured rather than the measurement: the name of a graphics card. Browser only |
+| `mark` | a glyph beside the title, by name, from the host's own small set. A plugin names one; it does not ship a picture into a heading |
+
+Keys the host does not know are dropped rather than passed on: a renderer sees every documented key on every row, and nothing else.
 
 Panels are imported by the HUD, which is a long-lived process, so the import budget here is generous in a way the hooks' is not. A panel plugin may reasonably pull in a library. A `stop`-hook plugin may not.
 
@@ -253,7 +278,7 @@ The five destinations, and what each one costs you:
 
 Asking for a surface the plugin did not declare is a configuration error named at startup, not a silent nothing.
 
-`slot` and `order` place a panel among the ones already there. The panels that ship take round numbers, so there is room between them:
+`slot` and `order` place a panel among the ones already there. Both have a default in the plugin's own `[options]`, because a panel that has to be moved before it looks right is a panel that shipped in the wrong place — and the config wins over it, because where a panel belongs in *your* window is not the plugin's call. The panels that ship take round numbers, so there is room between them:
 
 ```text
 ┌──────────────┬───────────────────────────┬──────────────┐
@@ -375,7 +400,7 @@ That keeps the default cheap. The print lab is four rows until the moment you wa
 
 ## The panels that ship are plugins too
 
-The readouts in the HUD are not privileged. The system panel and the GitHub panel are bundled plugins, drawn through the same rows, switched off through the same table, and guarded the same way as anything you install:
+The readouts in the HUD are not privileged. The system panel and the GitHub panel are bundled plugins, drawn through the same rows, placed by the same `slot` and `order`, switched off through the same table, and guarded the same way as anything you install. There is no other path into either window: nothing in the HUD's own code knows what a CPU or a branch is.
 
 ```toml
 [plugins.enabled]
@@ -386,6 +411,8 @@ github = false                       # no GitHub here, no panel, no `gh` call ei
 That is the point of building it this way rather than adding a hook here and there. A plugin API that only strangers use is one nobody tests; when the panels that ship go through it, a shape that cannot express a real panel is found immediately, by us, rather than eventually, by somebody else.
 
 It also sets the standard for what a panel has to be able to say. The GitHub panel is not a decorative case: the branch is a file read that must stay current within seconds, the pull request is a network call that can hang, and the state it reports has four distinct values. Any panel shape that carries that carries a print queue too.
+
+The two of them also demonstrate the window declaration rather than just documenting it. The GitHub panel draws in both, and in the terminal is the row above the title. The system panel is five meters, four tiles and the name of a board — so it says `windows = ["browser"]`, because the terminal has one row and the branch has the better claim on it.
 
 !!! warning "A panel that moves takes its settings with it"
     `hud.panels.system` and `hud.panels.repo` became `plugins.enabled.system` and `plugins.enabled.github`; `hud.github`, which kept the branch and dropped only the network call, became `plugins.github.network`. The distinction it drew was worth keeping — switching a panel off and telling it not to use the network are two different wishes — so it survived the move under a name that says whose setting it is.

@@ -25,27 +25,14 @@
     </div>
   </header>
 
-  <!-- Left: what the machine is doing, then what was said out loud. The
-       history is the panel that was already here; the stats are new, and
-       they sit above it because they never change height. -->
+  <!-- Left: whatever the plugins in this rail have to say, then what was
+       said out loud. The history is the block this window draws itself, and
+       it sits at the bottom because it is the one that grows. -->
   <section class="panel left">
-    <div class="block" id="system-block">
-      <h2>// system</h2>
-      <div class="meter"><label>cpu</label><div class="track"><i id="cpu-bar"></i></div><b id="cpu-val">0%</b></div>
-      <div class="meter"><label>ram</label><div class="track"><i id="mem-bar"></i></div><b id="mem-val">0%</b></div>
-      <div class="meter"><label>disk</label><div class="track"><i id="disk-bar"></i></div><b id="disk-val">0%</b></div>
-      <!-- Hidden outright when there is no readable card: three zeros look
-           like a measurement, and would be the wrong one. -->
-      <div class="meter" id="gpu-row" hidden><label>gpu</label><div class="track"><i id="gpu-bar"></i></div><b id="gpu-val">0%</b></div>
-      <div class="meter" id="vram-row" hidden><label>vram</label><div class="track"><i id="vram-bar"></i></div><b id="vram-val">0%</b></div>
-      <p class="card" id="gpu-name" hidden></p>
-      <div class="tiles">
-        <div class="tile"><b id="mem-abs">—</b><span>memory</span></div>
-        <div class="tile"><b id="disk-abs">—</b><span>free</span></div>
-        <div class="tile" id="vram-tile" hidden><b id="vram-abs">—</b><span>vram</span></div>
-        <div class="tile"><b id="load-abs">—</b><span>load</span></div>
-      </div>
-    </div>
+    <!-- Plugin panels, built from rows the host sends. Nothing in here is
+         written by hand: a plugin that draws in this rail appears, and one
+         that is switched off leaves no gap behind it. -->
+    <div id="plugins-left"></div>
 
     <div class="block grow">
       <h2 id="history-title">// history</h2>
@@ -98,23 +85,7 @@
 
   <!-- Right: everything that can be wrong, and who is doing the work. -->
   <section class="panel right">
-    <!-- What the watched session is IN. Hidden outright when that session
-         is not in a repository: an empty branch row is a question, and the
-         answer to it is "there is no repository", which is not worth a row. -->
-    <div class="block" id="repo-block" hidden>
-      <!-- The one heading with a mark on it. Every other block is named in
-           words because the words are enough; this one is half a GitHub
-           panel, and the mark says which half at a glance. -->
-      <h2><svg class="mark" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>// repo</h2>
-      <dl class="kv">
-        <dt>repo</dt><dd id="k-repo">—</dd>
-        <dt>branch</dt><dd id="k-branch">—</dd>
-        <dt id="k-pr-label" hidden>pull request</dt>
-        <dd id="k-pr" hidden><span id="k-pr-num"></span><span class="pr-title" id="k-pr-title"></span></dd>
-        <dt id="k-checks-label" hidden>checks</dt>
-        <dd id="k-checks" hidden></dd>
-      </dl>
-    </div>
+    <div id="plugins-right"></div>
 
     <div class="block" id="session-block">
       <h2>// session</h2>
@@ -147,4 +118,9 @@
 <div class="grips" id="grips" hidden></div>
 
 <div class="boot" id="boot">connecting…</div>
+
+<!-- Marks a panel may ask for by name. A plugin names one, it does not ship
+     one: a heading is the host's, and the words are enough for every panel
+     but this one, which is half a GitHub panel and says so at a glance. -->
+<svg hidden><symbol id="mark-github" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></symbol></svg>
 <script src="/static/hud.js" data-token="__TOKEN__"></script>

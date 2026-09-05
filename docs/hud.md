@@ -92,19 +92,23 @@ Waiting on subagents looks the same as thinking from the inside, but it is not t
 
 ## The panels
 
+Two of them the window draws itself; the readouts are [plugins](plugins.md), switched in the one table that switches every plugin.
+
 ```toml
-[hud.panels]     # all on by default
-system = true    # cpu, memory, disk, gpu
-repo = true      # repository, branch, pull request, checks
+[hud.panels]     # the blocks the window draws itself
 session = true   # where dictation goes, language, microphone
 agents = true    # the list of running subagents
+
+[plugins.enabled]
+system = true    # cpu, memory, disk, gpu
+github = true    # repository, branch, pull request, checks
 ```
 
 Everything is on out of the box, because a HUD that hides half of itself until you find a config file looks broken. But not everybody works in pull requests, and a panel listing subagents is noise to somebody who has never launched one.
 
-Off is genuinely off, not hidden: with `repo = false` the branch is not read and `gh` is never called. The one thing a panel switch does not touch is the reactor, which shows the state of the work rather than a block of the window — waiting on subagents still colours it, and still says so, with the list switched off.
+Off is genuinely off, not hidden: with `github = false` the branch is not read and `gh` is never called. The one thing a panel switch does not touch is the reactor, which shows the state of the work rather than a block of the window — waiting on subagents still colours it, and still says so, with the list switched off.
 
-The terminal HUD honours the same switches for the two blocks it draws. Changes take effect when the HUD is next opened.
+The terminal HUD draws what it can of the same set: a plugin declares which of the two windows it belongs in, and one that says browser only is not asked for a terminal frame at all. Changes take effect when the HUD is next opened.
 
 ### The repo panel
 
@@ -115,15 +119,19 @@ It is there for the ten minutes after a push, when the only question in the room
 The branch is read off disk and is always current. The rest comes from `gh` on a slow clock — about once a minute, every twelve seconds while something is still running — asked in a background thread, so a slow network can make that row late but can never make the window stutter. No repository, no `gh`, no pull request: the rows that have no answer are not drawn.
 
 ```toml
-[hud]
-github = false   # keep the repository and branch; ask gh nothing
+[plugins.github]
+network = false  # keep the repository and branch; ask gh nothing
 ```
 
 `plugins.github.network` is a narrower switch than `plugins.enabled.github`, and it is the only thing in this program besides the acknowledgement that talks to a network. Use `network = false` to keep the branch and drop the network; use `plugins.enabled.github = false` to drop the block entirely.
 
+The repo panel draws in both windows. In the terminal it is the row above the title, the whole panel on one line.
+
 ### The system panel
 
-CPU, memory, disk, and the graphics card's load and VRAM, named by its actual board. NVIDIA is read through `nvidia-smi`; AMD is read from sysfs. A machine with neither simply does not draw the row.
+CPU, memory, disk, and the graphics card's load and VRAM, named by its actual board, with the absolutes behind the percentages in tiles underneath. NVIDIA is read through `nvidia-smi`; AMD is read from sysfs. A machine with neither simply does not draw the row.
+
+It draws in the browser window only. Five meters and four tiles need a rail, and the terminal has the one row above its title — which the branch has a better claim on.
 
 ## The keys
 

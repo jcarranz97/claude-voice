@@ -18,6 +18,7 @@ import types
 import pytest
 
 import claude_voice.hudcore as hudcore
+import claude_voice.repo as _repo
 
 # --- the harness ---------------------------------------------------------
 
@@ -55,6 +56,9 @@ def spawn_guard(monkeypatch):
     The expensive microphone questions and the GitHub lookup are stubbed to
     their quiet answers rather than left real: a unit test that shells out to
     pw-dump reports whatever the developer's desktop happens to be doing.
+
+    The lookup is stubbed in repo.py rather than in hudcore, which no longer
+    knows what a branch is: the bundled GitHub plugin asks repo.py directly.
     """
 
     def _no(*a, **kw):
@@ -65,7 +69,7 @@ def spawn_guard(monkeypatch):
     monkeypatch.setattr(hudcore, "mic_open", lambda fresh=False: False)
     monkeypatch.setattr(hudcore, "mic_held", lambda: [])
     monkeypatch.setattr(hudcore, "sweep_orphans", lambda: 0)
-    monkeypatch.setattr(hudcore._repo, "info", lambda where: {})
+    monkeypatch.setattr(_repo, "info", lambda where: {})
 
 
 @pytest.fixture
@@ -831,27 +835,37 @@ class TestRun:
         assert seen["cmd"][2] == "--toggle"
 
 
-# --- the graphics card ---------------------------------------------------
+# --- what the plugins have to show ---------------------------------------
 
 
-class TestTheNumbersMovedButTheNamesDidNot:
-    """system_stats and gpu_stats read /proc in sysstat.py now, so that the
-    panel showing them could become a plugin. Both windows and a good deal
-    of this suite still ask hudcore for them."""
+class TestPluginPanels:
+    """The only way a readout reaches a window. hudcore no longer knows what
+    a CPU or a branch is; it knows which window is asking."""
 
-    def test_gpu_stats_is_the_one_in_sysstat(self, monkeypatch):
-        monkeypatch.setattr(hudcore._sysstat, "gpu_stats", lambda: {"busy": 3.0})
-        assert hudcore.gpu_stats() == {"busy": 3.0}
+    def test_it_asks_about_the_target_real_path(self, pane, monkeypatch):
+        # The pretty `dir` is a basename, and a basename would resolve against
+        # whatever directory this process happens to be in.
+        seen = []
+        monkeypatch.setattr(_repo, "info", lambda w: seen.append(w) or {"branch": "main"})
+        pane(a_pane())
+        got = hudcore.plugin_panels("terminal")
+        assert [p["plugin"] for p in got] == ["github"]
+        assert seen == ["/proj/one"]
 
-    def test_system_stats_is_the_one_in_sysstat(self, monkeypatch):
-        monkeypatch.setattr(hudcore._sysstat, "system_stats", lambda: {"cpu": 1.0})
-        assert hudcore.system_stats() == {"cpu": 1.0}
-
-    def test_a_panel_that_is_off_does_not_read_the_numbers(self, write_config, monkeypatch):
-        write_config("[plugins.enabled]\nsystem = false\n")
+    def test_a_panel_that_is_off_is_not_asked(self, write_config, monkeypatch, pane):
+        write_config("[plugins.enabled]\ngithub = false\n")
         hudcore.reload_cfg()
-        monkeypatch.setattr(hudcore._sysstat, "system_stats", lambda: pytest.fail("read anyway"))
-        assert hudcore.system_stats() == {}
+        monkeypatch.setattr(_repo, "info", lambda w: pytest.fail("asked anyway"))
+        pane(a_pane())
+        assert hudcore.plugin_panels("terminal") == []
+
+    def test_a_window_a_plugin_declined_is_not_drawn_in(self, pane, monkeypatch):
+        # The system panel is five meters and four tiles; the terminal has the
+        # one row above its title, and the branch is what belongs on it.
+        monkeypatch.setattr(_repo, "info", lambda w: {"branch": "main"})
+        pane(a_pane())
+        assert "system" not in [p["plugin"] for p in hudcore.plugin_panels("terminal")]
+        assert "system" in [p["plugin"] for p in hudcore.plugin_panels("browser")]
 
 
 class TestVoiceOn:
@@ -951,28 +965,18 @@ class TestPanels:
     """Which blocks the window draws at all."""
 
     def test_everything_is_on_by_default(self):
-        # The two that became plugins answer here too, under the names both
-        # windows draw them by, so that neither surface had to learn a word.
-        assert hudcore.panels() == dict.fromkeys(list(hudcore.PANELS) + ["system", "repo"], True)
+        assert hudcore.panels() == dict.fromkeys(hudcore.PANELS, True)
 
     def test_a_block_can_be_switched_off(self, write_config):
-        write_config("[plugins.enabled]\ngithub = false\n")
+        write_config("[hud.panels]\nagents = false\n")
         hudcore.reload_cfg()
         show = hudcore.panels()
-        assert show["repo"] is False and show["system"] is True
+        assert show["agents"] is False and show["session"] is True
 
-
-class TestRepoNow:
-    """The branch and pull request of the pane being watched."""
-
-    def test_it_asks_about_the_target_real_path(self, pane, monkeypatch):
-        # The pretty `dir` is a basename, and a basename would resolve against
-        # whatever directory this process happens to be in.
-        seen = []
-        monkeypatch.setattr(hudcore._repo, "info", lambda w: seen.append(w) or {"branch": "main"})
-        pane(a_pane())
-        assert hudcore.repo_now() == {"branch": "main"}
-        assert seen == ["/proj/one"]
+    def test_the_plugins_are_not_among_them(self):
+        # They are switched in the one table that switches every plugin, and
+        # this one is about the blocks the window draws itself.
+        assert "system" not in hudcore.panels() and "repo" not in hudcore.panels()
 
 
 class TestLevel:
@@ -1034,7 +1038,6 @@ class TestSnapshot:
         monkeypatch.setattr(hudcore, "mic_speaking", lambda: False)
         monkeypatch.setattr(hudcore, "daemon_alive", lambda: False)
         monkeypatch.setattr(hudcore, "listen_stranded", lambda: "")
-        monkeypatch.setattr(hudcore, "gpu_stats", lambda: None)
         monkeypatch.setattr(hudcore._lang, "following", lambda p: "es")
         monkeypatch.setattr(hudcore._lang, "label", lambda p: "Espanol")
         thinking.session_for = lambda *a, **k: "sid-1"
@@ -1076,12 +1079,20 @@ class TestSnapshot:
         (hudcore.BASE / "dictate.pid").write_text("1")
         assert hudcore.snapshot()["dictation"]["recording"] is True
 
-    def test_the_repo_block_is_empty_when_the_panel_is_off(self, write_config, monkeypatch):
+    def test_the_panels_are_the_browser_ones(self, monkeypatch):
+        # The window that reads this snapshot is the browser, and a plugin
+        # that only draws in a terminal has no business in it.
+        seen = []
+        monkeypatch.setattr(hudcore._plug, "panels", lambda p, w: seen.append((p, w)) or [])
+        assert hudcore.snapshot()["plugin_panels"] == []
+        assert seen == [("/proj/one", "browser")]
+
+    def test_a_panel_that_is_off_is_not_asked_about(self, write_config, monkeypatch):
         # Off is off: a hidden panel does not quietly keep calling GitHub.
         write_config("[plugins.enabled]\ngithub = false\n")
         hudcore.reload_cfg()
-        monkeypatch.setattr(hudcore._repo, "info", lambda w: pytest.fail("asked anyway"))
-        assert hudcore.snapshot()["repo"] == {}
+        monkeypatch.setattr(_repo, "info", lambda w: pytest.fail("asked anyway"))
+        assert [p["plugin"] for p in hudcore.snapshot()["plugin_panels"]] == ["system"]
 
     def test_every_label_the_front_ends_draw_is_present(self):
         labels = hudcore.snapshot()["labels"]

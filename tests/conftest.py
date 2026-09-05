@@ -52,6 +52,17 @@ import claude_voice.config as config  # noqa: E402
 
 sys.modules.setdefault("config", config)
 
+# The bundled plugins import these two by bare name as well, and they carry
+# caches of their own: a test that stubs `claude_voice.repo.info` while a
+# plugin reads a second copy of it would shell out to `gh` for real. Imported
+# after `config` is registered, because they import it themselves and would
+# otherwise be the ones to create the duplicate this file exists to prevent.
+import claude_voice.repo as repo  # noqa: E402
+import claude_voice.sysstat as sysstat  # noqa: E402
+
+sys.modules.setdefault("repo", repo)
+sys.modules.setdefault("sysstat", sysstat)
+
 ROOT = Path(__file__).resolve().parent.parent
 PKG = ROOT / "claude_voice"
 
