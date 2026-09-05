@@ -16,7 +16,7 @@ Both surfaces — the window and the terminal — route every key through one sh
 | ++d++ | dictate: record, transcribe, send |
 | ++c++ | conversation mode: continuous listening |
 | ++t++ | switch which session receives dictation — the voice follows it |
-| ++h++ | history: show or hide the spoken log |
+| ++h++ | history: hide the spoken log, and bring it back. Shown until you say otherwise |
 | ++x++ | close an orphaned microphone capture (emergency) |
 | ++q++ / ++escape++ | quit |
 
@@ -48,7 +48,7 @@ Everything lives under `~/.config/claude-voice/`. Set `CLAUDE_VOICE_HOME` to mov
 |---|---|
 | `enabled` | the on/off switch. `claude-voice on` / `off` |
 | `preset` | the active language. `claude-voice lang`, or ++l++ |
-| `hud-history` | whether the history panel is showing. ++h++ |
+| `hud-history` | whether the history panel is showing, in both windows. ++h++. Absent means showing |
 
 They are files rather than config keys because a tool that rewrites TOML you wrote by hand eventually eats a comment it did not write. Delete one and the corresponding config value is back in charge.
 

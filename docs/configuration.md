@@ -165,7 +165,7 @@ Three pieces of state live beside the config as one-line files rather than insid
 |---|---|---|
 | `enabled` | the on/off switch | `claude-voice on` / `off`, ++m++ |
 | `preset` | the active language | `claude-voice lang`, ++l++ |
-| `hud-history` | whether the history panel is showing | ++h++ |
+| `hud-history` | whether the history panel is showing, in both windows | ++h++ |
 
 They are files because **a tool that rewrites TOML you wrote by hand eventually eats a comment it did not write.** Everything a keystroke can change is kept out of the file a person edits.
 

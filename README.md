@@ -510,7 +510,7 @@ surface, and reaches the same core.
 | `d` | dictate: record, transcribe, send |
 | `c` | conversation mode: continuous listening |
 | `t` | switch which Claude session receives dictation — the voice follows it |
-| `h` | history: show/hide the spoken log beside the reactor |
+| `h` | history: hide the spoken log beside the reactor, and bring it back — remembered, and the same panel in both windows |
 | `x` | close an orphaned microphone capture (emergency) |
 | `q` | quit — and since the HUD is the application, the last window closing stops the voice, the microphone and the heartbeat with it |
 
@@ -518,7 +518,7 @@ surface, and reaches the same core.
 
 The bottom line of the HUD shows the last spoken line and nothing else — which
 tells you it just said *something*, and is useless the moment the next line
-replaces it. Press `h` to open the log as a panel down the left:
+replaces it. The log is already open as a panel down the left:
 
 ```
                           C L A U D E
@@ -537,14 +537,19 @@ replaces it. Press `h` to open the log as a panel down the left:
  14:05  you › fix them    │
 ```
 
-`h` again puts it away. It is a panel, not a mode: the reactor keeps spinning
-beside it, so you never trade the state you are watching for the log you are
-reading. Newest at the bottom, arrows or `j`/`k` to scroll, `g`/`G` for the
-ends, `q` still quits the HUD.
+`h` puts it away, and `h` brings it back. It is a panel, not a mode: the
+reactor keeps spinning beside it, so you never trade the state you are
+watching for the log you are reading. Newest at the bottom, arrows or `j`/`k`
+to scroll, `g`/`G` for the ends, `q` still quits the HUD.
+
+It is the one part of the HUD that puts conversation text on screen, which is
+the reason to have the key within reach: before a screenshot, a recording or a
+shared screen, `h` takes it off without closing anything.
 
 The panel reopens the way you left it — whether it was showing is remembered
 in `~/.config/claude-voice/hud-history`, so `h` is a preference you set once
-rather than a key you press every time you open a HUD.
+rather than a key you press every time you open a HUD. One preference, both
+windows: put the panel away in the browser and the terminal opens without it.
 
 It sits on the left by default. `position` moves it:
 

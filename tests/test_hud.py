@@ -163,13 +163,18 @@ def env(monkeypatch, curses_stub, home):
     """A HUD wired to an `Env` instead of to the machine."""
     e = Env()
 
-    def act(name):
-        e.acted.append(name)
-        return e.results.get(name, (True, ""))
-
     def set_panel_open(on):
         e.saved.append(on)
         e.panel = on
+
+    def act(name):
+        e.acted.append(name)
+        # The history key goes through act() like every other one, and what it
+        # does there is flip the marker the key handler then reads back. A stub
+        # that only recorded the name would leave the panel unable to open.
+        if name == "history":
+            set_panel_open(not e.panel)
+        return e.results.get(name, (True, ""))
 
     monkeypatch.setattr(hud, "read_state", lambda: e.state)
     monkeypatch.setattr(hud, "agents_live", lambda: e.agents)
@@ -698,12 +703,27 @@ class TestKeys:
         run([ord("h")])
         assert env.saved == [False]
 
+    def test_h_goes_through_the_shared_action(self, run, env):
+        # Not a local toggle: the browser presses the same one, and a panel
+        # opened there is the panel this window reopens with.
+        run([ord("h")])
+        assert env.acted == ["history"]
+
     def test_in_a_narrow_window_q_leaves_the_panel_first(self, run, env):
         # There the panel is a view you are inside, so q means back.
+        screen = run([ord("h"), ord("q")], w=60)
+        assert env.saved == [True, False]
+        # q drew another frame instead of quitting, and it has the reactor.
+        assert "S T A N D I N G   B Y" in screen.frame(-1)
+
+    def test_a_narrow_window_does_not_open_into_the_panel(self, run, env):
+        # The preference says show the log beside the reactor. Where there is
+        # no beside, it is a view and not a panel, and a HUD that opens on one
+        # you have to press q to leave has hidden the thing it is for.
         env.panel = True
-        screen = run([ord("q")], w=60)
-        assert env.saved == [False]
-        assert screen.erases == 1  # the frame drawn after backing out
+        screen = run([-1], w=60)
+        assert "S T A N D I N G   B Y" in screen.text
+        assert env.saved == []  # and the preference itself is left alone
 
     @pytest.mark.parametrize(
         ("key", "expected"),
@@ -752,8 +772,8 @@ class TestHistoryPanel:
         assert "«said aloud»" not in run([-1]).text
 
     def test_a_narrow_window_gives_the_panel_the_whole_screen(self, run, env):
-        env.panel, env.rows = True, ROWS
-        screen = run([-1, ord("q")], w=60)
+        env.rows = ROWS
+        screen = run([ord("h"), -1, ord("q")], w=60)
         assert "h/q: back" in screen.frame(1)
         assert "line 11" in screen.frame(1)
         assert "S T A N D I N G   B Y" not in screen.frame(1)

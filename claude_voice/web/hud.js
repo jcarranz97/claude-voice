@@ -236,6 +236,10 @@ function blocks(s) {
   const on = (k) => p[k] !== false;
   $("session-block").hidden = !on("session");
   $("agents-block").hidden = !on("agents");
+  // History is the one of these switched by a key rather than by the config,
+  // and the host has already resolved which -- so it arrives here as an entry
+  // like the others and is drawn like the others.
+  $("history-block").hidden = !on("history");
   return on;
 }
 
@@ -249,6 +253,11 @@ function column(on) {
   document.querySelector(".panel.right").hidden =
     !on("session") && !on("agents") && !$("alerts").childElementCount
     && !$("plugins-right").childElementCount;
+  // The left rail goes on the same terms. With the history hidden it is often
+  // the whole of what that column held, and a border down an empty strip is
+  // worse than the panel it used to draw.
+  $("left-column").hidden =
+    !on("history") && !$("plugins-left").childElementCount;
 }
 
 function render(s) {
@@ -267,10 +276,9 @@ function render(s) {
 
   const drawn = panels(s);
 
-  $("history-title").textContent = `// ${deSpace(s.labels.history)}`;
-  history(s);
-
   const on = blocks(s);
+  $("history-title").textContent = `// ${deSpace(s.labels.history)}`;
+  history(s, on("history"));
   session(s);
   $("k-lang").textContent = s.language.name || s.language.preset;
   $("k-mic").textContent = s.mic.speaking ? "recording you"
@@ -322,9 +330,19 @@ function session(s) {
   else split("dictation", target, "every session");
 }
 
-function history(s) {
+let histShown = true;
+
+function history(s, shown) {
   const box = $("history");
-  const near = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+  // A hidden block measures zero in every direction, so "is it scrolled to
+  // the bottom" cannot be asked of one -- and answering it anyway is what
+  // would reopen the panel at the top of the log instead of at the last
+  // line. Nothing is drawn while it is off, and the first frame back is
+  // pinned to the end, which is where you left it.
+  const back = shown && !histShown;
+  histShown = shown;
+  if (!shown) return;
+  const near = back || box.scrollHeight - box.scrollTop - box.clientHeight < 40;
   if (!s.history.length) {
     box.innerHTML = `<p class="empty">${s.labels.history_empty}</p>`;
     return;
@@ -421,6 +439,10 @@ function keys(s) {
   ];
   if (s.language.next && s.language.next !== s.language.preset)
     row.push(["l", s.language.next_label, "language", false]);
+  // Named for what it will do, like the rest -- and it is the one key here
+  // worth finding in a hurry, because what it hides is the conversation.
+  const hist = (s.panels || {}).history !== false;
+  row.push(["h", hist ? "hide history" : "history", "history", hist]);
   row.push(["x", "close orphan capture", "sweep", false]);
   // Last, and named for what it does to the application rather than to the
   // window: closing the HUD stops the voice, and the legend should say so
@@ -641,7 +663,8 @@ setInterval(() => {
 }, 1000);
 
 const BIND = { m: "voice", " ": "voice", f: "focus", d: "dictate",
-               c: "conversation", t: "session", l: "language", x: "sweep" };
+               c: "conversation", t: "session", l: "language", x: "sweep",
+               h: "history" };
 
 addEventListener("keydown", (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey || e.isComposing) return;

@@ -63,11 +63,9 @@ The repo panel is the one worth pausing on. It exists for the ten minutes after 
 
 No repository, no `gh`, no pull request: the rows with no answer are simply not drawn.
 
-## Step 4 — Open the spoken log
+## Step 4 — Read the spoken log
 
-Press ++h++.
-
-The log opens as a panel down the left, beside the reactor rather than instead of it — you never trade the state you are watching for the log you are reading:
+It is already open: the panel down the left, beside the reactor rather than instead of it — you never trade the state you are watching for the log you are reading:
 
 ```text
  14:02  you › run the tests again
@@ -76,9 +74,9 @@ The log opens as a panel down the left, beside the reactor rather than instead o
  14:05  you › fix them
 ```
 
-Newest at the bottom. ++arrow-up++ / ++arrow-down++ or ++j++ / ++k++ scroll; ++g++ and ++shift+g++ jump to the ends; ++h++ puts it away.
+Newest at the bottom. ++arrow-up++ / ++arrow-down++ or ++j++ / ++k++ scroll; ++g++ and ++shift+g++ jump to the ends; ++h++ puts it away, and ++h++ brings it back — which is the key to reach for before a screenshot or a shared screen, since this panel is the one part of the HUD with conversation text on it.
 
-It reopens the way you left it — whether it was showing is remembered in `~/.config/claude-voice/hud-history`, so ++h++ is a preference you set once rather than a key you press every time.
+It reopens the way you left it — whether it was showing is remembered in `~/.config/claude-voice/hud-history`, so ++h++ is a preference you set once rather than a key you press every time. One preference, both windows.
 
 Move it if the left is not where you want it:
 

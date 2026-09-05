@@ -508,7 +508,7 @@ nginx = "ˈɛndʒɪn ˈɛks"          # "engine-X"
 
 ## `[history]`
 
-The log of what was said out loud, both sides — behind ++h++ in the HUD.
+The log of what was said out loud, both sides — the panel ++h++ puts away in the HUD, in either window.
 
 ### `history.enabled`
 

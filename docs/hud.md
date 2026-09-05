@@ -143,7 +143,7 @@ It draws in the browser window only. Five meters and four tiles need a rail, and
 | ++d++ | dictate: record, transcribe, send |
 | ++c++ | conversation mode: continuous listening |
 | ++t++ | switch which session receives dictation — the voice follows it |
-| ++h++ | history: show or hide the spoken log beside the reactor |
+| ++h++ | history: hide the spoken log beside the reactor, and bring it back — remembered, and the same panel in both windows |
 | ++x++ | close an orphaned microphone capture (emergency) |
 | ++q++ | quit — and the last window closing stops the voice, the microphone and the heartbeat with it |
 
