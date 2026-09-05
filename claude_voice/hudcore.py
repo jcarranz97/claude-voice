@@ -75,8 +75,10 @@ BASE = _config.BASE
 # each session is doing lives in turn.py, one file per session.
 STATE = BASE / "state.json"
 ENABLED = BASE / "enabled"
-# Whether the history panel was open when you last had a HUD up. A marker
-# file, the same way the voice switch is one: the HUD keeps no other state.
+# Whether the history panel was open when you last pressed `h`, in either
+# window. A marker file, the same way the voice switch is one: the HUD keeps
+# no other state. Unlike the voice switch it holds its answer rather than
+# standing for it, because "never asked" is a third thing -- see panel_open().
 PANEL_OPEN = BASE / "hud-history"
 LISTEN_PID = BASE / "listen.pid"
 
@@ -349,20 +351,28 @@ def history_rows(width: int) -> list:
 
 
 def panel_open() -> bool:
+    """Whether the history panel is open, as last chosen with `h` in either
+    window. On until somebody says otherwise.
+
+    One answer for both windows, which is the whole point of it living here:
+    a panel they both draw is not something they may disagree about. So the
+    marker holds its answer rather than standing for it -- absent means
+    nobody has chosen, and what nobody has chosen is the log on screen.
+
+    A file that exists but says nothing is the older spelling, written by a
+    `touch`, and it meant open too.
+    """
     try:
-        return PANEL_OPEN.exists()
+        return PANEL_OPEN.read_text().strip() != "0"
     except Exception:
-        return False
+        return True
 
 
 def set_panel_open(on: bool) -> None:
     """Remember the panel across restarts. Never worth an exception."""
     try:
-        if on:
-            PANEL_OPEN.parent.mkdir(parents=True, exist_ok=True)
-            PANEL_OPEN.touch()
-        else:
-            PANEL_OPEN.unlink(missing_ok=True)
+        PANEL_OPEN.parent.mkdir(parents=True, exist_ok=True)
+        PANEL_OPEN.write_text("1" if on else "0")
     except Exception:
         pass
 
@@ -585,6 +595,9 @@ def snapshot() -> dict:
     """
     st, said, agents, stranded = display_state()
     show = panels()
+    # The one block whose switch is a key rather than a config entry, which is
+    # why it is not in panels() with the others.
+    show["history"] = panel_open()
     fstate, flabel = focus_state()
     other, other_label = next_language()
     tgt = dictate_target_info()
@@ -672,6 +685,9 @@ def panels() -> dict:
     Both windows read this, and the terminal one honours the entries it has
     something to draw for. A name it does not draw is not an error: the
     config is a description of the HUD, not of one of its two surfaces.
+
+    The history block is not in here. It is switched by a key rather than by
+    the config, so snapshot() adds it from the marker that key writes.
     """
     return {k: bool(CFG.get(f"hud.panels.{k}", v)) for k, v in PANELS.items()}
 
@@ -824,6 +840,22 @@ def act_sweep() -> tuple:
     return True, f"closed {n}" if n else "nothing to close"
 
 
+def act_history() -> tuple:
+    """Show or hide the spoken log, and remember which.
+
+    The only key here that changes nothing about the voice -- but the history
+    panel is the one part of the HUD that puts conversation text on screen,
+    so taking it off before a screenshot, a recording or a shared screen is
+    worth a key rather than an edit to the config and a restart.
+
+    It writes the same marker the terminal reads at startup, which is what
+    keeps the two windows from disagreeing about a panel they both draw.
+    """
+    on = not panel_open()
+    set_panel_open(on)
+    return True, "history" if on else "history hidden"
+
+
 ACTIONS = {
     "voice": act_voice,
     "focus": act_focus,
@@ -832,6 +864,7 @@ ACTIONS = {
     "session": act_session_next,
     "language": act_language,
     "sweep": act_sweep,
+    "history": act_history,
 }
 
 

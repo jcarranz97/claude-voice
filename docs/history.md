@@ -6,7 +6,7 @@ title: The spoken log
 
 The bottom line of the HUD shows the last spoken line and nothing else — which tells you it just said *something*, and is useless the moment the next line replaces it.
 
-The log is the fix. Press ++h++, or read it in a terminal:
+The log is the fix. It is the panel down the left of the HUD, and it also reads in a terminal:
 
 ```bash
 claude-voice history 20              # the last 20 lines of this conversation
@@ -35,9 +35,11 @@ claude-voice history --session <id>  # a named one
 
 It is a panel, not a mode: the reactor keeps spinning beside it, so you never trade the state you are watching for the log you are reading.
 
-Newest at the bottom. ++arrow-up++ / ++arrow-down++ or ++j++ / ++k++ scroll, ++g++ and ++shift+g++ jump to the ends, ++q++ still quits the HUD. ++h++ puts it away.
+Newest at the bottom. ++arrow-up++ / ++arrow-down++ or ++j++ / ++k++ scroll, ++g++ and ++shift+g++ jump to the ends, ++q++ still quits the HUD. ++h++ puts it away, and ++h++ brings it back.
 
-The panel reopens the way you left it — whether it was showing is remembered in `~/.config/claude-voice/hud-history`, so ++h++ is a preference you set once rather than a key you press every time you open a HUD.
+That key is worth knowing where to find. This panel is the one part of the HUD that puts conversation text on screen, so it is what you take off before a screenshot, a screen recording, or a call you are sharing a screen on — without closing the window or editing anything.
+
+The panel reopens the way you left it — whether it was showing is remembered in `~/.config/claude-voice/hud-history`, so ++h++ is a preference you set once rather than a key you press every time you open a HUD. One preference, both windows: put the panel away in the browser and the terminal opens without it.
 
 ## Where it sits
 

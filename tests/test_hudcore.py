@@ -130,7 +130,12 @@ def unstattable():
         raise OSError("unreadable")
 
     return types.SimpleNamespace(
-        exists=_boom, touch=_boom, unlink=_boom, parent=types.SimpleNamespace(mkdir=_boom)
+        exists=_boom,
+        touch=_boom,
+        unlink=_boom,
+        read_text=_boom,
+        write_text=_boom,
+        parent=types.SimpleNamespace(mkdir=_boom),
     )
 
 
@@ -574,19 +579,35 @@ class TestHistoryEntries:
 class TestPanelMarker:
     """Whether the panel was open, remembered as a file like the voice is."""
 
-    def test_it_starts_closed(self):
-        assert hudcore.panel_open() is False
+    def test_it_starts_open(self):
+        # Both windows, one answer, and the answer before anybody chooses is
+        # the log on screen.
+        assert hudcore.panel_open() is True
 
     def test_opening_and_closing_survive_as_a_marker(self):
-        hudcore.set_panel_open(True)
-        assert hudcore.panel_open() is True
         hudcore.set_panel_open(False)
         assert hudcore.panel_open() is False
+        hudcore.set_panel_open(True)
+        assert hudcore.panel_open() is True
+
+    def test_the_older_empty_marker_still_reads_as_open(self):
+        # It was written with a touch, and it meant open. An upgrade must not
+        # quietly close a panel somebody had chosen to keep.
+        hudcore.PANEL_OPEN.parent.mkdir(parents=True, exist_ok=True)
+        hudcore.PANEL_OPEN.touch()
+        assert hudcore.panel_open() is True
 
     def test_closing_twice_is_not_an_error(self):
         hudcore.set_panel_open(False)
         hudcore.set_panel_open(False)
         assert hudcore.panel_open() is False
+
+    def test_a_marker_saying_anything_else_reads_as_open(self):
+        # Only "0" closes it. Half a write, or a file somebody edited by hand,
+        # should not silently take a panel away.
+        hudcore.PANEL_OPEN.parent.mkdir(parents=True, exist_ok=True)
+        hudcore.PANEL_OPEN.write_text("yes\n")
+        assert hudcore.panel_open() is True
 
     def test_a_marker_that_cannot_be_written_is_swallowed(self, monkeypatch):
         # Remembering a panel is never worth taking the window down for.
@@ -594,9 +615,9 @@ class TestPanelMarker:
         hudcore.set_panel_open(True)
         hudcore.set_panel_open(False)
 
-    def test_a_marker_that_cannot_be_stat_ed_reads_as_closed(self, monkeypatch):
+    def test_a_marker_that_cannot_be_read_reads_as_never_chosen(self, monkeypatch):
         monkeypatch.setattr(hudcore, "PANEL_OPEN", unstattable())
-        assert hudcore.panel_open() is False
+        assert hudcore.panel_open() is True
 
 
 class TestPosition:
@@ -1071,6 +1092,17 @@ class TestSnapshot:
         s = hudcore.snapshot()
         assert s["session"] == {"id": "sid-1", "dir": "one", "title": "a task"}
 
+    def test_the_history_block_is_on_until_the_key_says_otherwise(self):
+        # This window has a rail for the panel and has always drawn it, so an
+        # upgrade must not take it away from anybody who never pressed h.
+        assert hudcore.snapshot()["panels"]["history"] is True
+
+    def test_the_history_block_follows_the_key(self):
+        hudcore.act("history")
+        assert hudcore.snapshot()["panels"]["history"] is False
+        hudcore.act("history")
+        assert hudcore.snapshot()["panels"]["history"] is True
+
     def test_a_pane_that_already_knows_its_session_is_not_looked_up_again(self):
         self.pane(a_pane(session="sid-from-pane"))
         assert hudcore.snapshot()["session"]["id"] == "sid-from-pane"
@@ -1302,6 +1334,25 @@ class TestActSweep:
         assert hudcore.act_sweep() == (True, "nothing to close")
 
 
+class TestActHistory:
+    """The panel key, which is the same key in both windows because it is the
+    same function."""
+
+    def test_it_hides_the_panel_and_says_so(self):
+        assert hudcore.act_history() == (True, "history hidden")
+        assert hudcore.panel_open() is False
+
+    def test_it_shows_the_panel_again(self):
+        hudcore.set_panel_open(False)
+        assert hudcore.act_history() == (True, "history")
+        assert hudcore.panel_open() is True
+
+    def test_one_window_toggling_it_is_what_the_other_reopens_with(self):
+        # One marker, both windows: the point of routing the key through here.
+        hudcore.act("history")
+        assert hudcore.panel_open() is False
+
+
 class TestAct:
     """The one entry point both the key handler and the browser go through."""
 
@@ -1314,6 +1365,7 @@ class TestAct:
             "session",
             "language",
             "sweep",
+            "history",
         }
 
     def test_a_name_nobody_defined_is_a_refusal_not_a_crash(self):

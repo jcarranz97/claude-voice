@@ -153,6 +153,23 @@ body {
 .left { grid-area: left; }
 .right { grid-area: right; }
 
+/* A rail with nothing left in it gives its column back to the reactor. Hiding
+   the panel alone would only take the border away: an explicit grid keeps its
+   tracks whatever is in them, so the space where the panel used to be stays
+   exactly as wide and reads as a window that has lost something.
+
+   Which is the difference between a HUD with the log put away and a HUD ready
+   to be photographed, and photographing the reactor is what h is for. */
+.grid:has(> .left[hidden]) {
+  grid-template-areas: "bar bar bar" "core core right" "foot foot foot";
+}
+.grid:has(> .right[hidden]) {
+  grid-template-areas: "bar bar bar" "left core core" "foot foot foot";
+}
+.grid:has(> .left[hidden]):has(> .right[hidden]) {
+  grid-template-areas: "bar bar bar" "core core core" "foot foot foot";
+}
+
 .block {
   border: 1px solid var(--faint);
   border-radius: 3px;

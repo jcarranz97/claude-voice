@@ -444,14 +444,25 @@ def main(stdscr):
     # language changed. Whatever it says, it says it for two seconds.
     notice_at, notice = 0.0, ""
     refused_at, refused_why = 0.0, ""
-    # Reopen the way you left it: h is a preference, not a per-run decision.
-    history, hist_scroll = panel_open(), 0
+    # Reopen the way you left it: h is a preference, not a per-run decision,
+    # and not this window's alone -- the browser writes the same marker.
+    #
+    # Never as a takeover, though. In a window with no room to show the panel
+    # beside or under the reactor it is not a panel but a view, and opening
+    # straight into one you have to press q to leave is not what the
+    # preference asked for. layout() is the one thing that knows when there is
+    # room, so it is asked rather than second-guessed -- and the marker is
+    # left alone, so a wider window still reopens the way you left it.
+    h0, w0 = stdscr.getmaxyx()
+    history, hist_scroll = panel_open() and layout(h0, w0, True)[1] is not None, 0
     while True:
         ch = stdscr.getch()
         if ch == ord("h"):
-            history = not history
-            hist_scroll = 0
-            set_panel_open(history)
+            # Through act(), like every other key: the toggle and what it
+            # remembers are the same code the browser's `h` runs. What stays
+            # here is the layout, which is this window's own business.
+            core.act("history")
+            history, hist_scroll = panel_open(), 0
         if ch in (ord("q"), 27):
             # h opens the panel and h closes it, so q keeps meaning quit. The
             # exception is a window too narrow to split, where the panel really

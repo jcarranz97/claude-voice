@@ -28,13 +28,16 @@
   <!-- Left: whatever the plugins in this rail have to say, then what was
        said out loud. The history is the block this window draws itself, and
        it sits at the bottom because it is the one that grows. -->
-  <section class="panel left">
+  <section class="panel left" id="left-column">
     <!-- Plugin panels, built from rows the host sends. Nothing in here is
          written by hand: a plugin that draws in this rail appears, and one
          that is switched off leaves no gap behind it. -->
     <div id="plugins-left"></div>
 
-    <div class="block grow">
+    <!-- Switched by the h key, not by the config: it is the one block that puts
+         conversation text on screen, and taking it off for a screenshot or a
+         shared screen should not cost a restart. -->
+    <div class="block grow" id="history-block">
       <h2 id="history-title">// history</h2>
       <div class="log" id="history"><p class="empty" id="history-empty">nothing spoken yet</p></div>
     </div>
